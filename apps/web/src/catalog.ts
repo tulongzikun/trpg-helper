@@ -9,7 +9,7 @@ const raw = [...examples, ...imported];
 
 export type Feature = { id: string; name: string; description: string; automation: 'manual' | 'partial' | 'supported'; automationNotes?: string };
 export type Block = { id: string; name: string; sourceText?: string; size: string; creatureTypes: string[]; challengeRating?: string; armorClass: number; hitPoints: { average: number; dice?: string }; abilities: Record<string, number>; speedFt: Record<string, number>; initiativeBonus?: number; proficiencyBonus?: number; experiencePoints?: number; savingThrows?: Record<string, number>; skills?: Record<string, number>; senses?: string[]; languages?: string[]; damageResistances?: string[]; damageImmunities?: string[]; damageVulnerabilities?: string[]; conditionImmunities?: string[]; gear?: string[]; traits?: Feature[]; actions: Feature[]; bonusActions?: Feature[]; reactions?: Feature[]; legendaryActions?: Feature[]; rule: { edition: string } };
-export type Entry = { id: string; name: string; englishName?: string; aliases?: string[]; familyId?: string; habitats?: string[]; treasure?: string; description?: string; lair?: string; source: { name: string; url?: string }; statBlocks: Block[] };
+export type Entry = { id: string; revision: number; name: string; englishName?: string; aliases?: string[]; familyId?: string; habitats?: string[]; treasure?: string; description?: string; lair?: string; source: { name: string; url?: string }; statBlocks: Block[] };
 export type Card = { entry: Entry; block: Block };
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true });
