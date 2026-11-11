@@ -41,3 +41,14 @@ test('unknown monster fields cannot silently disappear', () => {
   value.statBlocks[0].unknownField = 'data';
   assert.equal(validators.monster(value), false);
 });
+test('catalog entries are valid and stat block IDs are unique', () => {
+  const catalog = require('../apps/web/src/data/monsters.json');
+  const ids = new Set();
+  for (const entry of catalog) {
+    assert.ok(validators.monster(entry), JSON.stringify(validators.monster.errors));
+    for (const block of entry.statBlocks) {
+      assert.ok(!ids.has(block.id), `duplicate stat block id: ${block.id}`);
+      ids.add(block.id);
+    }
+  }
+});
