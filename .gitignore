@@ -1,2 +1,4 @@
 node_modules/
 dist/
+apps/web/src/data/imported-monsters.json
+apps/web/src/data/import-report.json

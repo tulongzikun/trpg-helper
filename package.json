@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "import:monsters": "node scripts/import-monsters.cjs",
     "test": "node --test"
   },
   "devDependencies": {
@@ -12,6 +13,7 @@
     "@vitejs/plugin-react": "^6.3.0",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
+    "cheerio": "^1.2.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.7"
   },

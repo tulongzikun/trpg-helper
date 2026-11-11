@@ -52,3 +52,16 @@ test('catalog entries are valid and stat block IDs are unique', () => {
     }
   }
 });
+test('locally imported entries conform to the contract and have unique IDs', { skip: !require('node:fs').existsSync(require('node:path').join(__dirname, '../apps/web/src/data/imported-monsters.json')) }, () => {
+  const imported = require('../apps/web/src/data/imported-monsters.json');
+  const ids = new Set();
+  assert.ok(imported.length > 0);
+  for (const entry of imported) {
+    assert.ok(validators.monster(entry), JSON.stringify(validators.monster.errors));
+    for (const block of entry.statBlocks) {
+      assert.ok(!ids.has(block.id), `duplicate: ${block.id}`);
+      ids.add(block.id);
+      assert.ok(block.sourceText, `missing source text: ${block.id}`);
+    }
+  }
+});
