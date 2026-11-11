@@ -1,0 +1,5 @@
+{
+ "schemaVersion":"monster-entry/v1","id":"example-mist-creature","revision":1,"origin":"custom","name":"雾影兽","englishName":"Mist Creature","aliases":[],"familyId":"example-mist-family","habitats":["forest"],"description":"用于展示数据结构的虚构生物。",
+ "source":{"name":"项目示例","license":"example"},
+ "statBlocks":[{"id":"example-mist-creature-adult","name":"雾影兽","rule":{"edition":"dnd5e-2024","ruleSetId":"example-rules","rulePackVersion":"example","rulePackHash":"example-not-a-real-hash"},"size":"medium","creatureTypes":["example"],"challengeRating":"1/4","armorClass":12,"hitPoints":{"average":9,"dice":"2d8"},"abilities":{"str":10,"dex":14,"con":10,"int":4,"wis":12,"cha":6},"speedFt":{"walk":30},"actions":[{"id":"example-strike","name":"雾爪","description":"示例动作，由主持人裁定。","automation":"manual"}]}]
+}

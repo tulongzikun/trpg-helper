@@ -1,0 +1,6 @@
+{
+  "name": "trpg-helper",
+  "private": true,
+  "scripts": { "test": "node --test" },
+  "devDependencies": { "ajv": "^8.17.1", "ajv-formats": "^3.0.1" }
+}

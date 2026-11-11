@@ -1,0 +1,5 @@
+{
+  "schemaVersion":"character-draft/v1","id":"example-character","status":"draft",
+  "rule":{"edition":"dnd5e-2024","ruleSetId":"example-rules","rulePackVersion":"example","rulePackHash":"example-not-a-real-hash"},
+  "identity":{"name":"旅行者"},"classLevels":[],"abilities":{},"choices":{},"inventory":[],"knownSpellIds":[],"preparedSpellIds":[]
+}

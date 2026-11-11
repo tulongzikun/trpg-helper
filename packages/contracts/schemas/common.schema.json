@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://trpg-helper.local/schemas/common/v1",
+  "$defs": {
+    "id": {"type":"string","minLength":1},
+    "strings": {"type":"array","items":{"type":"string","minLength":1},"uniqueItems":true},
+    "ability": {"enum":["str","dex","con","int","wis","cha"]},
+    "abilities": {"type":"object","required":["str","dex","con","int","wis","cha"],"additionalProperties":false,"properties":{"str":{"type":"integer","minimum":1},"dex":{"type":"integer","minimum":1},"con":{"type":"integer","minimum":1},"int":{"type":"integer","minimum":1},"wis":{"type":"integer","minimum":1},"cha":{"type":"integer","minimum":1}}},
+    "rule": {"type":"object","additionalProperties":false,"required":["edition","ruleSetId","rulePackVersion","rulePackHash"],"properties":{"edition":{"enum":["dnd5e-2014","dnd5e-2024"]},"ruleSetId":{"$ref":"#/$defs/id"},"rulePackVersion":{"$ref":"#/$defs/id"},"rulePackHash":{"$ref":"#/$defs/id"},"appliedHouseRuleIds":{"$ref":"#/$defs/strings"}}},
+    "feature": {"type":"object","additionalProperties":false,"required":["id","name","description","automation"],"properties":{"id":{"$ref":"#/$defs/id"},"name":{"$ref":"#/$defs/id"},"description":{"type":"string"},"automation":{"enum":["manual","partial","supported"]},"automationNotes":{"type":"string"},"effectRef":{"type":"string","minLength":1}}}
+  }
+}
