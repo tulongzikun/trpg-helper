@@ -1,0 +1,3 @@
+const fs=require('node:fs/promises');
+const url='https://gist.githubusercontent.com/dmcb/4b67869f962e3adaa3d0f7e5ca8f4912/raw/5b6a5f0e4f17c378433022708f4d9471544319d4/srd-5.2-spells.json';
+async function main(){const response=await fetch(url,{signal:AbortSignal.timeout(30000)});if(!response.ok)throw Error(`HTTP ${response.status}`);const spells=await response.json();if(!Array.isArray(spells)||spells.length<200||spells.some(x=>typeof x.name!=='string'||typeof x.description!=='string'||!Number.isInteger(x.level)))throw Error('法术资料不完整，保留原文件');await fs.writeFile('apps/web/src/data/imported-spell-descriptions.json',JSON.stringify(spells,null,2)+'\n');console.log(`已导入 ${spells.length} 条 SRD 英文法术描述。`)}main().catch(e=>{console.error(e.message);process.exitCode=1});

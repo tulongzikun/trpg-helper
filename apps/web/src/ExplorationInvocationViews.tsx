@@ -1,0 +1,8 @@
+import type { CharacterDraft } from './characters';
+import { explorationInvocations, invocationState } from './explorationInvocations';
+export function InvocationEditor({draft,onChange}:{draft:CharacterDraft;onChange:(draft:CharacterDraft)=>void}){
+ const details=draft.details,c=details?.fighterCalculator;if(!details||!c||c.characterClass!=='邪术师')return null;
+ const state=invocationState(draft);
+ return <div><h3>探索类魔能祈唤</h3><p className="character-help">已选 {state.selected.length} / {state.limit} 项祈唤；此处列出探索类选项，其他祈唤暂需另行记录。升级时可按规则替换。</p>{state.invalid&&<p className="battle-error">选项超过数量、等级不符或无效，请调整。</p>}{state.invalid&&<button type="button" className="button-secondary" onClick={()=>onChange({...draft,details:{...details,fighterCalculator:{...c,explorationInvocations:[]}}})}>清除祈唤选择</button>}<div className="proficiency-grid">{explorationInvocations.map(item=>{const checked=state.selected.includes(item.id);return <label key={item.id}><input type="checkbox" checked={checked} disabled={!checked&&(draft.level<item.level||state.selected.length>=state.limit)} onChange={e=>onChange({...draft,details:{...details,fighterCalculator:{...c,explorationInvocations:e.target.checked?[...state.selected,item.id]:state.selected.filter(x=>x!==item.id)}}})}/>{item.name}（{item.level} 级）</label>})}</div></div>;
+}
+export function InvocationSheet({draft}:{draft:CharacterDraft}){const state=invocationState(draft);if(!state.active.length)return null;return <><h3>探索类魔能祈唤</h3><ul>{explorationInvocations.filter(x=>state.active.includes(x.id)).map(x=><li key={x.id}><strong>{x.name}：</strong>{x.note}</li>)}</ul></>}

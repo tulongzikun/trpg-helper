@@ -1,0 +1,3 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const {spellCopyCost}=require('../apps/web/src/wizardSpellCopy.ts');
+test('copying a newly found spell and making a backup use different per-level costs',()=>{assert.deepEqual(spellCopyCost(3,'new'),{hours:6,gold:150});assert.deepEqual(spellCopyCost(3,'backup'),{hours:3,gold:30});assert.deepEqual(spellCopyCost(9,'new'),{hours:18,gold:450});});
+test('only valid levelled spells and copying modes are accepted',()=>{for(const level of [0,10,1.5,NaN])assert.equal(spellCopyCost(level,'new'),null);assert.equal(spellCopyCost(1,'other'),null);});

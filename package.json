@@ -8,7 +8,8 @@
     "test": "node --test",
     "import:subclasses": "node scripts/import-subclass-index.cjs",
     "import:classes": "node scripts/import-class-index.cjs",
-    "import:origin-spells": "node scripts/import-origin-spells.cjs"
+    "import:origin-spells": "node scripts/import-origin-spells.cjs",
+    "import:spell-descriptions": "node scripts/import-spell-descriptions.cjs"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

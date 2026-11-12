@@ -34,7 +34,7 @@ export function alwaysPreparedSpells(d:CharacterDraft){
  const c=d.details?.fighterCalculator;if(!c)return [];
  const cls=c.characterClass??'战士';const result:{name:string;grantedAt:number;usage?:string}[]=[];
  if(cls==='德鲁伊')result.push({name:'动物交谈',grantedAt:1});
- if(cls==='游侠')result.push({name:'猎人印记',grantedAt:1,usage:`长休后可免费施放 ${Math.min(6,2+Math.floor(d.level/4))} 次`});
+ if(cls==='游侠')result.push({name:'猎人印记',grantedAt:1,usage:`长休后可免费施放 ${Math.min(6,2+Math.floor((d.level-1)/4))} 次`});
  if(cls==='圣武士'&&d.level>=2)result.push({name:'至圣斩',grantedAt:2,usage:'长休后可免费施放一次'});
  if(cls==='圣武士'&&d.level>=5)result.push({name:'寻获坐骑',grantedAt:5,usage:'长休后可免费施放一次'});
  if(cls==='邪术师'&&d.level>=9)result.push({name:'异界探知',grantedAt:9,usage:'联系宗主时可免费施放一次并自动成功豁免；长休恢复'});
