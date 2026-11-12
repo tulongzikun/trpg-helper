@@ -38,3 +38,14 @@ test('draconic sorcerer resilience applies from third level',()=>{
  d.level=2;let r=calculateFighter(d);assert.equal(r.maxHp,14);assert.equal(r.armorClass,12);
  d.level=3;r=calculateFighter(d);assert.equal(r.maxHp,23);assert.equal(r.armorClass,15);
 });
+test('higher-level monk and rogue saving proficiencies follow level and revert',()=>{
+ const d=newDraft();d.details.fighterCalculator={species:'人类',elfLineage:'',armor:'none',shield:false,characterClass:'武僧'};
+ d.level=13;assert.deepEqual(calculateFighter(d).details.saveProficiencies,['str','dex']);
+ d.level=14;assert.deepEqual(new Set(calculateFighter(d).details.saveProficiencies),new Set(['str','dex','con','int','wis','cha']));
+ d.details.fighterCalculator.characterClass='游荡者';d.level=14;assert.deepEqual(calculateFighter(d).details.saveProficiencies,['dex','int']);
+ d.level=15;assert.deepEqual(calculateFighter(d).details.saveProficiencies,['dex','int','wis','cha']);
+});
+test('paladin aura bonus is reported conditionally and scales with charisma',()=>{
+ const {savingThrows}=require('../apps/web/src/savingThrows.ts');const d=newDraft();d.details.fighterCalculator={species:'人类',elfLineage:'',armor:'none',shield:false,characterClass:'圣武士'};
+ d.level=5;d.abilities.cha=8;assert.equal(savingThrows(d).aura,0);d.level=6;assert.equal(savingThrows(d).aura,1);d.abilities.cha=18;assert.equal(savingThrows(d).aura,4);
+});

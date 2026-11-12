@@ -1,8 +1,10 @@
+import { advancementState } from './advancementRules.ts';
 import type { CharacterDraft } from './characters';
 import { fixedClassHp, baseSpeed, standardArmorClass, classes2024, type Class2024, type Species2024, type Armor2024 } from './rules2024.ts';
 import { classTraits } from './classTraits.ts';
 export function calculateFighter(draft:CharacterDraft):CharacterDraft {
  const details=draft.details;const config=details?.fighterCalculator;if(!config||!details)return draft;
+ draft={...draft,abilities:advancementState(draft).abilities};
  if(typeof config.shield!=='boolean')throw Error('盾牌选项无效。');
  const species=config.species as Species2024;const characterClass=(config.characterClass??'战士') as Class2024;
  if(!Object.hasOwn(classes2024,characterClass))throw Error('职业无效。');
@@ -12,7 +14,7 @@ export function calculateFighter(draft:CharacterDraft):CharacterDraft {
  let speedFt=baseSpeed(species,species==='精灵'?config.elfLineage as '木精灵'|'高等精灵'|'卓尔':undefined)-(strength&&draft.abilities.str<strength?10:0);
  let maxHp=fixedClassHp(characterClass,draft.abilities.con,species,draft.level);
  if(characterClass==='术士'&&config.subclass==='draconic'&&draft.level>=3)maxHp+=draft.level;
- if(details.background==='农夫')maxHp+=2*draft.level;
+ if(details.background==='农夫'||(species==='人类'&&config.humanOriginFeat==='强韧'))maxHp+=2*draft.level;
  const heavy=['ring','chain','splint','plate'].includes(armor);
  if(characterClass==='野蛮人'&&draft.level>=5&&!heavy)speedFt+=10;
  if(characterClass==='游侠'&&draft.level>=6&&!heavy)speedFt+=10;
@@ -22,5 +24,9 @@ export function calculateFighter(draft:CharacterDraft):CharacterDraft {
  if(armor==='none'&&characterClass==='野蛮人')armorClass=10+mod(draft.abilities.dex)+mod(draft.abilities.con)+(config.shield?2:0);
  if(armor==='none'&&!config.shield&&characterClass==='武僧')armorClass=10+mod(draft.abilities.dex)+mod(draft.abilities.wis);
  if(armor==='none'&&characterClass==='术士'&&config.subclass==='draconic'&&draft.level>=3)armorClass=10+mod(draft.abilities.dex)+mod(draft.abilities.cha);
- return {...draft,characterClass,species:config.species,speedFt,maxHp,armorClass,details:{...details,saveProficiencies:[...classTraits[characterClass].saves]}};
+ const saves=[...classTraits[characterClass].saves];
+ if(characterClass==='游荡者'&&draft.level>=15)saves.push('wis','cha');
+ if(characterClass==='游侠'&&config.subclass==='gloom-stalker'&&draft.level>=7&&!saves.includes('wis'))saves.push('wis');
+ if(characterClass==='武僧'&&draft.level>=14)for(const ability of ['str','dex','con','int','wis','cha'] as const)if(!saves.includes(ability))saves.push(ability);
+ return {...draft,characterClass,species:config.species,speedFt,maxHp,armorClass,details:{...details,saveProficiencies:saves}};
 }

@@ -7,7 +7,8 @@
     "import:monsters": "node scripts/import-monsters.cjs",
     "test": "node --test",
     "import:subclasses": "node scripts/import-subclass-index.cjs",
-    "import:classes": "node scripts/import-class-index.cjs"
+    "import:classes": "node scripts/import-class-index.cjs",
+    "import:origin-spells": "node scripts/import-origin-spells.cjs"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
