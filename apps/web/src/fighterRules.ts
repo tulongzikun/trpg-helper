@@ -1,0 +1,26 @@
+import type { CharacterDraft } from './characters';
+import { fixedClassHp, baseSpeed, standardArmorClass, classes2024, type Class2024, type Species2024, type Armor2024 } from './rules2024.ts';
+import { classTraits } from './classTraits.ts';
+export function calculateFighter(draft:CharacterDraft):CharacterDraft {
+ const details=draft.details;const config=details?.fighterCalculator;if(!config||!details)return draft;
+ if(typeof config.shield!=='boolean')throw Error('盾牌选项无效。');
+ const species=config.species as Species2024;const characterClass=(config.characterClass??'战士') as Class2024;
+ if(!Object.hasOwn(classes2024,characterClass))throw Error('职业无效。');
+ const armor=config.armor as Armor2024;
+ const requiredStrength:Partial<Record<Armor2024,number>>={chain:13,splint:15,plate:15};
+ const strength=requiredStrength[armor];
+ let speedFt=baseSpeed(species,species==='精灵'?config.elfLineage as '木精灵'|'高等精灵'|'卓尔':undefined)-(strength&&draft.abilities.str<strength?10:0);
+ let maxHp=fixedClassHp(characterClass,draft.abilities.con,species,draft.level);
+ if(characterClass==='术士'&&config.subclass==='draconic'&&draft.level>=3)maxHp+=draft.level;
+ if(details.background==='农夫')maxHp+=2*draft.level;
+ const heavy=['ring','chain','splint','plate'].includes(armor);
+ if(characterClass==='野蛮人'&&draft.level>=5&&!heavy)speedFt+=10;
+ if(characterClass==='游侠'&&draft.level>=6&&!heavy)speedFt+=10;
+ if(characterClass==='武僧'&&draft.level>=2&&armor==='none'&&!config.shield)speedFt+=5*(Math.floor((Math.min(draft.level,18)-2)/4)+2);
+ let armorClass=standardArmorClass(armor,draft.abilities.dex,config.shield,classTraits[characterClass].shield);
+ const mod=(n:number)=>Math.floor((n-10)/2);
+ if(armor==='none'&&characterClass==='野蛮人')armorClass=10+mod(draft.abilities.dex)+mod(draft.abilities.con)+(config.shield?2:0);
+ if(armor==='none'&&!config.shield&&characterClass==='武僧')armorClass=10+mod(draft.abilities.dex)+mod(draft.abilities.wis);
+ if(armor==='none'&&characterClass==='术士'&&config.subclass==='draconic'&&draft.level>=3)armorClass=10+mod(draft.abilities.dex)+mod(draft.abilities.cha);
+ return {...draft,characterClass,species:config.species,speedFt,maxHp,armorClass,details:{...details,saveProficiencies:[...classTraits[characterClass].saves]}};
+}

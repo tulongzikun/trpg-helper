@@ -5,7 +5,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "import:monsters": "node scripts/import-monsters.cjs",
-    "test": "node --test"
+    "test": "node --test",
+    "import:subclasses": "node scripts/import-subclass-index.cjs",
+    "import:classes": "node scripts/import-class-index.cjs"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

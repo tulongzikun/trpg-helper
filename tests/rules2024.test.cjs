@@ -1,0 +1,6 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');
+const {firstLevelMaxHp,baseSpeed,fixedClassHp,standardArmorClass}=require('../apps/web/src/rules2024.ts');
+test('first-level HP includes hit die, constitution and dwarf toughness',()=>{assert.equal(firstLevelMaxHp('战士',14,'人类'),12);assert.equal(firstLevelMaxHp('战士',14,'矮人'),13);assert.equal(firstLevelMaxHp('法师',3,'人类'),2);assert.throws(()=>firstLevelMaxHp('不存在',10,'人类'));});
+test('speed respects species and elf lineage',()=>{assert.equal(baseSpeed('人类'),30);assert.equal(baseSpeed('歌利亚'),35);assert.equal(baseSpeed('精灵','木精灵'),35);assert.equal(baseSpeed('精灵','卓尔'),30);assert.throws(()=>baseSpeed('精灵'));});
+test('fixed hit points apply constitution and dwarf bonus at each level',()=>{assert.equal(fixedClassHp('战士',14,'人类',5),44);assert.equal(fixedClassHp('战士',14,'矮人',5),49);assert.throws(()=>fixedClassHp('战士',14,'人类',21));});
+test('standard armor handles dexterity caps and shield training',()=>{assert.equal(standardArmorClass('leather',16,false,false),14);assert.equal(standardArmorClass('scale',16,true,true),18);assert.equal(standardArmorClass('scale',8,false,false),13);assert.equal(standardArmorClass('chain',16,true,false),16);assert.equal(standardArmorClass('plate',8,true,true),20);});
