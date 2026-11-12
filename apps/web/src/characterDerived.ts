@@ -1,3 +1,4 @@
+import { activeStarryForm } from './starryForm.ts';
 import type { CharacterDraft, Ability } from './characters';
 import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { skillState } from './skillEffects.ts';
@@ -16,5 +17,5 @@ export function derivedCharacter(d:CharacterDraft){
  const spell=ability?{ability,attack:pb+abilityModifier(d.abilities[ability]),dc:8+pb+abilityModifier(d.abilities[ability])}:null;
  const ranger=cls==='游侠'&&d.level>=6&&!['ring','chain','splint','plate'].includes(config.armor);
  const invocation=invocationState(d);const thief=cls==='游荡者'&&config.subclass==='thief'&&d.level>=3;
- return {darkvision,blindsight:cls==='游侠'&&d.level>=18?30:0,devilsSight:invocation.active.includes('devils-sight')?120:0,truesight:invocation.active.includes('witch-sight')?30:0,spell,passivePerception:10+s.modifier('察觉'),passiveInsight:10+s.modifier('洞悉'),climb:(ranger||thief||wild?.aspect==='豹')?d.speedFt:null,swim:(ranger||wild?.aspect==='鲑'||invocation.active.includes('gift-depths'))?d.speedFt:null};
+ return {tremorsense:species==='矮人'&&config.stonecunningActive&&config.stoneContact?60:0,starryFly:activeStarryForm(d)==='dragon'&&d.level>=10?20:0,darkvision,blindsight:cls==='游侠'&&d.level>=18?30:0,devilsSight:invocation.active.includes('devils-sight')?120:0,truesight:invocation.active.includes('witch-sight')?30:0,spell,passivePerception:10+s.modifier('察觉'),passiveInsight:10+s.modifier('洞悉'),climb:(ranger||thief||wild?.aspect==='豹')?d.speedFt:null,swim:(ranger||wild?.aspect==='鲑'||invocation.active.includes('gift-depths'))?d.speedFt:null};
 }

@@ -34,6 +34,7 @@ export function alwaysPreparedSpells(d:CharacterDraft){
  const c=d.details?.fighterCalculator;if(!c)return [];
  const cls=c.characterClass??'战士';const result:{name:string;grantedAt:number;usage?:string}[]=[];
  if(cls==='德鲁伊')result.push({name:'动物交谈',grantedAt:1});
+ if(cls==='德鲁伊'&&c.subclass==='stars'&&d.level>=3&&c.starMapHeld)result.push({name:'神导术',grantedAt:3,usage:'持有星图时准备'},{name:'光导箭',grantedAt:3,usage:'持有星图时准备；可免费施放，次数见职业资源'});
  if(cls==='游侠')result.push({name:'猎人印记',grantedAt:1,usage:`长休后可免费施放 ${Math.min(6,2+Math.floor((d.level-1)/4))} 次`});
  if(cls==='圣武士'&&d.level>=2)result.push({name:'至圣斩',grantedAt:2,usage:'长休后可免费施放一次'});
  if(cls==='圣武士'&&d.level>=5)result.push({name:'寻获坐骑',grantedAt:5,usage:'长休后可免费施放一次'});

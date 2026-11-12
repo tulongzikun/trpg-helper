@@ -20,6 +20,10 @@ export function skillState(draft:CharacterDraft){
  const subclassActive=!!c&&draft.level>=3;
  const fixedSubclassSkills=subclassActive&&cls==='武僧'&&c?.subclass==='mercy'?['洞悉','医药']:[];
  const base=new Set([...(details?.skillProficiencies??[]),...(c?.classSkills??[]),...(background?.skills??[]),...speciesSkill,...fixedSubclassSkills]);
+ const primalAvailable=!!c&&cls==='野蛮人'&&draft.level>=3;
+ const primalSkill=primalAvailable?c?.primalSkill:undefined;
+ const primalInvalid=!!primalSkill&&(typeof primalSkill!=='string'||!classTraits['野蛮人'].skills.includes(primalSkill)||base.has(primalSkill));
+ if(primalSkill&&!primalInvalid)base.add(primalSkill);
  let subclassLimit=0;let subclassPool:string[]=[];
  if(subclassActive&&cls==='吟游诗人'&&c?.subclass==='lore'){subclassLimit=3;subclassPool=Object.keys(skills);}
  if(subclassActive&&cls==='战士'&&c?.subclass==='battle-master'){subclassLimit=1;subclassPool=classTraits['战士'].skills;}
@@ -45,7 +49,7 @@ export function skillState(draft:CharacterDraft){
  const jack=!!c&&cls==='吟游诗人'&&draft.level>=2;
  const orderBonus=(cls==='牧师'&&c?.classOrder==='thaumaturge')||(cls==='德鲁伊'&&c?.classOrder==='magician')?Math.max(1,abilityModifier(draft.abilities.wis)):0;
  const feyBonus=subclassActive&&cls==='游侠'&&c?.subclass==='fey-wanderer'?Math.max(1,abilityModifier(draft.abilities.wis)):0;
- return {eligible,limit,selected,invalid,proficient,active,subclassLimit,subclassPool,subclassSelected,subclassInvalid,base,activeSubclassSkills,fixedSubclassSkills,feyBonus,skilledSources,featSelections,featBase,granted:grantedSkills,grantedTools,skilledInvalid,modifier:(skill:string)=>{
+ return {eligible,limit,selected,invalid,proficient,active,primalAvailable,primalSkill,primalInvalid,subclassLimit,subclassPool,subclassSelected,subclassInvalid,base,activeSubclassSkills,fixedSubclassSkills,feyBonus,skilledSources,featSelections,featBase,granted:grantedSkills,grantedTools,skilledInvalid,modifier:(skill:string)=>{
   const ability=skills[skill];if(!ability)throw Error('未知技能。');
   return abilityModifier(draft.abilities[ability])+(active.has(skill)?2*pb:proficient.has(skill)?pb:jack?Math.floor(pb/2):0)+(ability==='cha'?feyBonus:0)+((skill==='奥秘'||(cls==='牧师'&&skill==='宗教')||(cls==='德鲁伊'&&skill==='自然'))?orderBonus:0);
  }};

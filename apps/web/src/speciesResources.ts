@@ -33,5 +33,5 @@ export function changeSpeciesResource(draft:CharacterDraft,id:string,delta:1|-1)
 export function restoreSpeciesResources(draft:CharacterDraft):CharacterDraft{
  const details=draft.details,c=details?.fighterCalculator;if(!details||!c)return draft;const spent={...c.speciesResourceSpent};
  for(const resource of speciesResources(draft))spent[resource.id]=0;
- return {...draft,details:{...details,fighterCalculator:{...c,speciesResourceSpent:spent}}};
+ return {...draft,details:{...details,fighterCalculator:{...c,speciesResourceSpent:spent,stonecunningActive:false}}};
 }

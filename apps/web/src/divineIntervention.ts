@@ -8,3 +8,9 @@ export function useDivineIntervention(draft:CharacterDraft,spell:InterventionSpe
  const next=changeClassResource(draft,'cleric-divine-intervention',1),details=next.details!,config=details.fighterCalculator!;
  return {...next,details:{...details,fighterCalculator:{...config,divineInterventionLast:{name:spell.name,level:spell.level}}}};
 }
+export function useDivineWish(draft:CharacterDraft,dice:number[]):CharacterDraft{
+ const c=draft.details?.fighterCalculator;
+ if(c?.characterClass!=='牧师'||draft.level<20||!classResources(draft).find(x=>x.id==='cleric-divine-intervention')?.remaining||!Array.isArray(dice)||dice.length!==2||dice.some(x=>!Number.isInteger(x)||x<1||x>4))return draft;
+ const next=changeClassResource(draft,'cleric-divine-intervention',1),details=next.details!,config=details.fighterCalculator!;
+ return {...next,details:{...details,fighterCalculator:{...config,divineInterventionLast:{name:'祈愿术Wish',level:9},divineWishDice:[dice[0],dice[1]],divineWishRests:dice[0]+dice[1]}}};
+}
