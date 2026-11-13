@@ -39,3 +39,23 @@ export function createSorcererSlot(draft:CharacterDraft,level:number):CharacterD
  const next=changeClassResource(draft,'sorcerer-points',creationCost[level]);const details=next.details!,config=details.fighterCalculator!;
  return {...next,details:{...details,fighterCalculator:{...config,sorcererCreatedSlots:{...config.sorcererCreatedSlots,[String(level)]:current+1}}}};
 }
+export function recoverBardInspiration(draft:CharacterDraft,slotLevel:number):CharacterDraft{
+ const c=draft.details?.fighterCalculator;
+ if(c?.characterClass!=='吟游诗人'||draft.level<5||!Number.isInteger(slotLevel)||slotLevel<1||slotLevel>9)return draft;
+ const inspiration=classResources(draft).find(x=>x.id==='bard-inspiration');const slot=spellSlotResources(draft).find(x=>x.id===`吟游诗人:slot:${slotLevel}`);
+ if(!inspiration?.spent||!slot?.remaining)return draft;
+ const next=changeClassResource(draft,'bard-inspiration',-1),details=next.details!,config=details.fighterCalculator!;
+ return {...next,details:{...details,fighterCalculator:{...config,spellSlotSpent:{...config.spellSlotSpent,[slot.id]:slot.spent+1}}}};
+}
+export function wildShapeFromSpellSlot(draft:CharacterDraft,level:number):CharacterDraft{
+ const c=draft.details?.fighterCalculator,wild=classResources(draft).find(x=>x.id==='druid-wildshape');const slot=spellSlotResources(draft).find(x=>x.id===`德鲁伊:slot:${level}`);
+ if(c?.characterClass!=='德鲁伊'||draft.level<5||!Number.isInteger(level)||!wild||wild.remaining!==0||!wild.spent||!slot?.remaining)return draft;
+ const next=changeClassResource(draft,'druid-wildshape',-1),details=next.details!,config=details.fighterCalculator!;
+ return {...next,details:{...details,fighterCalculator:{...config,spellSlotSpent:{...config.spellSlotSpent,[slot.id]:slot.spent+1}}}};
+}
+export function restoreFirstSlotFromWildShape(draft:CharacterDraft):CharacterDraft{
+ const c=draft.details?.fighterCalculator,resources=classResources(draft),wild=resources.find(x=>x.id==='druid-wildshape'),resurgence=resources.find(x=>x.id==='druid-wild-resurgence');const slot=spellSlotResources(draft).find(x=>x.id==='德鲁伊:slot:1');
+ if(c?.characterClass!=='德鲁伊'||draft.level<5||!wild?.remaining||!resurgence?.remaining||!slot?.spent)return draft;
+ const next=changeClassResource(changeClassResource(draft,'druid-wildshape',1),'druid-wild-resurgence',1),details=next.details!,config=details.fighterCalculator!;
+ return {...next,details:{...details,fighterCalculator:{...config,spellSlotSpent:{...config.spellSlotSpent,[slot.id]:Math.max(0,slot.spent-1)}}}};
+}

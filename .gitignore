@@ -6,3 +6,4 @@ apps/web/src/data/imported-subclass-index.json
 apps/web/src/data/imported-class-index.json
 apps/web/src/data/imported-origin-spells.json
 apps/web/src/data/imported-spell-descriptions.json
+.cache/

@@ -2,8 +2,16 @@ import type { CharacterDraft } from './characters';
 import { abilityModifier } from './characterRules.ts';
 import { invocationState } from './explorationInvocations.ts';
 import { classSpellState } from './classSpellChoices.ts';
+import { barbarianRangerResourceDefs } from './groups/resources/barbarianRanger.ts';
+import { clericRogueResourceDefs } from './groups/resources/clericRogue.ts';
+import { druidPaladinResourceDefs } from './groups/resources/druidPaladin.ts';
+import { fighterWarlockResourceDefs } from './groups/resources/fighterWarlock.ts';
+import { monkBardResourceDefs } from './groups/resources/monkBard.ts';
+import { wizardSorcererResourceDefs } from './groups/resources/wizardSorcerer.ts';
+import { speciesOriginResourceDefs } from './groups/resources/speciesOrigin.ts';
 
-type Definition={id:string;name:string;maximum:number;shortRest:boolean|'one';unit:string;note?:string};
+export type ClassResourceDef={id:string;name:string;maximum:number;shortRest:boolean|'one';unit:string;note?:string};
+type Definition=ClassResourceDef;
 export function classResources(draft:CharacterDraft){
  const c=draft.details?.fighterCalculator;if(!c)return [];
  const defs:Definition[]=[];const level=draft.level;
@@ -16,6 +24,7 @@ export function classResources(draft:CharacterDraft){
  if(c.characterClass==='牧师'&&level>=2)defs.push({id:'cleric-channel',name:'引导神力',maximum:level>=18?4:level>=6?3:2,shortRest:'one',unit:'次',note:'短休恢复一次，长休恢复全部。'});
  if(c.characterClass==='牧师'&&level>=10)defs.push({id:'cleric-divine-intervention',name:'神圣干预',maximum:1,shortRest:false,unit:'次',note:'施放一项不需反应施放的 5 环及以下牧师法术，无需法术位及材料成分。'});
  if(c.characterClass==='德鲁伊'&&level>=2)defs.push({id:'druid-wildshape',name:'荒野变身',maximum:level>=17?4:level>=6?3:2,shortRest:'one',unit:'次',note:'短休恢复一次，长休恢复全部；荒野伙伴也消耗此次数。'});
+ if(c.characterClass==='德鲁伊'&&level>=5)defs.push({id:'druid-wild-resurgence',name:'荒野复苏：恢复法术位',maximum:1,shortRest:false,unit:'次',note:'消耗一次荒野变身，恢复一个已消耗的 1 环法术位；长休恢复此选项。'});
  if(c.characterClass==='德鲁伊'&&c.subclass==='stars'&&level>=3)defs.push({id:'stars-guiding-bolt',name:'星图：光导箭免费施法',maximum:Math.max(1,abilityModifier(draft.abilities.wis)),shortRest:false,unit:'次',note:'持有星图时可免费施放；长休恢复。'});
  if(c.characterClass==='德鲁伊'&&c.subclass==='stars'&&level>=6&&Number.isSafeInteger(c.cosmicOmenRoll)&&c.cosmicOmenRoll!>0)defs.push({id:'stars-cosmic-omen',name:`宇宙预兆：${c.cosmicOmenRoll!%2===0?'吉兆':'凶兆'}`,maximum:Math.max(1,abilityModifier(draft.abilities.wis)),shortRest:false,unit:'次',note:'符合条件时掷 1d6，加上或减去检定总值；长休恢复。'});
  if(c.characterClass==='战士')defs.push({id:'fighter-secondwind',name:'回气',maximum:level>=10?4:level>=4?3:2,shortRest:'one',unit:'次',note:'短休恢复一次，长休恢复全部；战术思维也使用此资源。'});
@@ -28,6 +37,7 @@ export function classResources(draft:CharacterDraft){
  if(c.characterClass==='邪术师'&&level>=2)defs.push({id:'warlock-cunning',name:'魔法狡黠',maximum:1,shortRest:false,unit:'次',note:'可按规则恢复契约法术位；可在法术位区域使用。'});
  if(c.characterClass==='邪术师'&&level>=9)defs.push({id:'warlock-contact',name:'联络宗主免费施法',maximum:1,shortRest:false,unit:'次',note:'只能以此方式联系宗主，且自动通过法术豁免。'});
  if(c.characterClass==='邪术师'&&invocationState(draft).active.includes('gift-depths'))defs.push({id:'warlock-depths',name:'深海赐礼：水下呼吸免费施法',maximum:1,shortRest:false,unit:'次'});
+ defs.push(...barbarianRangerResourceDefs(draft),...clericRogueResourceDefs(draft),...druidPaladinResourceDefs(draft),...fighterWarlockResourceDefs(draft),...monkBardResourceDefs(draft),...wizardSorcererResourceDefs(draft),...speciesOriginResourceDefs(draft));
  return defs.map(def=>{const raw=c.classResourceSpent?.[def.id];const recorded=typeof raw==='number'&&Number.isInteger(raw)&&raw>=0?raw:0;const spent=def.id==='cleric-divine-intervention'&&typeof c.divineWishRests==='number'&&c.divineWishRests>0?Math.max(1,recorded):recorded;return {...def,spent,remaining:Math.max(0,def.maximum-spent)}});
 }
 export function changeClassResource(draft:CharacterDraft,id:string,delta:number):CharacterDraft{

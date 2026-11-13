@@ -24,6 +24,7 @@ export function calculateFighter(draft:CharacterDraft):CharacterDraft {
  if(armor==='none'&&characterClass==='野蛮人')armorClass=10+mod(draft.abilities.dex)+mod(draft.abilities.con)+(config.shield?2:0);
  if(armor==='none'&&!config.shield&&characterClass==='武僧')armorClass=10+mod(draft.abilities.dex)+mod(draft.abilities.wis);
  if(armor==='none'&&characterClass==='术士'&&config.subclass==='draconic'&&draft.level>=3)armorClass=10+mod(draft.abilities.dex)+mod(draft.abilities.cha);
+ if(armor==='none'&&!config.shield&&characterClass==='吟游诗人'&&config.subclass==='dance'&&draft.level>=3)armorClass=10+mod(draft.abilities.dex)+mod(draft.abilities.cha);
  const saves=[...classTraits[characterClass].saves];
  if(characterClass==='游荡者'&&draft.level>=15)saves.push('wis','cha');
  if(characterClass==='游侠'&&config.subclass==='gloom-stalker'&&draft.level>=7&&!saves.includes('wis'))saves.push('wis');

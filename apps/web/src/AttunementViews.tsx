@@ -1,0 +1,8 @@
+import type { CharacterDraft } from './characters';
+import { attunementState } from './attunement';
+export function AttunementEditor({draft,onChange}:{draft:CharacterDraft;onChange:(draft:CharacterDraft)=>void}){
+ const details=draft.details,c=details?.fighterCalculator,state=attunementState(draft);if(!details||!c||!state)return null;
+ const update=(items:string[])=>onChange({...draft,details:{...details,fighterCalculator:{...c,attunedItems:items}}});
+ return <section className="character-section"><h2>魔法物品同调</h2><p className="character-help">已记录 {state.items.length} / {state.limit} 件。物品的同调资格、效果和同调过程需自行核对；这里不会自动修改角色数值。</p>{state.invalid&&<p role="alert" className="battle-error">同调物品必须填写名称且不能超过当前上限。</p>}{state.items.map((item,i)=><div className="revision-row" key={i}><label>物品 {i+1}<input value={typeof item==='string'?item:''} maxLength={100} onChange={e=>update(state.items.map((x,j)=>j===i?e.target.value:x))}/></label><button type="button" className="button-secondary" onClick={()=>update(state.items.filter((_,j)=>j!==i))}>移除</button></div>)}<button type="button" className="button-secondary" disabled={state.items.length>=state.limit} onClick={()=>update([...state.items,''])}>添加同调物品</button></section>;
+}
+export function AttunementSheet({draft}:{draft:CharacterDraft}){const state=attunementState(draft);if(!state)return null;return <section className="character-section"><h2>魔法物品同调</h2><p className="sheet-text">{state.items.filter(x=>typeof x==='string'&&x.trim()).join('、')||'未记录'}（{state.items.length} / {state.limit}）</p><p className="character-help">物品效果需自行核对，不会自动修改数值。</p></section>}
