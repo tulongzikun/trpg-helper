@@ -2,7 +2,7 @@ import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
-import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType } from './battle';
+import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, Position } from './battle';
 import { damageTypes } from './battle.ts';
 import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
 import type { AttackRange, ModeAdjustment } from './combatModifiers.ts';
@@ -24,6 +24,8 @@ export type AttackOptions = {
   range?: AttackRange;
   /** 与目标的距离（尺），用于 5 尺内对麻痹／昏迷目标的自动重击，默认近战 5、远程 30。 */
   distanceFt?: number;
+  /** 近战攻击的触及范围（尺），默认 5；远程忽略。 */
+  reachFt?: number;
   /** 一次攻击动作内的攻击次数，默认 1，不能超过该单位的额外攻击次数。 */
   attacks?: number;
 };
@@ -148,6 +150,74 @@ export function actorAttackProfile(actor: Actor): { attackBonus: number; damage:
   const best = str >= dex ? str : dex;
   const modifier = best >= 0 ? `+${best}` : `${best}`;
   return { attackBonus: best + bonus, damage: `1d8${modifier}`, damageType: '挥砍' };
+}
+
+/** 方格距离：2024 规则中斜向移动同样只算一格。 */
+export function cellDistance(from: Position, to: Position): number {
+  return Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y));
+}
+export function positionOf(battle: Battle, actorId: string): Position | undefined {
+  return battle.actors.find(actor => actor.id === actorId)?.position;
+}
+/** 两个单位之间的方格距离（尺）；缺方格或缺位置时返回 undefined。 */
+export function actorDistance(battle: Battle, fromId: string, toId: string): number | undefined {
+  const grid = battle.grid;
+  const from = positionOf(battle, fromId);
+  const to = positionOf(battle, toId);
+  if (!grid || !from || !to) return undefined;
+  return cellDistance(from, to) * grid.cellFt;
+}
+/** 启用、调整或关闭方格战场；关闭时清除所有位置。 */
+export function configureGrid(battle: Battle, grid: GridConfig | null, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  if (grid === null) {
+    delete next.grid;
+    next.actors.forEach(actor => { delete actor.position; });
+    addLog(next, '关闭方格战场，清除所有单位位置。', deps);
+    return next;
+  }
+  const { width, height, cellFt } = grid;
+  if (!Number.isInteger(width) || width < 1 || width > 60) throw new Error('方格宽度须为 1 至 60 的整数。');
+  if (!Number.isInteger(height) || height < 1 || height > 60) throw new Error('方格高度须为 1 至 60 的整数。');
+  if (!Number.isInteger(cellFt) || cellFt < 5 || cellFt > 30) throw new Error('每格尺数须为 5 至 30 的整数。');
+  next.grid = { width, height, cellFt };
+  next.actors.forEach(actor => {
+    if (actor.position && (actor.position.x >= width || actor.position.y >= height)) delete actor.position;
+  });
+  addLog(next, `方格战场设为 ${width}×${height}，每格 ${cellFt} 尺。`, deps);
+  return next;
+}
+/**
+ * 把单位放到格子上；已放置的单位会按移动消耗处理。
+ * 未开始战斗时只能放置，不消耗移动。
+ */
+export function moveActorToCell(battle: Battle, actorId: string, x: number, y: number, deps: CombatDeps = {}): Battle {
+  if (!battle.grid) throw new Error('请先启用方格战场。');
+  if (!Number.isInteger(x) || !Number.isInteger(y)) throw new Error('格子坐标须为整数。');
+  if (x < 0 || y < 0 || x >= battle.grid.width || y >= battle.grid.height) throw new Error('目标格子超出战场范围。');
+  const from = positionOf(battle, actorId);
+  if (from && from.x === x && from.y === y) throw new Error('单位已经在该格。');
+  const occupied = battle.actors.find(actor => actor.id !== actorId && actor.position?.x === x && actor.position?.y === y);
+  if (occupied) throw new Error(`该格已有单位：${occupied.name}。`);
+  const next = recordUndo(structuredClone(battle));
+  const actor = actorOf(next, actorId);
+  if (!from) {
+    actor.position = { x, y };
+    addLog(next, `${actorLabel(next, actor)} 放置在 (${x}, ${y})。`, deps);
+    return next;
+  }
+  requireCombat(next);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以移动。');
+  const state = combatantOf(actor);
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt;
+  const speed = actorSpeed(actor);
+  if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
+  state.movementUsed += cost;
+  actor.position = { x, y };
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）。`, deps);
+  return next;
 }
 
 function resetTurnResources(battle: Battle, actorId: string) {
@@ -371,7 +441,7 @@ export function toggleCondition(battle: Battle, actorId: string, condition: stri
   addLog(next, `${actorLabel(next, actor)} ${active ? '移除' : '获得'}状态：${condition}。`, deps);
   return next;
 }
-type AttackContext = { attacker: Actor; target: Actor; cost: AttackCost; criticalRange: number; range: AttackRange; distanceFt: number };
+type AttackContext = { attacker: Actor; target: Actor; cost: AttackCost; criticalRange: number; range: AttackRange; distanceFt: number; measured: boolean };
 
 function validateAttackOptions(battle: Battle, options: AttackOptions): AttackContext {
   requireCombat(battle);
@@ -394,9 +464,14 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (!Number.isInteger(criticalRange) || criticalRange < 15 || criticalRange > 20) throw new Error('重击范围须为 15 至 20。');
   const range: AttackRange = options.range ?? 'melee';
   if (range !== 'melee' && range !== 'ranged') throw new Error('请选择近战或远程攻击。');
-  const distanceFt = options.distanceFt ?? (range === 'melee' ? 5 : 30);
+  const reachFt = options.reachFt ?? 5;
+  if (!Number.isInteger(reachFt) || reachFt < 5 || reachFt > 30) throw new Error('近战触及范围须为 5 至 30 尺的整数。');
+  const measured = actorDistance(battle, attacker.id, target.id);
+  if (measured !== undefined && range === 'melee' && measured > reachFt) throw new Error(`目标距离 ${measured} 尺，超出近战触及范围（${reachFt} 尺）。`);
+  if (measured !== undefined && range === 'ranged' && measured > 600) throw new Error('目标距离超出远程攻击范围（600 尺）。');
+  const distanceFt = measured ?? options.distanceFt ?? (range === 'melee' ? reachFt : 30);
   if (!Number.isInteger(distanceFt) || distanceFt < 0 || distanceFt > 600) throw new Error('距离须为 0 至 600 尺的整数。');
-  return { attacker, target, cost, criticalRange, range, distanceFt };
+  return { attacker, target, cost, criticalRange, range, distanceFt, measured: measured !== undefined };
 }
 
 function resolveOneAttack(battle: Battle, options: AttackOptions, context: AttackContext, deps: CombatDeps, consumeCost: boolean): AttackOutcome {
@@ -442,6 +517,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const detail = [
     `${actorLabel(battle, attacker)} → ${actorLabel(battle, target)}`,
     `攻击检定 ${rollText}${options.attackBonus >= 0 ? '+' : ''}${options.attackBonus} = ${total} vs AC ${targetAc}`,
+    context.measured ? `方格距离 ${context.distanceFt} 尺` : '',
     hit ? (critical ? '重击' : '命中') : (natural === 1 ? '大失败' : '未命中'),
     damageText,
     defense,

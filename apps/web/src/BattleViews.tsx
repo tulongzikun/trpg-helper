@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Card } from './catalog';
 import type { BattleStore, Side } from './battle';
 import type { CombatHandlers } from './CombatViews';
-import { BattleIo, CombatLog, CombatSetup, CombatToolbar, InitiativeRail, TurnPanel } from './CombatViews';
+import { BattleIo, CombatLog, CombatSetup, CombatToolbar, GridPanel, InitiativeRail, TurnPanel } from './CombatViews';
 import { currentActorId } from './combat';
 
 export function AddMonsterDialog({ card, store, onClose, onAdd }: { card: Card; store: BattleStore; onClose: () => void; onAdd: (options: { battleId?: string; newBattleName?: string; side: Side; count: number }) => string | null }) {
@@ -55,6 +55,7 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
             <InitiativeRail battle={battle} />
             {handlers && <TurnPanel battle={battle} handlers={handlers} />}
           </div>}
+          {handlers && battle.actors.length ? <GridPanel battle={battle} handlers={handlers} /> : null}
           {battle.actors.length ? <div className="actor-list">{battle.actors.map((actor, index) => {
             const state = actor.combat;
             return <article className={`actor${activeId === actor.id ? ' actor-active' : ''}${state?.status === 'dead' ? ' actor-dead' : ''}`} key={actor.id}>

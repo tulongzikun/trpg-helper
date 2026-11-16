@@ -113,5 +113,16 @@
 .cmb-io-body textarea{width:100%;margin-top:6px;border:1px solid #dce1d7;background:#fafbf8;padding:10px;font:12px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;color:#303b32;resize:vertical}
 .cmb-io-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .cmb-io-actions button{padding:8px 12px;font-size:11px}
+.cmb-grid-panel{border:1px solid #e9ebe3;border-radius:12px;background:#fbfcf8;padding:14px 16px;margin:14px 0}
+.cmb-grid{display:grid;gap:3px;margin:10px 0}
+.cmb-cell{width:2.4rem;height:2.4rem;border:1px solid #dfe4d8;border-radius:6px;background:#fff;color:#54614f;font-size:11px;font-weight:700;cursor:pointer;padding:0}
+.cmb-cell:hover{border-color:#a9b79f}
+.cmb-cell.occupied{background:#eef3e7;border-color:#c9d6ba}
+.cmb-cell.occupied.enemy{background:#fbeceb;border-color:#e3b7b2;color:#8d3b31}
+.cmb-cell.occupied.ally{background:#eaf1fb;border-color:#b6c9e3;color:#2f4d78}
+.cmb-cell.occupied.neutral{background:#f4f1e7;border-color:#d9cfae;color:#6b5f38}
+.cmb-cell.selected{outline:2px solid #6f8f5f;outline-offset:1px}
+.cmb-chip-action{cursor:pointer;border-style:dashed}
+.cmb-chip-action:hover{background:#e9f0e2}
 
 

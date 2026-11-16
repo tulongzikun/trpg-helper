@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import type { Actor, Battle, DamageType } from './battle';
+import type { Actor, Battle, DamageType, GridConfig } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
-import { actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, summonsOf } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, summonsOf } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { actionSurgeMax, attacksPerAction, hasSecondWind } from './combatModifiers';
 import { battleTranscript, exportBattle } from './battleTransfer';
@@ -25,6 +25,8 @@ export type CombatHandlers = {
   onRemoveOngoing: (targetId: string, effectId: string) => void;
   onSummon: (actorId: string, ownerId: string, spell: string, rounds?: number) => void;
   onDismissSummon: (actorId: string) => void;
+  onGrid: (grid: GridConfig | null) => void;
+  onPlace: (actorId: string, x: number, y: number) => void;
   onActionSurge: (actorId: string) => void;
   onSecondWind: (actorId: string) => void;
   onDeathSave: (actorId: string) => void;
@@ -177,6 +179,66 @@ function ConditionPicker({ actor, onChange }: { actor: Actor; onChange: (conditi
   </label>;
 }
 
+export function GridPanel({ battle, handlers }: { battle: Battle; handlers: CombatHandlers }) {
+  const [width, setWidth] = useState('12');
+  const [height, setHeight] = useState('12');
+  const [selected, setSelected] = useState('');
+  const [message, setMessage] = useState('');
+  const grid = battle.grid;
+  const current = currentActorId(battle);
+  if (!grid) {
+    return <div className="cmb-grid-panel">
+      <div className="cmb-attack-head"><h4>方格战场</h4><small>可选</small></div>
+      <p className="cmb-hint">启用后可以把单位放到格子上，攻击会自动按格子计算距离；近战超出触及会被拒绝。未放置的单位仍按手工填写的距离结算。</p>
+      <form className="cmb-attack-grid" onSubmit={event => {
+        event.preventDefault();
+        const w = Number(width), h = Number(height);
+        if (!Number.isInteger(w) || w < 1 || w > 60 || !Number.isInteger(h) || h < 1 || h > 60) { setMessage('宽高须为 1 至 60 的整数。'); return; }
+        setMessage('');
+        handlers.onGrid({ width: w, height: h, cellFt: 5 });
+      }}>
+        <label>宽（格）<input type="number" min={1} max={60} value={width} onChange={event => setWidth(event.target.value)} aria-label="方格宽度" /></label>
+        <label>高（格）<input type="number" min={1} max={60} value={height} onChange={event => setHeight(event.target.value)} aria-label="方格高度" /></label>
+        <label className="cmb-inline-action"><button className="button-secondary" type="submit">启用方格（每格 5 尺）</button></label>
+      </form>
+      {message && <p role="alert" className="battle-error">{message}</p>}
+    </div>;
+  }
+  const placed = new Map<string, Actor>();
+  for (const actor of battle.actors) if (actor.position) placed.set(`${actor.position.x},${actor.position.y}`, actor);
+  const unplaced = battle.actors.filter(actor => !actor.position && actor.combat?.status !== 'dead');
+  const selectedActor = battle.actors.find(actor => actor.id === selected);
+  const click = (x: number, y: number) => {
+    const occupant = placed.get(`${x},${y}`);
+    if (occupant) { setSelected(occupant.id); setMessage(''); return; }
+    if (!selected) { setMessage('先选择一个单位，再点击目标格。'); return; }
+    setMessage('');
+    handlers.onPlace(selected, x, y);
+  };
+  const rows = Array.from({ length: grid.height }, (_, y) => y);
+  const columns = Array.from({ length: grid.width }, (_, x) => x);
+  const distances = current
+    ? battle.actors.filter(actor => actor.position && actor.id !== current).map(actor => {
+      const feet = actorDistance(battle, current, actor.id);
+      return { id: actor.id, label: `${actor.name}：${feet ?? '—'} 尺` };
+    })
+    : [];
+  return <div className="cmb-grid-panel">
+    <div className="cmb-attack-head"><h4>方格战场</h4><small>{grid.width}×{grid.height} · 每格 {grid.cellFt} 尺</small></div>
+    <p className="cmb-hint">点击格子上的单位选中它，再点击空白的格子放置或移动。{selectedActor ? `当前选中：${selectedActor.name}${selectedActor.position ? `（${selectedActor.position.x}, ${selectedActor.position.y}）` : '（未放置）'}` : '尚未选中单位。'}</p>
+    {unplaced.length ? <div className="cmb-ongoing-list">{unplaced.map(actor => <button key={actor.id} type="button" className="cmb-chip cmb-chip-action" onClick={() => setSelected(actor.id)}>{actor.name}（未放置）</button>)}</div> : null}
+    <div className="cmb-grid" style={{ gridTemplateColumns: `repeat(${grid.width}, 2.4rem)` }}>
+      {rows.map(y => columns.map(x => {
+        const occupant = placed.get(`${x},${y}`);
+        return <button key={`${x}-${y}`} type="button" className={`cmb-cell${occupant ? ` occupied ${occupant.side === '敌方' ? 'enemy' : occupant.side === '友方' ? 'ally' : 'neutral'}` : ''}${selected === occupant?.id ? ' selected' : ''}`} title={`(${x}, ${y})${occupant ? ` ${occupant.name}` : ''}`} aria-label={`格子 ${x},${y}${occupant ? `，${occupant.name}` : ''}`} onClick={() => click(x, y)}>{occupant ? occupant.name.slice(0, 1) : ''}</button>;
+      }))}
+    </div>
+    {distances.length ? <p className="cmb-hint">当前行动者距离：{distances.map(item => <span key={item.id} className="cmb-muted">{item.label}　</span>)}</p> : null}
+    {message && <p role="alert" className="battle-error">{message}</p>}
+    <div className="cmb-area-actions"><button type="button" className="button-secondary" onClick={() => { setSelected(''); handlers.onGrid(null); }}>关闭方格</button></div>
+  </div>;
+}
+
 function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: Battle; attacker: Actor; onAttack: (options: AttackOptions) => void; onAttackSequence: (options: AttackOptions) => void }) {
   const sources = attackSources(attacker);
   const first = sources[0];
@@ -215,7 +277,8 @@ function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: 
     const count = Number(attacks);
     if (!Number.isInteger(count) || count < 1 || count > maxAttacks) { setMessage(`本回合的攻击次数须为 1 至 ${maxAttacks} 次。`); return; }
     setMessage('');
-    const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count };
+    const reachFt = range === 'melee' ? sources.find(item => item.id === sourceId)?.distanceFt : undefined;
+    const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count, ...(reachFt === undefined ? {} : { reachFt }) };
     if (count > 1) onAttackSequence(options); else onAttack(options);
   };
   return <form className="cmb-attack" onSubmit={submit}>

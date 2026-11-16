@@ -47,6 +47,10 @@ export type CombatState = {
   undo: Battle[];
 };
 export type ActorTemplate = Partial<Block> & Pick<Block, 'armorClass'>;
+/** 方格战场：宽高以格为单位，cellFt 是每格代表的尺数。 */
+export type GridConfig = { width: number; height: number; cellFt: number };
+/** 单位在方格上的位置，左上角为 (0,0)。 */
+export type Position = { x: number; y: number };
 export type Actor = {
   id: string;
   name: string;
@@ -59,8 +63,10 @@ export type Actor = {
   combat?: CombatantState;
   /** 该单位是某位施法者的召唤物。 */
   summon?: Summon;
+  /** 在方格战场上的位置；未放置时不参与距离校验。 */
+  position?: Position;
 };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -110,18 +116,26 @@ function isSummon(value: unknown): value is Summon {
   if (typeof value.spell !== 'string' || !value.spell.length) return false;
   return value.rounds === undefined || isInteger(value.rounds, 1, 99);
 }
+function isGrid(value: unknown): value is GridConfig {
+  return isObject(value) && isInteger(value.width, 1, 60) && isInteger(value.height, 1, 60) && isInteger(value.cellFt, 5, 30);
+}
+function isPosition(value: unknown): value is Position {
+  return isObject(value) && isInteger(value.x, 0, 59) && isInteger(value.y, 0, 59);
+}
 function isActor(value: unknown): boolean {
   if (!isObject(value) || !isObject(value.source) || !isObject(value.source.source) || !isObject(value.template)) return false;
   return typeof value.id === 'string' && typeof value.name === 'string' && isSide(value.side)
     && isInteger(value.currentHp, 0) && isInteger(value.maxHp, 1) && value.maxHp >= value.currentHp
     && typeof value.source.source.name === 'string' && typeof value.template.armorClass === 'number'
     && (value.combat === undefined || isCombatant(value.combat))
-    && (value.summon === undefined || isSummon(value.summon));
+    && (value.summon === undefined || isSummon(value.summon))
+    && (value.position === undefined || isPosition(value.position));
 }
 function isBattle(value: unknown): boolean {
   return isObject(value) && typeof value.id === 'string' && typeof value.name === 'string' && typeof value.createdAt === 'string'
     && Array.isArray(value.actors) && value.actors.every(isActor)
-    && (value.combat === undefined || isCombatState(value.combat));
+    && (value.combat === undefined || isCombatState(value.combat))
+    && (value.grid === undefined || isGrid(value.grid));
 }
 
 /** 校验外部来源的战斗数据，失败时抛出中文错误，供导入功能使用。 */
