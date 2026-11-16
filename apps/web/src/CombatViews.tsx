@@ -27,6 +27,7 @@ export type CombatHandlers = {
   onDismissSummon: (actorId: string) => void;
   onGrid: (grid: GridConfig | null) => void;
   onPlace: (actorId: string, x: number, y: number) => void;
+  onDifficult: (x: number, y: number) => void;
   onOpportunity: (reactorId: string) => void;
   onDeclineOpportunity: (reactorId: string) => void;
   onActionSurge: (actorId: string) => void;
@@ -186,6 +187,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   const [width, setWidth] = useState('12');
   const [height, setHeight] = useState('12');
   const [selected, setSelected] = useState('');
+  const [terrainMode, setTerrainMode] = useState(false);
   const [message, setMessage] = useState('');
   const grid = battle.grid;
   const current = currentActorId(battle);
@@ -212,6 +214,11 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   const unplaced = battle.actors.filter(actor => !actor.position && actor.combat?.status !== 'dead');
   const selectedActor = battle.actors.find(actor => actor.id === selected);
   const click = (x: number, y: number) => {
+    if (terrainMode) {
+      setMessage('');
+      handlers.onDifficult(x, y);
+      return;
+    }
     const occupant = placed.get(`${x},${y}`);
     if (occupant) { setSelected(occupant.id); setMessage(''); return; }
     if (!selected) { setMessage('先选择一个单位，再点击目标格。'); return; }
@@ -220,6 +227,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   };
   const rows = Array.from({ length: grid.height }, (_, y) => y);
   const columns = Array.from({ length: grid.width }, (_, x) => x);
+  const rough = new Set((battle.difficult ?? []).map(cell => `${cell.x},${cell.y}`));
   const distances = current
     ? battle.actors.filter(actor => actor.position && actor.id !== current).map(actor => {
       const feet = actorDistance(battle, current, actor.id);
@@ -228,17 +236,21 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     : [];
   return <div className="cmb-grid-panel">
     <div className="cmb-attack-head"><h4>方格战场</h4><small>{grid.width}×{grid.height} · 每格 {grid.cellFt} 尺</small></div>
-    <p className="cmb-hint">点击格子上的单位选中它，再点击空白的格子放置或移动。{selectedActor ? `当前选中：${selectedActor.name}${selectedActor.position ? `（${selectedActor.position.x}, ${selectedActor.position.y}）` : '（未放置）'}` : '尚未选中单位。'}</p>
+    <p className="cmb-hint">点击格子上的单位选中它，再点击空白的格子放置或移动。{terrainMode ? '地形模式：点击格子切换困难地形（进入时移动消耗翻倍）。' : ''}{selectedActor ? `当前选中：${selectedActor.name}${selectedActor.position ? `（${selectedActor.position.x}, ${selectedActor.position.y}）` : '（未放置）'}` : '尚未选中单位。'}</p>
     {unplaced.length ? <div className="cmb-ongoing-list">{unplaced.map(actor => <button key={actor.id} type="button" className="cmb-chip cmb-chip-action" onClick={() => setSelected(actor.id)}>{actor.name}（未放置）</button>)}</div> : null}
     <div className="cmb-grid" style={{ gridTemplateColumns: `repeat(${grid.width}, 2.4rem)` }}>
       {rows.map(y => columns.map(x => {
         const occupant = placed.get(`${x},${y}`);
-        return <button key={`${x}-${y}`} type="button" className={`cmb-cell${occupant ? ` occupied ${occupant.side === '敌方' ? 'enemy' : occupant.side === '友方' ? 'ally' : 'neutral'}` : ''}${selected === occupant?.id ? ' selected' : ''}`} title={`(${x}, ${y})${occupant ? ` ${occupant.name}` : ''}`} aria-label={`格子 ${x},${y}${occupant ? `，${occupant.name}` : ''}`} onClick={() => click(x, y)}>{occupant ? occupant.name.slice(0, 1) : ''}</button>;
+        const difficult = rough.has(`${x},${y}`);
+        return <button key={`${x}-${y}`} type="button" className={`cmb-cell${occupant ? ` occupied ${occupant.side === '敌方' ? 'enemy' : occupant.side === '友方' ? 'ally' : 'neutral'}` : ''}${selected === occupant?.id ? ' selected' : ''}${difficult ? ' difficult' : ''}${terrainMode ? ' terrain-edit' : ''}`} title={`(${x}, ${y})${occupant ? ` ${occupant.name}` : ''}${difficult ? ' 困难地形' : ''}`} aria-label={`格子 ${x},${y}${occupant ? `，${occupant.name}` : ''}${difficult ? '，困难地形' : ''}`} onClick={() => click(x, y)}>{occupant ? occupant.name.slice(0, 1) : ''}</button>;
       }))}
     </div>
     {distances.length ? <p className="cmb-hint">当前行动者距离：{distances.map(item => <span key={item.id} className="cmb-muted">{item.label}　</span>)}</p> : null}
     {message && <p role="alert" className="battle-error">{message}</p>}
-    <div className="cmb-area-actions"><button type="button" className="button-secondary" onClick={() => { setSelected(''); handlers.onGrid(null); }}>关闭方格</button></div>
+    <div className="cmb-area-actions">
+      <button type="button" className={terrainMode ? 'button-primary' : 'button-secondary'} aria-pressed={terrainMode} onClick={() => setTerrainMode(value => !value)}>{terrainMode ? '结束地形标记' : '标记困难地形'}</button>
+      <button type="button" className="button-secondary" onClick={() => { setSelected(''); setTerrainMode(false); handlers.onGrid(null); }}>关闭方格</button>
+    </div>
   </div>;
 }
 

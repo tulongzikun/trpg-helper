@@ -195,11 +195,40 @@ function threatPrompts(battle: Battle, mover: Actor, from: Position, to: Positio
 export function pendingOpportunities(battle: Battle): OpportunityPrompt[] {
   return battle.combat?.pendingOpportunity ?? [];
 }
+/** 标记为困难地形的格子。 */
+export function difficultCells(battle: Battle): Position[] {
+  return battle.difficult ?? [];
+}
+/** 判断某个格子是否困难地形。 */
+export function isDifficultCell(battle: Battle, x: number, y: number): boolean {
+  return (battle.difficult ?? []).some(cell => cell.x === x && cell.y === y);
+}
+/** 在方格战场上切换某格的困难地形标记（进入该格移动消耗翻倍）。 */
+export function toggleDifficultCell(battle: Battle, x: number, y: number, deps: CombatDeps = {}): Battle {
+  const grid = battle.grid;
+  if (!grid) throw new Error('请先启用方格战场。');
+  if (!Number.isInteger(x) || !Number.isInteger(y)) throw new Error('格子坐标须为整数。');
+  if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) throw new Error('目标格子超出战场范围。');
+  const next = recordUndo(structuredClone(battle));
+  const list = [...(next.difficult ?? [])];
+  const index = list.findIndex(cell => cell.x === x && cell.y === y);
+  if (index >= 0) {
+    list.splice(index, 1);
+    addLog(next, `取消 (${x}, ${y}) 的困难地形。`, deps);
+  } else {
+    list.push({ x, y });
+    addLog(next, `(${x}, ${y}) 标为困难地形。`, deps);
+  }
+  if (list.length) next.difficult = list;
+  else delete next.difficult;
+  return next;
+}
 /** 启用、调整或关闭方格战场；关闭时清除所有位置。 */
 export function configureGrid(battle: Battle, grid: GridConfig | null, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   if (grid === null) {
     delete next.grid;
+    delete next.difficult;
     next.actors.forEach(actor => { delete actor.position; });
     addLog(next, '关闭方格战场，清除所有单位位置。', deps);
     return next;
@@ -212,6 +241,11 @@ export function configureGrid(battle: Battle, grid: GridConfig | null, deps: Com
   next.actors.forEach(actor => {
     if (actor.position && (actor.position.x >= width || actor.position.y >= height)) delete actor.position;
   });
+  if (next.difficult) {
+    const kept = next.difficult.filter(cell => cell.x < width && cell.y < height);
+    if (kept.length) next.difficult = kept;
+    else delete next.difficult;
+  }
   addLog(next, `方格战场设为 ${width}×${height}，每格 ${cellFt} 尺。`, deps);
   return next;
 }
@@ -239,12 +273,13 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const state = combatantOf(actor);
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt;
+  const rough = isDifficultCell(next, x, y);
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1);
   const speed = actorSpeed(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）。`, deps);
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}。`, deps);
   const triggered = threatPrompts(next, actor, from, { x, y });
   if (triggered.length) {
     const combat = requireCombat(next);
