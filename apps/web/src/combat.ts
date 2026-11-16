@@ -2,9 +2,10 @@ import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
-import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, Position } from './battle';
+import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, OpportunityPrompt, Position } from './battle';
 import { damageTypes } from './battle.ts';
 import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
+import { attackSources } from './attackSources.ts';
 import type { AttackRange, CoverType, ModeAdjustment } from './combatModifiers.ts';
 
 export type Random = () => number;
@@ -28,6 +29,8 @@ export type AttackOptions = {
   reachFt?: number;
   /** 目标所处的掩体，影响 AC。 */
   cover?: CoverType;
+  /** 借机攻击等场合：跳过方格距离与触及校验（触发时机在离开触及范围的瞬间）。 */
+  ignoreDistanceCheck?: boolean;
   /** 一次攻击动作内的攻击次数，默认 1，不能超过该单位的额外攻击次数。 */
   attacks?: number;
 };
@@ -169,6 +172,29 @@ export function actorDistance(battle: Battle, fromId: string, toId: string): num
   if (!grid || !from || !to) return undefined;
   return cellDistance(from, to) * grid.cellFt;
 }
+/** 单位的近战触及范围（尺）：取攻击来源中最远的近战距离，至少 5 尺。 */
+export function actorReach(actor: Actor): number {
+  const distances = attackSources(actor).filter(source => source.range === 'melee').map(source => source.distanceFt);
+  return distances.length ? Math.max(5, ...distances) : 5;
+}
+/** 移动离开哪些敌对单位的触及范围（用于借机攻击提示）。 */
+function threatPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
+  const grid = battle.grid;
+  if (!grid || mover.side === '中立') return [];
+  return battle.actors
+    .filter(other => other.id !== mover.id && other.side !== '中立' && other.side !== mover.side && other.position && other.combat?.status === 'active')
+    .filter(other => {
+      const reach = actorReach(other);
+      const before = cellDistance(other.position!, from) * grid.cellFt;
+      const after = cellDistance(other.position!, to) * grid.cellFt;
+      return before <= reach && after > reach;
+    })
+    .map(other => ({ reactorId: other.id, targetId: mover.id }));
+}
+/** 当前待结算的借机攻击。 */
+export function pendingOpportunities(battle: Battle): OpportunityPrompt[] {
+  return battle.combat?.pendingOpportunity ?? [];
+}
 /** 启用、调整或关闭方格战场；关闭时清除所有位置。 */
 export function configureGrid(battle: Battle, grid: GridConfig | null, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -219,6 +245,58 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   state.movementUsed += cost;
   actor.position = { x, y };
   addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）。`, deps);
+  const triggered = threatPrompts(next, actor, from, { x, y });
+  if (triggered.length) {
+    const combat = requireCombat(next);
+    const list = [...(combat.pendingOpportunity ?? [])];
+    for (const prompt of triggered) {
+      if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId)) continue;
+      list.push(prompt);
+      const reactor = actorOf(next, prompt.reactorId);
+      addLog(next, `${actorLabel(next, actor)} 离开 ${actorLabel(next, reactor)} 的触及范围，${actorLabel(next, reactor)} 可以借机攻击。`, deps);
+    }
+    combat.pendingOpportunity = list.slice(-8);
+  }
+  return next;
+}
+
+/** 结算一次借机攻击：消耗反应、按触发时的触及关系出刀，并移除提示。 */
+export function opportunityAttack(battle: Battle, reactorId: string, overrides: Partial<AttackOptions> = {}, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  const combat = requireCombat(next);
+  const prompt = (combat.pendingOpportunity ?? []).find(item => item.reactorId === reactorId);
+  if (!prompt) throw new Error('该单位没有待结算的借机攻击。');
+  const reactor = actorOf(next, reactorId);
+  const source = attackSources(reactor)[0];
+  const merged: AttackOptions = {
+    attackerId: reactorId,
+    targetId: prompt.targetId,
+    attackBonus: source?.attackBonus ?? 0,
+    damageExpression: source?.damageExpression ?? '1d8',
+    damageType: source?.damageType ?? '挥砍',
+    range: 'melee',
+    ...overrides,
+    cost: 'reaction',
+    ignoreDistanceCheck: true,
+  };
+  const context = validateAttackOptions(next, merged);
+  const outcome = resolveOneAttack(next, merged, context, deps, true);
+  const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
+  if (rest.length) combat.pendingOpportunity = rest;
+  else delete combat.pendingOpportunity;
+  return { battle: next, outcome };
+}
+
+/** 放弃一次借机攻击。 */
+export function declineOpportunity(battle: Battle, reactorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const combat = requireCombat(next);
+  const prompt = (combat.pendingOpportunity ?? []).find(item => item.reactorId === reactorId);
+  if (!prompt) throw new Error('该单位没有待结算的借机攻击。');
+  const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
+  if (rest.length) combat.pendingOpportunity = rest;
+  else delete combat.pendingOpportunity;
+  addLog(next, `${actorLabel(next, actorOf(next, reactorId))} 放弃借机攻击。`, deps);
   return next;
 }
 
@@ -296,6 +374,7 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   applyOngoingDamage(next, deps);
   syncSummonsInPlace(next, deps);
   tickSummonDurations(next, deps);
+  delete combat.pendingOpportunity;
   return next;
 }
 export function spendResource(battle: Battle, actorId: string, kind: AttackCost, deps: CombatDeps = {}): Battle {
@@ -470,9 +549,9 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (!Number.isInteger(reachFt) || reachFt < 5 || reachFt > 30) throw new Error('近战触及范围须为 5 至 30 尺的整数。');
   if (options.cover !== undefined && !coverTypes.includes(options.cover)) throw new Error('掩体取值无效。');
   const measured = actorDistance(battle, attacker.id, target.id);
-  if (measured !== undefined && range === 'melee' && measured > reachFt) throw new Error(`目标距离 ${measured} 尺，超出近战触及范围（${reachFt} 尺）。`);
-  if (measured !== undefined && range === 'ranged' && measured > 600) throw new Error('目标距离超出远程攻击范围（600 尺）。');
-  const distanceFt = measured ?? options.distanceFt ?? (range === 'melee' ? reachFt : 30);
+  if (measured !== undefined && !options.ignoreDistanceCheck && range === 'melee' && measured > reachFt) throw new Error(`目标距离 ${measured} 尺，超出近战触及范围（${reachFt} 尺）。`);
+  if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && measured > 600) throw new Error('目标距离超出远程攻击范围（600 尺）。');
+  const distanceFt = options.ignoreDistanceCheck ? (options.distanceFt ?? reachFt) : (measured ?? options.distanceFt ?? (range === 'melee' ? reachFt : 30));
   if (!Number.isInteger(distanceFt) || distanceFt < 0 || distanceFt > 600) throw new Error('距离须为 0 至 600 尺的整数。');
   return { attacker, target, cost, criticalRange, range, distanceFt, measured: measured !== undefined };
 }

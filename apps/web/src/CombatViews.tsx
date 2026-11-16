@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
-import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, summonsOf } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { actionSurgeMax, attacksPerAction, coverTypes, hasSecondWind } from './combatModifiers';
 import { battleTranscript, exportBattle } from './battleTransfer';
@@ -27,6 +27,8 @@ export type CombatHandlers = {
   onDismissSummon: (actorId: string) => void;
   onGrid: (grid: GridConfig | null) => void;
   onPlace: (actorId: string, x: number, y: number) => void;
+  onOpportunity: (reactorId: string) => void;
+  onDeclineOpportunity: (reactorId: string) => void;
   onActionSurge: (actorId: string) => void;
   onSecondWind: (actorId: string) => void;
   onDeathSave: (actorId: string) => void;
@@ -134,6 +136,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
     <OngoingPanel key={`ongoing-${actor.id}`} battle={battle} handlers={handlers} />
     <SummonPanel key={`summon-${actor.id}`} battle={battle} handlers={handlers} />
+    <OpportunityPanel key={`opportunity-${actor.id}`} battle={battle} handlers={handlers} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
       <label className="cmb-temp">临时生命<input key={state.tempHp} type="number" min={0} step={1} defaultValue={state.tempHp} aria-label="临时生命值" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0) handlers.onTempHp(actor.id, value); }} /></label>
@@ -414,6 +417,23 @@ function OngoingPanel({ battle, handlers }: { battle: Battle; handlers: CombatHa
       <label>豁免 DC<input type="number" min={1} max={40} value={saveDc} onChange={event => setSaveDc(event.target.value)} aria-label="持续效果豁免 DC" disabled={!saveAbility} /></label>
       <label className="cmb-inline-action"><button className="button-secondary" type="submit">添加效果</button></label>
     </form>
+  </div>;
+}
+
+function OpportunityPanel({ battle, handlers }: { battle: Battle; handlers: CombatHandlers }) {
+  const prompts = pendingOpportunities(battle);
+  if (!prompts.length) return null;
+  return <div className="cmb-attack">
+    <div className="cmb-attack-head"><h4>借机攻击</h4><small>{prompts.length} 个待结算</small></div>
+    <p className="cmb-hint">单位离开敌对单位的触及范围会触发借机攻击；结算时消耗反应，出刀按触发瞬间的触及关系计算。</p>
+    <div className="cmb-ongoing-list">{prompts.map(prompt => {
+      const reactor = battle.actors.find(actor => actor.id === prompt.reactorId);
+      const target = battle.actors.find(actor => actor.id === prompt.targetId);
+      return <span className="cmb-chip" key={`${prompt.reactorId}-${prompt.targetId}`}>{reactor ? actorLabel(battle, reactor) : '—'} → {target ? actorLabel(battle, target) : '—'}
+        <button type="button" className="cmb-chip-remove" onClick={() => handlers.onOpportunity(prompt.reactorId)} aria-label={`${reactor ? reactor.name : ''} 借机攻击`}>⚔</button>
+        <button type="button" className="cmb-chip-remove" onClick={() => handlers.onDeclineOpportunity(prompt.reactorId)} aria-label="放弃借机攻击">×</button>
+      </span>;
+    })}</div>
   </div>;
 }
 

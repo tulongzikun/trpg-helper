@@ -17,6 +17,8 @@ export type OngoingEffect = {
 };
 /** 正在维持的专注法术。 */
 export type Concentration = { spell: string };
+/** 借机攻击：reactorId 用反应攻击离开其触及范围的 targetId。 */
+export type OpportunityPrompt = { reactorId: string; targetId: string };
 /** 召唤物绑定：失去专注、施法者倒地或倒计时结束时消散。 */
 export type Summon = { ownerId: string; spell: string; rounds?: number };
 export type CombatantState = {
@@ -45,6 +47,8 @@ export type CombatState = {
   order: string[];
   log: CombatLogEntry[];
   undo: Battle[];
+  /** 移动离开触及范围后待结算的借机攻击。 */
+  pendingOpportunity?: OpportunityPrompt[];
 };
 export type ActorTemplate = Partial<Block> & Pick<Block, 'armorClass'>;
 /** 方格战场：宽高以格为单位，cellFt 是每格代表的尺数。 */
@@ -108,7 +112,11 @@ function isCombatState(value: unknown): value is CombatState {
   if (!Array.isArray(value.log) || value.log.length > 500) return false;
   if (!value.log.every(entry => isObject(entry) && typeof entry.id === 'string' && isInteger(entry.round, 0) && typeof entry.text === 'string' && (entry.detail === undefined || typeof entry.detail === 'string'))) return false;
   if (!Array.isArray(value.undo) || value.undo.length > 20) return false;
+  if (value.pendingOpportunity !== undefined && (!Array.isArray(value.pendingOpportunity) || value.pendingOpportunity.length > 8 || !value.pendingOpportunity.every(isOpportunityPrompt))) return false;
   return value.undo.every(isBattleSnapshot);
+}
+function isOpportunityPrompt(value: unknown): value is OpportunityPrompt {
+  return isObject(value) && typeof value.reactorId === 'string' && value.reactorId.length > 0 && typeof value.targetId === 'string' && value.targetId.length > 0;
 }
 function isSummon(value: unknown): value is Summon {
   if (!isObject(value)) return false;
