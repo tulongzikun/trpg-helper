@@ -60,8 +60,8 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
             return <article className={`actor${activeId === actor.id ? ' actor-active' : ''}${state?.status === 'dead' ? ' actor-dead' : ''}`} key={actor.id}>
               <div className={`side-dot ${sideClass(actor.side)}`} />
               <div className="actor-name">
-                <strong>{actor.name} <small>#{index + 1}</small>{state && <span className="cmb-badge">先攻 {state.initiative}</span>}{state?.status === 'down' && <span className="cmb-badge down">倒地</span>}{state?.status === 'dead' && <span className="cmb-badge dead">死亡</span>}</strong>
-                <span>{actor.side} · AC {actor.template.armorClass} · 来源：{actor.source.source.name}{state?.tempHp ? ` · 临时生命 ${state.tempHp}` : ''}</span>
+                <strong>{actor.name} <small>#{index + 1}</small>{state && <span className="cmb-badge">先攻 {state.initiative}</span>}{state?.status === 'down' && <span className="cmb-badge down">倒地</span>}{state?.status === 'dead' && <span className="cmb-badge dead">死亡</span>}{actor.summon && <span className="cmb-badge">召唤物</span>}</strong>
+                <span>{actor.side} · AC {actor.template.armorClass} · 来源：{actor.source.source.name}{state?.tempHp ? ` · 临时生命 ${state.tempHp}` : ''}{actor.summon ? ` · 「${actor.summon.spell}」${actor.summon.rounds === undefined ? '' : ` · 剩余 ${actor.summon.rounds} 轮`}` : ''}</span>
                 {state?.conditions.length ? <span className="cmb-inline-conditions">{state.conditions.join('、')}</span> : null}
                 {actor.characterSnapshot && <details className="actor-actions"><summary>人物行动与能力</summary><p>{actor.characterSnapshot.sheet.actions || '未填写。'}</p></details>}
               </div>

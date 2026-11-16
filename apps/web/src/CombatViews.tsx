@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Actor, Battle, DamageType } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
-import { actorAttackProfile, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId } from './combat';
+import { actorAttackProfile, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, summonsOf } from './combat';
 import { actionSurgeMax, attacksPerAction, hasSecondWind } from './combatModifiers';
 import { battleTranscript, exportBattle } from './battleTransfer';
 import type { AttackRange } from './combatModifiers';
@@ -22,6 +22,8 @@ export type CombatHandlers = {
   onConcentration: (actorId: string, spell: string | null) => void;
   onAddOngoing: (targetId: string, input: OngoingInput) => void;
   onRemoveOngoing: (targetId: string, effectId: string) => void;
+  onSummon: (actorId: string, ownerId: string, spell: string, rounds?: number) => void;
+  onDismissSummon: (actorId: string) => void;
   onActionSurge: (actorId: string) => void;
   onSecondWind: (actorId: string) => void;
   onDeathSave: (actorId: string) => void;
@@ -128,6 +130,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <AttackForm key={actor.id} battle={battle} attacker={actor} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} />
     <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
     <OngoingPanel key={`ongoing-${actor.id}`} battle={battle} handlers={handlers} />
+    <SummonPanel key={`summon-${actor.id}`} battle={battle} handlers={handlers} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
       <label className="cmb-temp">临时生命<input key={state.tempHp} type="number" min={0} step={1} defaultValue={state.tempHp} aria-label="临时生命值" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0) handlers.onTempHp(actor.id, value); }} /></label>
@@ -332,6 +335,45 @@ function OngoingPanel({ battle, handlers }: { battle: Battle; handlers: CombatHa
       <label>豁免 DC<input type="number" min={1} max={40} value={saveDc} onChange={event => setSaveDc(event.target.value)} aria-label="持续效果豁免 DC" disabled={!saveAbility} /></label>
       <label className="cmb-inline-action"><button className="button-secondary" type="submit">添加效果</button></label>
     </form>
+  </div>;
+}
+
+function SummonPanel({ battle, handlers }: { battle: Battle; handlers: CombatHandlers }) {
+  const actor = currentActor(battle);
+  const [target, setTarget] = useState('');
+  const [rounds, setRounds] = useState('');
+  const [message, setMessage] = useState('');
+  if (!actor?.combat) return null;
+  const concentration = actor.combat.concentration;
+  const summons = summonsOf(battle, actor.id);
+  if (!concentration && !summons.length) return null;
+  const candidates = battle.actors.filter(item => item.id !== actor.id && !item.summon && item.combat?.status !== 'dead');
+  const add = (event: React.FormEvent) => {
+    event.preventDefault();
+    const chosen = target || candidates[0]?.id || '';
+    if (!chosen) { setMessage('没有可以标记为召唤物的单位。'); return; }
+    const value = rounds.trim() === '' ? undefined : Number(rounds);
+    if (value !== undefined && (!Number.isInteger(value) || value < 1 || value > 99)) { setMessage('持续轮数须为 1 至 99 的整数。'); return; }
+    setMessage('');
+    handlers.onSummon(chosen, actor.id, concentration?.spell ?? '', value);
+    setTarget('');
+    setRounds('');
+  };
+  return <div className="cmb-area">
+    <div className="cmb-attack-head"><h4>召唤物</h4><small>{summons.length} 个</small></div>
+    <p className="cmb-hint">召唤物随施法者失去专注、倒地或死亡而消散；填写持续轮数后，每轮到施法者时递减，归零即消散。</p>
+    <div className="cmb-ongoing-list">
+      {summons.map(summon => <span key={summon.id} className="cmb-chip">{summon.name}（{summon.summon?.spell}{summon.summon?.rounds === undefined ? '' : `，剩余 ${summon.summon.rounds} 轮`}）<button type="button" className="cmb-chip-remove" onClick={() => handlers.onDismissSummon(summon.id)} aria-label={`解除${summon.name}的召唤`}>×</button></span>)}
+      {!summons.length ? <span className="cmb-muted">当前没有召唤物。</span> : null}
+    </div>
+    {message && <p role="alert" className="battle-error">{message}</p>}
+    {concentration
+      ? <form className="cmb-attack-grid" onSubmit={add}>
+        <label>标记单位<select value={target} onChange={event => setTarget(event.target.value)} aria-label="要标记为召唤物的单位"><option value="">{candidates.length ? '请选择单位' : '没有可用的单位'}</option>{candidates.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <label>持续轮数<input type="number" min={1} max={99} value={rounds} onChange={event => setRounds(event.target.value)} placeholder="留空为不限" aria-label="召唤持续轮数" /></label>
+        <label className="cmb-inline-action"><button className="button-secondary" type="submit" disabled={!candidates.length}>标记为「{concentration.spell}」的召唤物</button></label>
+      </form>
+      : <p className="cmb-hint">先开始专注，才能把单位标记为召唤物。</p>}
   </div>;
 }
 

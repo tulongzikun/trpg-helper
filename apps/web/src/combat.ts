@@ -222,6 +222,8 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   resetTurnResources(next, actor.id);
   addLog(next, `第 ${combat.round} 轮 · 轮到 ${actorLabel(next, actor)}（先攻 ${combatantOf(actor).initiative}）。`, deps);
   applyOngoingDamage(next, deps);
+  syncSummonsInPlace(next, deps);
+  tickSummonDurations(next, deps);
   return next;
 }
 export function spendResource(battle: Battle, actorId: string, kind: AttackCost, deps: CombatDeps = {}): Battle {
@@ -303,7 +305,7 @@ export function damageActor(battle: Battle, actorId: string, amount: number, typ
   if (wasDown && outcome.damage > outcome.tempAbsorbed) notes.push('倒地受击：死亡豁免失败 +1（是否重击按距离人工裁定）');
   if (state.status === 'down') notes.push('倒地，需要死亡豁免');
   if (state.status === 'dead') notes.push('死亡');
-  const concentration = concentrationCheck(actor, outcome.damage, randomOf(deps));
+  const concentration = concentrationCheck(next, actor, outcome.damage, randomOf(deps), deps);
   if (concentration) notes.push(concentration.text);
   addLog(next, `${actorLabel(next, actor)} 受到 ${outcome.damage} 点${type}伤害，剩余 ${actor.currentHp}/${actor.maxHp}。`, deps, notes.length ? notes.join('；') : undefined);
   return { battle: next, outcome };
@@ -428,7 +430,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     damage = result.damage;
     tempAbsorbed = result.tempAbsorbed;
     status = result.status;
-    concentration = concentrationCheck(target, damage, random)?.text ?? '';
+    concentration = concentrationCheck(battle, target, damage, random, deps)?.text ?? '';
   }
   if (consumeCost) {
     if (context.cost === 'action') state.actionUsed = true;
@@ -631,7 +633,7 @@ export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatD
     const amount = save.success ? (options.halfOnSuccess === false ? 0 : Math.floor(raw.total / 2)) : raw.total;
     const defense = defenseOf(actor, options.damageType);
     const damage = amount > 0 ? applyDamageToActor(actor, amount, options.damageType) : { damage: 0, tempAbsorbed: 0, status: actor.combat?.status ?? 'active' };
-    const concentration = damage.damage > 0 ? concentrationCheck(actor, damage.damage, random) : null;
+    const concentration = damage.damage > 0 ? concentrationCheck(next, actor, damage.damage, random, deps) : null;
     results.push({ actorId: targetId, save, damage: damage.damage, tempAbsorbed: damage.tempAbsorbed, status: damage.status });
     addLog(next, `${actorLabel(next, actor)} 的${saveNames[options.ability]}豁免${save.success ? '成功' : '失败'}，承受 ${damage.damage} 点${options.damageType}伤害。`, deps,
       [saveDetail(actor, next, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: targetBonus }, save), `伤害 ${raw.total}${save.success ? `（减半 ${amount}）` : ''}`, defense.label, `剩余 ${actor.currentHp}/${actor.maxHp}`, concentration?.text].filter(Boolean).join(' · '));
@@ -644,17 +646,120 @@ export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatD
 export type OngoingInput = { name: string; damageExpression: string; damageType: DamageType; saveEnds?: { ability: Ability; dc: number } };
 export type ConcentrationCheck = { lost: boolean; dc: number; natural: number; total: number; text: string };
 
-function concentrationCheck(actor: Actor, damage: number, random: Random): ConcentrationCheck | null {
+export type SummonInput = { ownerId: string; spell?: string; rounds?: number };
+
+/** 从战斗里移除一个单位，并修正行动顺序。 */
+function dropActorFromBattle(battle: Battle, actorId: string): void {
+  const combat = battle.combat;
+  battle.actors = battle.actors.filter(actor => actor.id !== actorId);
+  if (!combat) return;
+  const removedIndex = combat.order.indexOf(actorId);
+  combat.order = combat.order.filter(id => id !== actorId);
+  if (removedIndex >= 0 && removedIndex < combat.turnIndex) combat.turnIndex -= 1;
+  if (combat.turnIndex >= combat.order.length) combat.turnIndex = 0;
+  if (!combat.order.length) {
+    delete battle.combat;
+    for (const actor of battle.actors) delete actor.combat;
+  }
+}
+
+function dismissSummonsOf(battle: Battle, ownerId: string, reason: string, deps: CombatDeps): void {
+  const summons = battle.actors.filter(actor => actor.summon?.ownerId === ownerId);
+  for (const summon of summons) {
+    addLog(battle, `${actorLabel(battle, summon)} 消散了。`, deps, reason);
+    dropActorFromBattle(battle, summon.id);
+  }
+}
+
+/** 当前由某位施法者维持的召唤物。 */
+export function summonsOf(battle: Battle, ownerId: string): Actor[] {
+  return battle.actors.filter(actor => actor.summon?.ownerId === ownerId);
+}
+
+export function markSummon(battle: Battle, actorId: string, input: SummonInput, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const owner = actorOf(next, input.ownerId);
+  if (actor.id === owner.id) throw new Error('不能把单位标记为自己的召唤物。');
+  const concentration = owner.combat?.concentration;
+  if (!concentration) throw new Error('只有维持专注的单位可以召唤单位。');
+  if (actor.combat?.status === 'dead') throw new Error('已经死亡的单位不能成为召唤物。');
+  if (input.rounds !== undefined && (!Number.isInteger(input.rounds) || input.rounds < 1 || input.rounds > 99)) throw new Error('召唤持续轮数须为 1 至 99 的整数。');
+  const spell = (input.spell ?? concentration.spell).trim();
+  if (!spell) throw new Error('请填写召唤法术的名称。');
+  actor.summon = { ownerId: owner.id, spell, rounds: input.rounds };
+  addLog(next, `${actorLabel(next, actor)} 成为 ${actorLabel(next, owner)} 的召唤物。`, deps,
+    `来源法术「${spell}」${input.rounds === undefined ? '' : ` · 持续 ${input.rounds} 轮`}`);
+  return next;
+}
+
+export function dismissSummon(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const summon = actor.summon;
+  if (!summon) throw new Error('该单位不是召唤物。');
+  delete actor.summon;
+  const owner = next.actors.find(item => item.id === summon.ownerId);
+  addLog(next, `${actorLabel(next, actor)} 不再是召唤物。`, deps, owner ? `原属 ${actorLabel(next, owner)} 的「${summon.spell}」` : undefined);
+  return next;
+}
+
+/** 召唤物随施法者失去专注、倒地或死亡而消散。 */
+export function syncSummons(battle: Battle, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  syncSummonsInPlace(next, deps);
+  return next;
+}
+
+function syncSummonsInPlace(battle: Battle, deps: CombatDeps): void {
+  for (const summon of [...battle.actors]) {
+    const binding = summon.summon;
+    if (!binding) continue;
+    const owner = battle.actors.find(actor => actor.id === binding.ownerId);
+    if (!owner) {
+      dropActorFromBattle(battle, summon.id);
+      continue;
+    }
+    if (owner.combat?.status !== 'active' || !owner.combat?.concentration) {
+      addLog(battle, `${actorLabel(battle, summon)} 消散了。`, deps, `施法者 ${actorLabel(battle, owner)} 已无法维持「${binding.spell}」`);
+      dropActorFromBattle(battle, summon.id);
+    }
+  }
+}
+
+/** 每轮开始时扣减召唤持续轮数，到期即消散。 */
+function tickSummonDurations(battle: Battle, deps: CombatDeps): void {
+  const ownerId = currentActorId(battle);
+  if (!ownerId) return;
+  const summons = battle.actors.filter(actor => actor.summon?.ownerId === ownerId && actor.summon.rounds !== undefined);
+  for (const summon of summons) {
+    const binding = summon.summon!;
+    const left = (binding.rounds ?? 1) - 1;
+    if (left <= 0) {
+      addLog(battle, `${actorLabel(battle, summon)} 的召唤持续时间结束，消散。`, deps, `来源法术「${binding.spell}」`);
+      dropActorFromBattle(battle, summon.id);
+    } else {
+      binding.rounds = left;
+    }
+  }
+}
+
+function concentrationCheck(battle: Battle, actor: Actor, damage: number, random: Random, deps: CombatDeps = {}): ConcentrationCheck | null {
   const concentration = actor.combat?.concentration;
   if (!concentration) return null;
   const dc = Math.max(10, Math.floor(damage / 2));
   if (actor.combat?.status !== 'active' || damage <= 0) {
     delete actor.combat!.concentration;
+    dismissSummonsOf(battle, actor.id, `施法者失去专注「${concentration.spell}」`, deps);
     return { lost: true, dc, natural: 0, total: 0, text: `失去对「${concentration.spell}」的专注` };
   }
   const outcome = resolveSave(actor, { actorId: actor.id, ability: 'con', dc }, random);
   if (outcome.success) return { lost: false, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，维持「${concentration.spell}」` };
   delete actor.combat!.concentration;
+  dismissSummonsOf(battle, actor.id, `施法者失去专注「${concentration.spell}」`, deps);
   return { lost: true, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，失去对「${concentration.spell}」的专注` };
 }
 
@@ -700,6 +805,7 @@ export function startConcentration(battle: Battle, actorId: string, spell: strin
   if (state.status !== 'active') throw new Error('只有在场的单位可以维持专注。');
   const replaced = state.concentration?.spell;
   state.concentration = { spell: spell.trim() };
+  if (replaced && replaced !== spell.trim()) dismissSummonsOf(next, actor.id, `施法者改用「${spell.trim()}」专注`, deps);
   addLog(next, `${actorLabel(next, actor)} 开始专注「${spell.trim()}」。`, deps, replaced ? `替换了原先的「${replaced}」` : undefined);
   return next;
 }
@@ -712,6 +818,7 @@ export function endConcentration(battle: Battle, actorId: string, deps: CombatDe
   if (!state.concentration) throw new Error('该单位当前没有维持专注。');
   const spell = state.concentration.spell;
   delete state.concentration;
+  dismissSummonsOf(next, actor.id, `施法者结束专注「${spell}」`, deps);
   addLog(next, `${actorLabel(next, actor)} 结束了对「${spell}」的专注。`, deps);
   return next;
 }
@@ -738,7 +845,7 @@ function applyOngoingDamage(battle: Battle, deps: CombatDeps): void {
     if (!ended) {
       const rolled = rollDamage(effect.damageExpression, random, false);
       const outcome = applyDamageToActor(actor, rolled.total, effect.damageType);
-      const concentration = concentrationCheck(actor, outcome.damage, random);
+      const concentration = concentrationCheck(battle, actor, outcome.damage, random, deps);
       addLog(battle, `回合开始：「${effect.name}」对 ${actorLabel(battle, actor)} 造成 ${outcome.damage} 点${effect.damageType}伤害，剩余 ${actor.currentHp}/${actor.maxHp}。`, deps,
         [`${effect.damageExpression} → ${rolled.total}`, concentration?.text, statusNow() === 'down' ? '倒地，需要死亡豁免' : statusNow() === 'dead' ? '死亡' : ''].filter(Boolean).join('；'));
       survivors.push(effect);

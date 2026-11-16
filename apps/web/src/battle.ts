@@ -17,6 +17,8 @@ export type OngoingEffect = {
 };
 /** 正在维持的专注法术。 */
 export type Concentration = { spell: string };
+/** 召唤物绑定：失去专注、施法者倒地或倒计时结束时消散。 */
+export type Summon = { ownerId: string; spell: string; rounds?: number };
 export type CombatantState = {
   initiative: number;
   tempHp: number;
@@ -55,6 +57,8 @@ export type Actor = {
   template: ActorTemplate;
   characterSnapshot?: CharacterSnapshot;
   combat?: CombatantState;
+  /** 该单位是某位施法者的召唤物。 */
+  summon?: Summon;
 };
 export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState };
 export type BattleStore = { version: 1; battles: Battle[] };
@@ -100,12 +104,19 @@ function isCombatState(value: unknown): value is CombatState {
   if (!Array.isArray(value.undo) || value.undo.length > 20) return false;
   return value.undo.every(isBattleSnapshot);
 }
+function isSummon(value: unknown): value is Summon {
+  if (!isObject(value)) return false;
+  if (typeof value.ownerId !== 'string' || !value.ownerId.length) return false;
+  if (typeof value.spell !== 'string' || !value.spell.length) return false;
+  return value.rounds === undefined || isInteger(value.rounds, 1, 99);
+}
 function isActor(value: unknown): boolean {
   if (!isObject(value) || !isObject(value.source) || !isObject(value.source.source) || !isObject(value.template)) return false;
   return typeof value.id === 'string' && typeof value.name === 'string' && isSide(value.side)
     && isInteger(value.currentHp, 0) && isInteger(value.maxHp, 1) && value.maxHp >= value.currentHp
     && typeof value.source.source.name === 'string' && typeof value.template.armorClass === 'number'
-    && (value.combat === undefined || isCombatant(value.combat));
+    && (value.combat === undefined || isCombatant(value.combat))
+    && (value.summon === undefined || isSummon(value.summon));
 }
 function isBattle(value: unknown): boolean {
   return isObject(value) && typeof value.id === 'string' && typeof value.name === 'string' && typeof value.createdAt === 'string'
