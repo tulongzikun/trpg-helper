@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
@@ -29,6 +29,7 @@ export type CombatHandlers = {
   onPlace: (actorId: string, x: number, y: number) => void;
   onDifficult: (x: number, y: number) => void;
   onWall: (x: number, y: number) => void;
+  onDisengage: (actorId: string) => void;
   onOpportunity: (reactorId: string) => void;
   onDeclineOpportunity: (reactorId: string) => void;
   onActionSurge: (actorId: string) => void;
@@ -132,6 +133,9 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <Resource label="附赠动作" used={state.bonusUsed} onClick={() => handlers.onSpend(actor.id, 'bonus')} />
       <Resource label="反应" used={state.reactionUsed} onClick={() => handlers.onSpend(actor.id, 'reaction')} />
       <Movement actor={actor} used={state.movementUsed} onMove={feet => handlers.onMove(actor.id, feet)} />
+    </div>
+    <div className="cmb-area-actions">
+      <button type="button" className="button-secondary" disabled={state.actionUsed || state.disengaged} onClick={() => handlers.onDisengage(actor.id)}>{state.disengaged ? '本回合已撤离' : '撤离（消耗动作，本回合移动不引发借机攻击）'}</button>
     </div>
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
     <AttackForm key={actor.id} battle={battle} attacker={actor} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} />
@@ -546,3 +550,4 @@ export function BattleIo({ battle, onImport }: { battle: Battle; onImport: (text
     </details>
   </section>;
 }
+

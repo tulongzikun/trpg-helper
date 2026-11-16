@@ -180,7 +180,7 @@ export function actorReach(actor: Actor): number {
 /** 移动离开哪些敌对单位的触及范围（用于借机攻击提示）。 */
 function threatPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
   const grid = battle.grid;
-  if (!grid || mover.side === '中立') return [];
+  if (!grid || mover.side === '中立' || mover.combat?.disengaged) return [];
   return battle.actors
     .filter(other => other.id !== mover.id && other.side !== '中立' && other.side !== mover.side && other.position && other.combat?.status === 'active')
     .filter(other => {
@@ -387,6 +387,23 @@ export function declineOpportunity(battle: Battle, reactorId: string, deps: Comb
   return next;
 }
 
+/** 撤离：消耗动作，本回合移动不引发借机攻击。 */
+export function disengage(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以撤离。');
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以撤离。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  state.actionUsed = true;
+  state.disengaged = true;
+  addLog(next, `${actorLabel(next, actor)} 使用撤离，本回合移动不会引发借机攻击。`, deps);
+  return next;
+}
+
 function resetTurnResources(battle: Battle, actorId: string) {
   const combat = battle.actors.find(a => a.id === actorId)?.combat;
   if (!combat) return;
@@ -394,6 +411,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.bonusUsed = false;
   combat.reactionUsed = false;
   combat.movementUsed = 0;
+  combat.disengaged = false;
 }
 function nextTurnIndex(battle: Battle) {
   const combat = requireCombat(battle);

@@ -39,6 +39,8 @@ export type CombatantState = {
   ongoing?: OngoingEffect[];
   /** 正在维持的专注。 */
   concentration?: Concentration;
+  /** 本回合是否已撤离（移动不引发借机攻击）。 */
+  disengaged?: boolean;
 };
 export type CombatLogEntry = { id: string; round: number; text: string; detail?: string };
 export type CombatState = {
@@ -95,6 +97,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (![value.actionUsed, value.bonusUsed, value.reactionUsed].every(x => typeof x === 'boolean')) return false;
   if (value.actionSurgeUsed !== undefined && !isInteger(value.actionSurgeUsed, 0, 2)) return false;
   if (value.secondWindUsed !== undefined && typeof value.secondWindUsed !== 'boolean') return false;
+  if (value.disengaged !== undefined && typeof value.disengaged !== 'boolean') return false;
   if (value.ongoing !== undefined && (!Array.isArray(value.ongoing) || !value.ongoing.every(isOngoingEffect))) return false;
   if (value.concentration !== undefined && !(isObject(value.concentration) && typeof value.concentration.spell === 'string' && value.concentration.spell.length > 0)) return false;
   if (value.status !== 'active' && value.status !== 'down' && value.status !== 'dead') return false;
