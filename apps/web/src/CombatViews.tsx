@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Actor, Battle, DamageType } from './battle';
 import { damageTypes } from './battle';
-import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions } from './combat';
+import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
 import { actorAttackProfile, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId } from './combat';
 import { actionSurgeMax, attacksPerAction, hasSecondWind } from './combatModifiers';
 import type { AttackRange } from './combatModifiers';
@@ -18,6 +18,9 @@ export type CombatHandlers = {
   onAttackSequence: (options: AttackOptions) => void;
   onSave: (options: SaveOptions) => void;
   onAreaSave: (options: AreaSaveOptions) => void;
+  onConcentration: (actorId: string, spell: string | null) => void;
+  onAddOngoing: (targetId: string, input: OngoingInput) => void;
+  onRemoveOngoing: (targetId: string, effectId: string) => void;
   onActionSurge: (actorId: string) => void;
   onSecondWind: (actorId: string) => void;
   onDeathSave: (actorId: string) => void;
@@ -123,6 +126,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
     <AttackForm key={actor.id} battle={battle} attacker={actor} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} />
     <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
+    <OngoingPanel key={`ongoing-${actor.id}`} battle={battle} handlers={handlers} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
       <label className="cmb-temp">临时生命<input key={state.tempHp} type="number" min={0} step={1} defaultValue={state.tempHp} aria-label="临时生命值" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0) handlers.onTempHp(actor.id, value); }} /></label>
@@ -270,6 +274,63 @@ export function AreaEffectForm({ battle, onSave, onAreaSave }: { battle: Battle;
     {message && <p role="alert" className="battle-error">{message}</p>}
     <div className="cmb-attack-actions"><span className="cmb-hint">单体豁免只掷骰并写入日志；范围效果对每个目标分别掷豁免，成功减半（可关闭），抗性与临时生命照常结算。</span>
       <div className="cmb-area-actions"><button className="button-secondary" type="button" onClick={single}>单体豁免</button><button className="button-primary" type="submit" onClick={area}>结算范围伤害</button></div></div>
+  </div>;
+}
+
+function OngoingPanel({ battle, handlers }: { battle: Battle; handlers: CombatHandlers }) {
+  const actor = currentActor(battle);
+  const [spell, setSpell] = useState('');
+  const [name, setName] = useState('');
+  const [dice, setDice] = useState('1d4');
+  const [type, setType] = useState<DamageType>('火焰');
+  const [saveAbility, setSaveAbility] = useState<Ability | ''>('');
+  const [saveDc, setSaveDc] = useState('13');
+  const [message, setMessage] = useState('');
+  if (!actor?.combat) return null;
+  const ongoing = actor.combat.ongoing ?? [];
+  const concentration = actor.combat.concentration;
+  const add = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!name.trim()) { setMessage('请填写持续效果名称。'); return; }
+    if (!/^\s*\d{1,2}\s*d\s*\d{1,3}\s*([+-]\s*\d{1,3})?\s*$/i.test(dice)) { setMessage('伤害骰格式无效，请使用如 1d4 的写法。'); return; }
+    let saveEnds: OngoingInput['saveEnds'];
+    if (saveAbility) {
+      const dc = Number(saveDc);
+      if (!Number.isInteger(dc) || dc < 1 || dc > 40) { setMessage('持续效果的豁免 DC 须为 1 至 40 的整数。'); return; }
+      saveEnds = { ability: saveAbility, dc };
+    }
+    setMessage('');
+    handlers.onAddOngoing(actor.id, { name: name.trim(), damageExpression: dice, damageType: type, saveEnds });
+    setName('');
+  };
+  const start = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!spell.trim()) { setMessage('请填写专注的法术名称。'); return; }
+    setMessage('');
+    handlers.onConcentration(actor.id, spell.trim());
+    setSpell('');
+  };
+  return <div className="cmb-area">
+    <div className="cmb-attack-head"><h4>持续效果与专注</h4><small>{ongoing.length} 个持续效果</small></div>
+    <p className="cmb-hint">持续效果在每个回合开始时自动结算；带豁免的效果会在回合开始时掷豁免，成功即移除。专注会在受到伤害时自动检定（DC = max(10, 伤害 ÷ 2)）。</p>
+    <div className="cmb-ongoing-list">
+      {concentration ? <span className="cmb-chip">专注：{concentration.spell}<button type="button" className="cmb-chip-remove" onClick={() => handlers.onConcentration(actor.id, null)} aria-label="结束专注">×</button></span> : null}
+      {ongoing.map(effect => <span key={effect.id} className="cmb-chip">{effect.name}（{effect.damageExpression} {effect.damageType}{effect.saveEnds ? `，${abilityNames[effect.saveEnds.ability]}豁免 DC ${effect.saveEnds.dc}` : ''}）<button type="button" className="cmb-chip-remove" onClick={() => handlers.onRemoveOngoing(actor.id, effect.id)} aria-label={`移除${effect.name}`}>×</button></span>)}
+      {!concentration && !ongoing.length ? <span className="cmb-muted">当前没有专注或持续效果。</span> : null}
+    </div>
+    {message && <p role="alert" className="battle-error">{message}</p>}
+    <form className="cmb-attack-grid" onSubmit={start}>
+      <label>专注法术<input value={spell} onChange={event => setSpell(event.target.value)} placeholder="如：灼热金属" aria-label="专注法术" /></label>
+      <label className="cmb-inline-action"><button className="button-secondary" type="submit">开始专注</button></label>
+    </form>
+    <form className="cmb-attack-grid" onSubmit={add}>
+      <label>效果名称<input value={name} onChange={event => setName(event.target.value)} placeholder="如：燃烧" aria-label="持续效果名称" /></label>
+      <label>伤害骰<input value={dice} onChange={event => setDice(event.target.value)} aria-label="持续伤害骰" /></label>
+      <label>伤害类型<select value={type} onChange={event => setType(event.target.value as DamageType)} aria-label="持续伤害类型">{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
+      <label>回合开始豁免<select value={saveAbility} onChange={event => setSaveAbility(event.target.value as Ability | '')} aria-label="持续效果豁免属性"><option value="">无</option>{(['str', 'dex', 'con', 'int', 'wis', 'cha'] as Ability[]).map(item => <option key={item} value={item}>{abilityNames[item]}</option>)}</select></label>
+      <label>豁免 DC<input type="number" min={1} max={40} value={saveDc} onChange={event => setSaveDc(event.target.value)} aria-label="持续效果豁免 DC" disabled={!saveAbility} /></label>
+      <label className="cmb-inline-action"><button className="button-secondary" type="submit">添加效果</button></label>
+    </form>
   </div>;
 }
 

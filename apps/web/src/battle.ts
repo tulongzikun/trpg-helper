@@ -1,11 +1,22 @@
 import type { Card, Block, Entry } from './catalog';
-import type { CharacterSnapshot } from './characters';
+import type { Ability, CharacterSnapshot } from './characters';
 
 export type Side = '友方' | '敌方' | '中立';
 export type DamageType = '钝击' | '穿刺' | '挥砍' | '酸蚀' | '寒冷' | '火焰' | '力场' | '闪电' | '黯蚀' | '毒素' | '心灵' | '光耀' | '雷鸣';
 export const damageTypes: DamageType[] = ['钝击', '穿刺', '挥砍', '酸蚀', '寒冷', '火焰', '力场', '闪电', '黯蚀', '毒素', '心灵', '光耀', '雷鸣'];
 export type CombatStatus = 'active' | 'down' | 'dead';
 export type DeathSaves = { successes: number; failures: number };
+/** 回合开始时结算的持续效果，例如灼烧、酸液或毒雾。 */
+export type OngoingEffect = {
+  id: string;
+  name: string;
+  damageExpression: string;
+  damageType: DamageType;
+  /** 回合开始时进行豁免，成功则移除该效果。 */
+  saveEnds?: { ability: Ability; dc: number };
+};
+/** 正在维持的专注法术。 */
+export type Concentration = { spell: string };
 export type CombatantState = {
   initiative: number;
   tempHp: number;
@@ -20,6 +31,10 @@ export type CombatantState = {
   actionSurgeUsed?: number;
   /** 本场战斗是否已经使用过回气（战士），短休或长休恢复。 */
   secondWindUsed?: boolean;
+  /** 回合开始时结算的持续伤害效果。 */
+  ongoing?: OngoingEffect[];
+  /** 正在维持的专注。 */
+  concentration?: Concentration;
 };
 export type CombatLogEntry = { id: string; round: number; text: string; detail?: string };
 export type CombatState = {
@@ -49,6 +64,15 @@ export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const isInteger = (value: unknown, minimum = Number.MIN_SAFE_INTEGER, maximum = Number.MAX_SAFE_INTEGER): value is number => typeof value === 'number' && Number.isInteger(value) && value >= minimum && value <= maximum;
 const isSide = (value: unknown): value is Side => value === '友方' || value === '敌方' || value === '中立';
+const abilityKeys: Ability[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+function isOngoingEffect(value: unknown): value is OngoingEffect {
+  if (!isObject(value)) return false;
+  if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.damageExpression !== 'string') return false;
+  if (!damageTypes.includes(value.damageType as DamageType)) return false;
+  if (value.saveEnds === undefined) return true;
+  const saveEnds = value.saveEnds;
+  return isObject(saveEnds) && abilityKeys.includes(saveEnds.ability as Ability) && isInteger(saveEnds.dc, 1, 40);
+}
 function isCombatant(value: unknown): value is CombatantState {
   if (!isObject(value)) return false;
   if (!isInteger(value.initiative, -99, 99)) return false;
@@ -57,6 +81,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (![value.actionUsed, value.bonusUsed, value.reactionUsed].every(x => typeof x === 'boolean')) return false;
   if (value.actionSurgeUsed !== undefined && !isInteger(value.actionSurgeUsed, 0, 2)) return false;
   if (value.secondWindUsed !== undefined && typeof value.secondWindUsed !== 'boolean') return false;
+  if (value.ongoing !== undefined && (!Array.isArray(value.ongoing) || !value.ongoing.every(isOngoingEffect))) return false;
+  if (value.concentration !== undefined && !(isObject(value.concentration) && typeof value.concentration.spell === 'string' && value.concentration.spell.length > 0)) return false;
   if (value.status !== 'active' && value.status !== 'down' && value.status !== 'dead') return false;
   return isObject(value.deathSaves) && isInteger(value.deathSaves.successes, 0, 3) && isInteger(value.deathSaves.failures, 0, 3);
 }

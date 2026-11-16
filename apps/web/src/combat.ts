@@ -221,6 +221,7 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   const actor = nextTurnIndex(next);
   resetTurnResources(next, actor.id);
   addLog(next, `第 ${combat.round} 轮 · 轮到 ${actorLabel(next, actor)}（先攻 ${combatantOf(actor).initiative}）。`, deps);
+  applyOngoingDamage(next, deps);
   return next;
 }
 export function spendResource(battle: Battle, actorId: string, kind: AttackCost, deps: CombatDeps = {}): Battle {
@@ -302,6 +303,8 @@ export function damageActor(battle: Battle, actorId: string, amount: number, typ
   if (wasDown && outcome.damage > outcome.tempAbsorbed) notes.push('倒地受击：死亡豁免失败 +1（是否重击按距离人工裁定）');
   if (state.status === 'down') notes.push('倒地，需要死亡豁免');
   if (state.status === 'dead') notes.push('死亡');
+  const concentration = concentrationCheck(actor, outcome.damage, randomOf(deps));
+  if (concentration) notes.push(concentration.text);
   addLog(next, `${actorLabel(next, actor)} 受到 ${outcome.damage} 点${type}伤害，剩余 ${actor.currentHp}/${actor.maxHp}。`, deps, notes.length ? notes.join('；') : undefined);
   return { battle: next, outcome };
 }
@@ -416,6 +419,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   let tempAbsorbed = 0;
   let status: CombatStatus = combatantOf(target).status;
   let defense = '';
+  let concentration = '';
   if (hit) {
     const rolled = rollDamage(options.damageExpression, random, critical);
     const defenseResult = defenseOf(target, options.damageType);
@@ -424,6 +428,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     damage = result.damage;
     tempAbsorbed = result.tempAbsorbed;
     status = result.status;
+    concentration = concentrationCheck(target, damage, random)?.text ?? '';
   }
   if (consumeCost) {
     if (context.cost === 'action') state.actionUsed = true;
@@ -442,6 +447,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     tempAbsorbed ? `临时生命吸收 ${tempAbsorbed}` : '',
     targetWasDown && damage > tempAbsorbed ? '倒地受击：死亡豁免失败 +1（是否重击按距离人工裁定）' : '',
     status === 'down' ? '目标倒地' : status === 'dead' ? '目标死亡' : '',
+    concentration,
     notes.join('；'),
   ].filter(Boolean).join(' · ');
   addLog(battle, `${actorLabel(battle, attacker)} 攻击 ${actorLabel(battle, target)}：${hit ? `命中，造成 ${damage} 点${options.damageType}伤害` : '未命中'}。`, deps, detail);
@@ -551,9 +557,20 @@ export type AreaSaveResult = { actorId: string; save: SaveOutcome; damage: numbe
 
 const saveNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
 
+/** 单位的默认豁免加值：属性调整值 + 角色快照中已熟练的豁免。 */
+export function defaultSaveBonus(actor: Actor, ability: Ability): number {
+  const sheet = actor.characterSnapshot?.sheet;
+  const abilities = sheet?.abilities ?? actor.template.abilities;
+  const modifier = typeof abilities?.[ability] === 'number' ? abilityModifier(abilities[ability]) : 0;
+  const proficient = (sheet?.details?.saveProficiencies ?? []).includes(ability);
+  if (!proficient) return modifier;
+  const level = sheet?.level ?? 1;
+  return modifier + proficiencyBonus(Math.min(20, Math.max(1, level)));
+}
+
 function resolveSave(actor: Actor, options: SaveOptions, random: Random): SaveOutcome {
   const conditions = actor.combat?.conditions ?? [];
-  const bonus = options.bonus ?? 0;
+  const bonus = options.bonus ?? defaultSaveBonus(actor, options.ability);
   const automaticFailure = (options.ability === 'str' || options.ability === 'dex') && ['麻痹', '昏迷', '石化'].some(condition => conditions.includes(condition));
   const adjustments: ModeAdjustment[] = [];
   if (options.ability === 'dex' && conditions.includes('束缚')) adjustments.push({ mode: 'disadvantage', notes: ['目标束缚：敏捷豁免劣势'] });
@@ -571,7 +588,7 @@ function resolveSave(actor: Actor, options: SaveOptions, random: Random): SaveOu
 }
 
 function saveDetail(actor: Actor, battle: Battle, options: SaveOptions, outcome: SaveOutcome): string {
-  const bonus = options.bonus ?? 0;
+  const bonus = options.bonus ?? defaultSaveBonus(actor, options.ability);
   const rollText = outcome.automaticFailure ? '自动失败' : outcome.mode === 'normal' ? `d20(${outcome.natural})` : `${outcome.mode === 'advantage' ? '优势' : '劣势'} d20→${outcome.natural}`;
   return [
     `${actorLabel(battle, actor)} 的${saveNames[options.ability]}豁免`,
@@ -609,17 +626,133 @@ export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatD
   for (const targetId of targetIds) {
     const actor = actorOf(next, targetId);
     if (actor.combat?.status === 'dead') continue;
-    const save = resolveSave(actor, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: options.bonuses?.[targetId] ?? 0, mode: options.mode }, random);
+    const targetBonus = options.bonuses?.[targetId];
+    const save = resolveSave(actor, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: targetBonus, mode: options.mode }, random);
     const amount = save.success ? (options.halfOnSuccess === false ? 0 : Math.floor(raw.total / 2)) : raw.total;
     const defense = defenseOf(actor, options.damageType);
     const damage = amount > 0 ? applyDamageToActor(actor, amount, options.damageType) : { damage: 0, tempAbsorbed: 0, status: actor.combat?.status ?? 'active' };
+    const concentration = damage.damage > 0 ? concentrationCheck(actor, damage.damage, random) : null;
     results.push({ actorId: targetId, save, damage: damage.damage, tempAbsorbed: damage.tempAbsorbed, status: damage.status });
     addLog(next, `${actorLabel(next, actor)} 的${saveNames[options.ability]}豁免${save.success ? '成功' : '失败'}，承受 ${damage.damage} 点${options.damageType}伤害。`, deps,
-      [saveDetail(actor, next, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: options.bonuses?.[targetId] ?? 0 }, save), `伤害 ${raw.total}${save.success ? `（减半 ${amount}）` : ''}`, defense.label, `剩余 ${actor.currentHp}/${actor.maxHp}`].filter(Boolean).join(' · '));
+      [saveDetail(actor, next, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: targetBonus }, save), `伤害 ${raw.total}${save.success ? `（减半 ${amount}）` : ''}`, defense.label, `剩余 ${actor.currentHp}/${actor.maxHp}`, concentration?.text].filter(Boolean).join(' · '));
   }
   addLog(next, `范围效果结算：${results.length} 个目标，${results.filter(item => item.save.success).length} 个豁免成功。`, deps,
     `${saveNames[options.ability]}豁免 DC ${options.dc} · ${options.damageExpression} ${options.damageType}${options.halfOnSuccess === false ? '' : '（成功减半）'}`);
   return { battle: next, results };
+}
+
+export type OngoingInput = { name: string; damageExpression: string; damageType: DamageType; saveEnds?: { ability: Ability; dc: number } };
+export type ConcentrationCheck = { lost: boolean; dc: number; natural: number; total: number; text: string };
+
+function concentrationCheck(actor: Actor, damage: number, random: Random): ConcentrationCheck | null {
+  const concentration = actor.combat?.concentration;
+  if (!concentration) return null;
+  const dc = Math.max(10, Math.floor(damage / 2));
+  if (actor.combat?.status !== 'active' || damage <= 0) {
+    delete actor.combat!.concentration;
+    return { lost: true, dc, natural: 0, total: 0, text: `失去对「${concentration.spell}」的专注` };
+  }
+  const outcome = resolveSave(actor, { actorId: actor.id, ability: 'con', dc }, random);
+  if (outcome.success) return { lost: false, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，维持「${concentration.spell}」` };
+  delete actor.combat!.concentration;
+  return { lost: true, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，失去对「${concentration.spell}」的专注` };
+}
+
+function validateOngoing(input: OngoingInput): void {
+  if (!input.name || !input.name.trim()) throw new Error('请填写持续效果名称。');
+  parseDice(input.damageExpression);
+  if (!damageTypes.includes(input.damageType)) throw new Error('请选择有效的伤害类型。');
+  if (input.saveEnds && (!Number.isInteger(input.saveEnds.dc) || input.saveEnds.dc < 1 || input.saveEnds.dc > 40)) throw new Error('持续效果的豁免 DC 须为 1 至 40 的整数。');
+}
+
+export function addOngoingEffect(battle: Battle, targetId: string, input: OngoingInput, deps: CombatDeps = {}): { battle: Battle; effectId: string } {
+  validateOngoing(input);
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, targetId);
+  const state = combatantOf(actor);
+  if (state.ongoing && state.ongoing.length >= 8) throw new Error('单个单位最多记录 8 个持续效果。');
+  const effectId = makeIdOf(deps)();
+  state.ongoing = [...(state.ongoing ?? []), { id: effectId, name: input.name.trim(), damageExpression: input.damageExpression, damageType: input.damageType, saveEnds: input.saveEnds }];
+  addLog(next, `${actorLabel(next, actor)} 受到持续效果「${input.name.trim()}」影响。`, deps,
+    `回合开始承受 ${input.damageExpression} 点${input.damageType}伤害${input.saveEnds ? `；回合开始进行${saveNames[input.saveEnds.ability]}豁免 DC ${input.saveEnds.dc}，成功则移除` : ''}`);
+  return { battle: next, effectId };
+}
+
+export function removeOngoingEffect(battle: Battle, targetId: string, effectId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, targetId);
+  const state = combatantOf(actor);
+  const effect = state.ongoing?.find(item => item.id === effectId);
+  if (!effect) throw new Error('该单位没有这个持续效果。');
+  state.ongoing = state.ongoing!.filter(item => item.id !== effectId);
+  addLog(next, `${actorLabel(next, actor)} 的持续效果「${effect.name}」已结束。`, deps);
+  return next;
+}
+
+export function startConcentration(battle: Battle, actorId: string, spell: string, deps: CombatDeps = {}): Battle {
+  if (!spell.trim()) throw new Error('请填写专注的法术名称。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以维持专注。');
+  const replaced = state.concentration?.spell;
+  state.concentration = { spell: spell.trim() };
+  addLog(next, `${actorLabel(next, actor)} 开始专注「${spell.trim()}」。`, deps, replaced ? `替换了原先的「${replaced}」` : undefined);
+  return next;
+}
+
+export function endConcentration(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (!state.concentration) throw new Error('该单位当前没有维持专注。');
+  const spell = state.concentration.spell;
+  delete state.concentration;
+  addLog(next, `${actorLabel(next, actor)} 结束了对「${spell}」的专注。`, deps);
+  return next;
+}
+
+function applyOngoingDamage(battle: Battle, deps: CombatDeps): void {
+  const id = currentActorId(battle);
+  if (!id) return;
+  const actor = battle.actors.find(item => item.id === id);
+  const state = actor?.combat;
+  if (!actor || !state?.ongoing?.length) return;
+  if (state.status === 'dead') return;
+  const random = randomOf(deps);
+  const survivors: typeof state.ongoing = [];
+  const statusNow = (): CombatStatus => actor.combat?.status ?? 'active';
+  for (const effect of state.ongoing) {
+    let ended = false;
+    if (effect.saveEnds) {
+      const save = resolveSave(actor, { actorId: actor.id, ability: effect.saveEnds.ability, dc: effect.saveEnds.dc }, random);
+      if (save.success) {
+        ended = true;
+        addLog(battle, `${actorLabel(battle, actor)} 通过${saveNames[effect.saveEnds.ability]}豁免，结束「${effect.name}」。`, deps, `d20(${save.natural}) = ${save.total}，DC ${effect.saveEnds.dc}`);
+      }
+    }
+    if (!ended) {
+      const rolled = rollDamage(effect.damageExpression, random, false);
+      const outcome = applyDamageToActor(actor, rolled.total, effect.damageType);
+      const concentration = concentrationCheck(actor, outcome.damage, random);
+      addLog(battle, `回合开始：「${effect.name}」对 ${actorLabel(battle, actor)} 造成 ${outcome.damage} 点${effect.damageType}伤害，剩余 ${actor.currentHp}/${actor.maxHp}。`, deps,
+        [`${effect.damageExpression} → ${rolled.total}`, concentration?.text, statusNow() === 'down' ? '倒地，需要死亡豁免' : statusNow() === 'dead' ? '死亡' : ''].filter(Boolean).join('；'));
+      survivors.push(effect);
+    }
+    if (statusNow() === 'dead') { addLog(battle, `${actorLabel(battle, actor)} 已死亡，其余持续效果清除。`, deps); return; }
+  }
+  state.ongoing = survivors;
+}
+
+export function tickTurnStart(battle: Battle, deps: CombatDeps = {}): Battle {
+  requireCombat(battle);
+  const next = recordUndo(structuredClone(battle));
+  applyOngoingDamage(next, deps);
+  return next;
 }
 
 export function rollDeathSave(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; outcome: DeathSaveOutcome } {

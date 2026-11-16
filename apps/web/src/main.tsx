@@ -7,7 +7,7 @@ import { AddMonsterDialog, BattleView } from './BattleViews';
 import { Characters } from './CharacterViews';
 import type { CharacterSnapshot } from './characters';
 import { addCharacter, addMonsters, emptyStore, readBattles, removeActor, writeBattles, type BattleStore, type Side } from './battle';
-import { areaSave, attack, attackSequence, endTurn, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, toggleCondition, undoCombat, useActionSurge } from './combat';
+import { addOngoingEffect, areaSave, attack, attackSequence, endConcentration, endTurn, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -37,6 +37,9 @@ function App() {
   onAttackSequence:options=>tryBattle(()=>changeBattle(battleId,battle=>attackSequence(battle,options).battle)),
   onSave:options=>tryBattle(()=>changeBattle(battleId,battle=>savingThrow(battle,options).battle)),
   onAreaSave:options=>tryBattle(()=>changeBattle(battleId,battle=>areaSave(battle,options).battle)),
+  onConcentration:(actorId,spell)=>tryBattle(()=>changeBattle(battleId,battle=>spell?startConcentration(battle,actorId,spell):endConcentration(battle,actorId))),
+  onAddOngoing:(targetId,input)=>tryBattle(()=>changeBattle(battleId,battle=>addOngoingEffect(battle,targetId,input).battle)),
+  onRemoveOngoing:(targetId,effectId)=>tryBattle(()=>changeBattle(battleId,battle=>removeOngoingEffect(battle,targetId,effectId))),
   onActionSurge:actorId=>tryBattle(()=>changeBattle(battleId,battle=>useActionSurge(battle,actorId))),
   onSecondWind:actorId=>tryBattle(()=>changeBattle(battleId,battle=>secondWind(battle,actorId).battle)),
   onDeathSave:actorId=>tryBattle(()=>changeBattle(battleId,battle=>rollDeathSave(battle,actorId).battle)),

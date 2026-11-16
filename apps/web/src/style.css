@@ -62,6 +62,12 @@
 .cmb-check{display:flex;align-items:center;gap:8px;flex-direction:row}
 .cmb-check input{width:auto;margin:0}
 .cmb-area-actions{display:flex;gap:8px;flex-wrap:wrap}
+.cmb-ongoing-list{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+.cmb-chip{display:inline-flex;align-items:center;gap:6px;background:#f1f4ec;border:1px solid #dde3d5;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;color:#43503f}
+.cmb-chip-remove{border:0;background:transparent;color:#7c8a76;cursor:pointer;font-size:13px;line-height:1;padding:0}
+.cmb-muted{font-size:11px;color:#8b968b}
+.cmb-inline-action{align-self:end}
+.cmb-inline-action button{width:100%}
 .cmb-attack{border-top:1px solid #e9ebe3;margin-top:18px;padding-top:16px}
 .cmb-attack-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
 .cmb-attack-head h4{font:600 15px 'Noto Serif SC',serif;margin:0;color:#314a36}
