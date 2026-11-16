@@ -2,7 +2,8 @@ import { useState } from 'react';
 import type { Actor, Battle, DamageType } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
-import { actorAttackProfile, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, summonsOf } from './combat';
+import { actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, summonsOf } from './combat';
+import { attackSources, originLabels } from './attackSources';
 import { actionSurgeMax, attacksPerAction, hasSecondWind } from './combatModifiers';
 import { battleTranscript, exportBattle } from './battleTransfer';
 import type { AttackRange } from './combatModifiers';
@@ -177,21 +178,33 @@ function ConditionPicker({ actor, onChange }: { actor: Actor; onChange: (conditi
 }
 
 function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: Battle; attacker: Actor; onAttack: (options: AttackOptions) => void; onAttackSequence: (options: AttackOptions) => void }) {
-  const profile = actorAttackProfile(attacker);
+  const sources = attackSources(attacker);
+  const first = sources[0];
   const targets = availableTargets(battle, attacker.id);
   const maxAttacks = attacksPerAction(attacker);
   const [targetId, setTargetId] = useState(targets[0]?.id ?? '');
-  const [bonus, setBonus] = useState(String(profile.attackBonus));
-  const [damage, setDamage] = useState(profile.damage);
-  const [type, setType] = useState<DamageType>(profile.damageType);
+  const [sourceId, setSourceId] = useState(first?.id ?? '');
+  const [bonus, setBonus] = useState(String(first?.attackBonus ?? 0));
+  const [damage, setDamage] = useState(first?.damageExpression ?? '1d8');
+  const [type, setType] = useState<DamageType>(first?.damageType ?? '挥砍');
   const [mode, setMode] = useState<AttackMode>('normal');
   const [cost, setCost] = useState<AttackCost>('action');
-  const [range, setRange] = useState<AttackRange>('melee');
-  const [distance, setDistance] = useState('5');
+  const [range, setRange] = useState<AttackRange>(first?.range ?? 'melee');
+  const [distance, setDistance] = useState(String(first?.distanceFt ?? 5));
   const [attacks, setAttacks] = useState('1');
   const [message, setMessage] = useState('');
   const target = targets.find(item => item.id === targetId);
   if (!targets.length) return <p className="cmb-hint">当前没有可攻击的目标。</p>;
+  const applySource = (id: string) => {
+    const source = sources.find(item => item.id === id);
+    setSourceId(id);
+    if (!source) return;
+    setBonus(String(source.attackBonus));
+    setDamage(source.damageExpression);
+    setType(source.damageType);
+    setRange(source.range);
+    setDistance(String(source.distanceFt));
+  };
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     const attackBonus = Number(bonus);
@@ -208,6 +221,7 @@ function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: 
   return <form className="cmb-attack" onSubmit={submit}>
     <div className="cmb-attack-head"><h4>攻击</h4><small>目标 AC {target?.template.armorClass ?? '—'}</small></div>
     <div className="cmb-attack-grid">
+      <label>攻击来源<select value={sourceId} onChange={event => applySource(event.target.value)} aria-label="攻击来源">{sources.map(item => <option key={item.id} value={item.id}>{item.label}（{originLabels[item.origin]}）</option>)}</select></label>
       <label>目标<select value={targetId} onChange={event => setTargetId(event.target.value)} aria-label="攻击目标">{targets.map(item => <option key={item.id} value={item.id}>{actorLabel(battle, item)}（{item.side}，HP {item.currentHp}/{item.maxHp}，AC {item.template.armorClass}）</option>)}</select></label>
       <label>攻击加值<input type="number" step={1} value={bonus} onChange={event => setBonus(event.target.value)} aria-label="攻击加值" /></label>
       <label>伤害骰<input value={damage} onChange={event => setDamage(event.target.value)} aria-label="伤害骰" placeholder="2d6+3" /></label>

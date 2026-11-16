@@ -10,7 +10,8 @@ const sequence = (...values) => { let index = 0; return () => values[index++] ??
 
 function setup(count = 2) {
   const battle = addMonsters(emptyStore(), card, { newBattleName: '召唤测试', side: '敌方', count }, ids(), () => '2026-01-01T00:00:00Z').store.battles[0];
-  const started = startCombat(battle, {});
+  const [first, second] = battle.actors.map(actor => actor.id);
+  const started = startCombat(battle, { [first]: 20, [second]: 10 });
   const [owner, other] = started.actors.map(actor => actor.id);
   return { started, owner, other };
 }
