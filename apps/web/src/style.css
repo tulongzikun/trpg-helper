@@ -51,6 +51,9 @@
 .cmb-move div{display:flex;gap:6px;margin-top:7px}
 .cmb-move input{width:100%;min-width:0;border:1px solid #dce1d7;background:#fff;padding:5px}
 .cmb-move button{border:1px solid #c9d2c3;background:#fff;font-size:11px;padding:0 8px;white-space:nowrap}
+.cmb-class-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.cmb-class-actions button{font-size:11px;padding:8px 12px}
+.cmb-class-actions button:disabled{opacity:.5;cursor:not-allowed}
 .cmb-attack{border-top:1px solid #e9ebe3;margin-top:18px;padding-top:16px}
 .cmb-attack-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
 .cmb-attack-head h4{font:600 15px 'Noto Serif SC',serif;margin:0;color:#314a36}

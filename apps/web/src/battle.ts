@@ -16,6 +16,10 @@ export type CombatantState = {
   movementUsed: number;
   status: CombatStatus;
   deathSaves: DeathSaves;
+  /** 本场战斗已使用的动作如潮次数（战士），短休或长休恢复。 */
+  actionSurgeUsed?: number;
+  /** 本场战斗是否已经使用过回气（战士），短休或长休恢复。 */
+  secondWindUsed?: boolean;
 };
 export type CombatLogEntry = { id: string; round: number; text: string; detail?: string };
 export type CombatState = {
@@ -51,6 +55,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (!isInteger(value.tempHp, 0) || !isInteger(value.movementUsed, 0)) return false;
   if (!Array.isArray(value.conditions) || !value.conditions.every(x => typeof x === 'string')) return false;
   if (![value.actionUsed, value.bonusUsed, value.reactionUsed].every(x => typeof x === 'boolean')) return false;
+  if (value.actionSurgeUsed !== undefined && !isInteger(value.actionSurgeUsed, 0, 2)) return false;
+  if (value.secondWindUsed !== undefined && typeof value.secondWindUsed !== 'boolean') return false;
   if (value.status !== 'active' && value.status !== 'down' && value.status !== 'dead') return false;
   return isObject(value.deathSaves) && isInteger(value.deathSaves.successes, 0, 3) && isInteger(value.deathSaves.failures, 0, 3);
 }

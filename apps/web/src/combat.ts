@@ -3,6 +3,8 @@ import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType } from './battle';
 import { damageTypes } from './battle.ts';
+import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
+import type { AttackRange } from './combatModifiers.ts';
 
 export type Random = () => number;
 export type CombatDeps = { random?: Random; makeId?: () => string };
@@ -17,6 +19,12 @@ export type AttackOptions = {
   mode?: AttackMode;
   cost?: AttackCost;
   criticalRange?: number;
+  /** 近战或远程；影响倒地目标的检定与自动重击判定，默认近战。 */
+  range?: AttackRange;
+  /** 与目标的距离（尺），用于 5 尺内对麻痹／昏迷目标的自动重击，默认近战 5、远程 30。 */
+  distanceFt?: number;
+  /** 一次攻击动作内的攻击次数，默认 1，不能超过该单位的额外攻击次数。 */
+  attacks?: number;
 };
 export type AttackOutcome = {
   natural: number;
@@ -29,6 +37,8 @@ export type AttackOutcome = {
   targetHp: number;
   status: CombatStatus;
   defense: string;
+  mode: AttackMode;
+  notes: string[];
 };
 export type DamageOutcome = { damage: number; tempAbsorbed: number; status: CombatStatus };
 export type DeathSaveOutcome = { natural: number; successes: number; failures: number; status: CombatStatus; revived: boolean };
@@ -217,7 +227,8 @@ export function spendResource(battle: Battle, actorId: string, kind: AttackCost,
   requireCombat(next);
   const actor = actorOf(next, actorId);
   const state = combatantOf(actor);
-  if (state.status !== 'active') throw new Error(state.status === 'dead' ? '已死亡的单位无法行动。' : '倒地的单位无法行动。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
   if (kind !== 'reaction' && currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以使用动作或附赠动作。');
   if (kind === 'action' && state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
   if (kind === 'bonus' && state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
@@ -235,7 +246,8 @@ export function spendMovement(battle: Battle, actorId: string, feet: number, dep
   if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以移动。');
   const actor = actorOf(next, actorId);
   const state = combatantOf(actor);
-  if (state.status !== 'active') throw new Error(state.status === 'dead' ? '已死亡的单位无法移动。' : '倒地的单位无法移动。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
   const speed = actorSpeed(actor);
   if (state.movementUsed + feet > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += feet;
@@ -353,36 +365,52 @@ export function toggleCondition(battle: Battle, actorId: string, condition: stri
   addLog(next, `${actorLabel(next, actor)} ${active ? '移除' : '获得'}状态：${condition}。`, deps);
   return next;
 }
-export function attack(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
-  const next = recordUndo(structuredClone(battle));
-  requireCombat(next);
-  const attacker = actorOf(next, options.attackerId);
-  const target = actorOf(next, options.targetId);
+type AttackContext = { attacker: Actor; target: Actor; cost: AttackCost; criticalRange: number; range: AttackRange; distanceFt: number };
+
+function validateAttackOptions(battle: Battle, options: AttackOptions): AttackContext {
+  requireCombat(battle);
+  const attacker = actorOf(battle, options.attackerId);
+  const target = actorOf(battle, options.targetId);
   if (options.attackerId === options.targetId) throw new Error('不能以自己为攻击目标。');
-  if (attacker.combat?.status === 'dead') throw new Error('已死亡的单位无法行动。');
-  if (attacker.combat?.status === 'down') throw new Error('倒地的单位无法攻击。');
+  const blocker = actionBlocker(attacker);
+  if (blocker) throw new Error(blocker);
   if (target.combat?.status === 'dead') throw new Error('目标已经死亡。');
   parseDice(options.damageExpression);
   if (!Number.isInteger(options.attackBonus) || options.attackBonus < -20 || options.attackBonus > 40) throw new Error('攻击加值须为 -20 至 40 的整数。');
   if (!damageTypes.includes(options.damageType)) throw new Error('请选择有效的伤害类型。');
   const cost: AttackCost = options.cost ?? 'action';
-  if (cost !== 'reaction' && currentActorId(next) !== attacker.id) throw new Error('只有当前回合的单位可以攻击。');
+  if (cost !== 'reaction' && currentActorId(battle) !== attacker.id) throw new Error('只有当前回合的单位可以攻击。');
   const state = combatantOf(attacker);
   if (cost === 'action' && state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
   if (cost === 'bonus' && state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
   if (cost === 'reaction' && state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
   const criticalRange = options.criticalRange ?? 20;
   if (!Number.isInteger(criticalRange) || criticalRange < 15 || criticalRange > 20) throw new Error('重击范围须为 15 至 20。');
+  const range: AttackRange = options.range ?? 'melee';
+  if (range !== 'melee' && range !== 'ranged') throw new Error('请选择近战或远程攻击。');
+  const distanceFt = options.distanceFt ?? (range === 'melee' ? 5 : 30);
+  if (!Number.isInteger(distanceFt) || distanceFt < 0 || distanceFt > 600) throw new Error('距离须为 0 至 600 尺的整数。');
+  return { attacker, target, cost, criticalRange, range, distanceFt };
+}
+
+function resolveOneAttack(battle: Battle, options: AttackOptions, context: AttackContext, deps: CombatDeps, consumeCost: boolean): AttackOutcome {
+  const attacker = actorOf(battle, options.attackerId);
+  const target = actorOf(battle, options.targetId);
+  const state = combatantOf(attacker);
   const targetWasDown = combatantOf(target).status === 'down';
   const random = randomOf(deps);
-  const mode: AttackMode = options.mode ?? 'normal';
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range)]);
+  const mode = combined.mode;
+  const notes = [...combined.notes];
   const first = rollDie(20, random);
   const second = mode === 'normal' ? first : rollDie(20, random);
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
   const total = natural + options.attackBonus;
   const targetAc = target.template.armorClass;
   const hit = natural === 20 || (natural !== 1 && total >= targetAc);
-  const critical = hit && natural >= criticalRange;
+  const automaticCritical = hit && isAutomaticCritical(target, context.range, context.distanceFt);
+  const critical = hit && (natural >= context.criticalRange || automaticCritical);
+  if (automaticCritical) notes.push('目标麻痹或昏迷且在 5 尺内：命中即重击');
   let damage = 0;
   let tempAbsorbed = 0;
   let status: CombatStatus = combatantOf(target).status;
@@ -396,13 +424,15 @@ export function attack(battle: Battle, options: AttackOptions, deps: CombatDeps 
     tempAbsorbed = result.tempAbsorbed;
     status = result.status;
   }
-  if (cost === 'action') state.actionUsed = true;
-  if (cost === 'bonus') state.bonusUsed = true;
-  if (cost === 'reaction') state.reactionUsed = true;
+  if (consumeCost) {
+    if (context.cost === 'action') state.actionUsed = true;
+    if (context.cost === 'bonus') state.bonusUsed = true;
+    if (context.cost === 'reaction') state.reactionUsed = true;
+  }
   const rollText = mode === 'normal' ? `d20(${natural})` : `${mode === 'advantage' ? '优势' : '劣势'} d20(${first},${second})→${natural}`;
   const damageText = hit ? `${damage} 点${options.damageType}伤害` : '未造成伤害';
   const detail = [
-    `${actorLabel(next, attacker)} → ${actorLabel(next, target)}`,
+    `${actorLabel(battle, attacker)} → ${actorLabel(battle, target)}`,
     `攻击检定 ${rollText}${options.attackBonus >= 0 ? '+' : ''}${options.attackBonus} = ${total} vs AC ${targetAc}`,
     hit ? (critical ? '重击' : '命中') : (natural === 1 ? '大失败' : '未命中'),
     damageText,
@@ -411,10 +441,97 @@ export function attack(battle: Battle, options: AttackOptions, deps: CombatDeps 
     tempAbsorbed ? `临时生命吸收 ${tempAbsorbed}` : '',
     targetWasDown && damage > tempAbsorbed ? '倒地受击：死亡豁免失败 +1（是否重击按距离人工裁定）' : '',
     status === 'down' ? '目标倒地' : status === 'dead' ? '目标死亡' : '',
+    notes.join('；'),
   ].filter(Boolean).join(' · ');
-  addLog(next, `${actorLabel(next, attacker)} 攻击 ${actorLabel(next, target)}：${hit ? `命中，造成 ${damage} 点${options.damageType}伤害` : '未命中'}。`, deps, detail);
-  return { battle: next, outcome: { natural, total, targetAc, hit, critical, damage, tempAbsorbed, targetHp: target.currentHp, status, defense } };
+  addLog(battle, `${actorLabel(battle, attacker)} 攻击 ${actorLabel(battle, target)}：${hit ? `命中，造成 ${damage} 点${options.damageType}伤害` : '未命中'}。`, deps, detail);
+  return { natural, total, targetAc, hit, critical, damage, tempAbsorbed, targetHp: target.currentHp, status, defense, mode, notes };
 }
+
+export function attack(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  const context = validateAttackOptions(next, options);
+  const outcome = resolveOneAttack(next, options, context, deps, true);
+  return { battle: next, outcome };
+}
+
+export function attackSequence(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcomes: AttackOutcome[] } {
+  const next = recordUndo(structuredClone(battle));
+  const context = validateAttackOptions(next, options);
+  const requested = options.attacks ?? 1;
+  if (!Number.isInteger(requested) || requested < 1) throw new Error('攻击次数须为正整数。');
+  const limit = attacksPerAction(context.attacker);
+  if (requested > limit) throw new Error(`该单位一次攻击动作最多攻击 ${limit} 次。`);
+  if (requested > 1 && context.cost !== 'action') throw new Error('只有使用动作的攻击才能连续攻击多次。');
+  const outcomes: AttackOutcome[] = [];
+  for (let index = 0; index < requested; index++) {
+    if (actorOf(next, options.targetId).combat?.status === 'dead') break;
+    outcomes.push(resolveOneAttack(next, options, context, deps, index === 0));
+  }
+  const attacker = actorOf(next, options.attackerId);
+  const target = actorOf(next, options.targetId);
+  addLog(next, `${actorLabel(next, attacker)} 对 ${actorLabel(next, target)} 完成攻击动作：${outcomes.length} 次攻击，命中 ${outcomes.filter(item => item.hit).length} 次。`, deps,
+    outcomes.map((item, index) => `第 ${index + 1} 击：${item.hit ? `${item.critical ? '重击' : '命中'} ${item.damage} 点` : '未命中'}（d20 ${item.natural} vs AC ${item.targetAc}）`).join(' · '));
+  return { battle: next, outcomes };
+}
+
+export function useActionSurge(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以使用动作如潮。');
+  const maximum = actionSurgeMax(actor);
+  if (!maximum) throw new Error('只有 2 级及以上的战士可以使用动作如潮。');
+  const used = state.actionSurgeUsed ?? 0;
+  if (used >= maximum) throw new Error('本场战斗的动作如潮已经用完，短休或长休后恢复。');
+  state.actionSurgeUsed = used + 1;
+  state.actionUsed = false;
+  addLog(next, `${actorLabel(next, actor)} 使用动作如潮，额外获得一个动作（${used + 1}/${maximum}）。`, deps);
+  return next;
+}
+
+export function secondWind(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; healed: number } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以使用回气。');
+  if (!hasSecondWind(actor)) throw new Error('只有战士可以使用回气。');
+  if (state.secondWindUsed) throw new Error('本场战斗已经使用过回气，短休或长休后恢复。');
+  if (state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
+  const level = actor.characterSnapshot?.sheet.level ?? 1;
+  const rolled = rollDie(10, randomOf(deps));
+  const healed = Math.min(actor.maxHp - actor.currentHp, rolled + level);
+  actor.currentHp += healed;
+  if (state.status === 'down' && actor.currentHp > 0) {
+    state.status = 'active';
+    state.deathSaves = { successes: 0, failures: 0 };
+  }
+  state.bonusUsed = true;
+  state.secondWindUsed = true;
+  addLog(next, `${actorLabel(next, actor)} 使用回气，恢复 ${healed} 点生命值（d10 ${rolled} + ${level} 级），当前 ${actor.currentHp}/${actor.maxHp}。`, deps);
+  return { battle: next, healed };
+}
+export function recoverClassResources(battle: Battle, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  for (const actor of next.actors) {
+    if (!actor.combat) continue;
+    actor.combat.actionSurgeUsed = 0;
+    actor.combat.secondWindUsed = false;
+    actor.combat.actionUsed = false;
+    actor.combat.bonusUsed = false;
+    actor.combat.reactionUsed = false;
+    actor.combat.movementUsed = 0;
+  }
+  addLog(next, '短休：所有单位的动作、附赠动作、反应、移动，以及动作如潮与回气均已恢复（生命值不变）。', deps);
+  return next;
+}
+
 export function rollDeathSave(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; outcome: DeathSaveOutcome } {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);

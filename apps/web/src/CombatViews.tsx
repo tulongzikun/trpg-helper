@@ -3,6 +3,8 @@ import type { Actor, Battle, DamageType } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions } from './combat';
 import { actorAttackProfile, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId } from './combat';
+import { actionSurgeMax, attacksPerAction, hasSecondWind } from './combatModifiers';
+import type { AttackRange } from './combatModifiers';
 
 export type CombatHandlers = {
   onStart: (initiatives: Record<string, number>) => void;
@@ -10,6 +12,9 @@ export type CombatHandlers = {
   onUndo: () => void;
   onReset: () => void;
   onAttack: (options: AttackOptions) => void;
+  onAttackSequence: (options: AttackOptions) => void;
+  onActionSurge: (actorId: string) => void;
+  onSecondWind: (actorId: string) => void;
   onDeathSave: (actorId: string) => void;
   onCondition: (actorId: string, condition: string) => void;
   onMove: (actorId: string, feet: number) => void;
@@ -110,7 +115,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <Resource label="反应" used={state.reactionUsed} onClick={() => handlers.onSpend(actor.id, 'reaction')} />
       <Movement actor={actor} used={state.movementUsed} onMove={feet => handlers.onMove(actor.id, feet)} />
     </div>
-    <AttackForm key={actor.id} battle={battle} attacker={actor} onAttack={handlers.onAttack} />
+    <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
+    <AttackForm key={actor.id} battle={battle} attacker={actor} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
       <label className="cmb-temp">临时生命<input key={state.tempHp} type="number" min={0} step={1} defaultValue={state.tempHp} aria-label="临时生命值" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0) handlers.onTempHp(actor.id, value); }} /></label>
@@ -123,6 +129,19 @@ function Resource({ label, used, onClick }: { label: string; used: boolean; onCl
   return <button type="button" className={`cmb-resource${used ? ' used' : ''}`} onClick={onClick} disabled={used} aria-pressed={used}>
     <strong>{label}</strong><small>{used ? '已使用' : '可用'}</small>
   </button>;
+}
+
+function ClassActions({ actor, onSurge, onSecondWind }: { actor: Actor; onSurge: () => void; onSecondWind: () => void }) {
+  const state = actor.combat;
+  if (!state) return null;
+  const surgeMax = actionSurgeMax(actor);
+  const surgeUsed = state.actionSurgeUsed ?? 0;
+  const secondWind = hasSecondWind(actor);
+  if (!surgeMax && !secondWind) return null;
+  return <div className="cmb-class-actions">
+    {surgeMax > 0 && <button type="button" className="button-secondary" disabled={surgeUsed >= surgeMax} onClick={onSurge} title="战士：本场战斗额外获得一个动作，短休或长休恢复">动作如潮 {surgeUsed}/{surgeMax}</button>}
+    {secondWind && <button type="button" className="button-secondary" disabled={state.secondWindUsed === true || state.bonusUsed} onClick={onSecondWind} title="战士：附赠动作恢复 1d10 + 战士等级，短休或长休恢复">回气{state.secondWindUsed ? '（已用）' : ''}</button>}
+  </div>;
 }
 
 function Movement({ actor, used, onMove }: { actor: Actor; used: number; onMove: (feet: number) => void }) {
@@ -143,15 +162,19 @@ function ConditionPicker({ actor, onChange }: { actor: Actor; onChange: (conditi
   </label>;
 }
 
-function AttackForm({ battle, attacker, onAttack }: { battle: Battle; attacker: Actor; onAttack: (options: AttackOptions) => void }) {
+function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: Battle; attacker: Actor; onAttack: (options: AttackOptions) => void; onAttackSequence: (options: AttackOptions) => void }) {
   const profile = actorAttackProfile(attacker);
   const targets = availableTargets(battle, attacker.id);
+  const maxAttacks = attacksPerAction(attacker);
   const [targetId, setTargetId] = useState(targets[0]?.id ?? '');
   const [bonus, setBonus] = useState(String(profile.attackBonus));
   const [damage, setDamage] = useState(profile.damage);
   const [type, setType] = useState<DamageType>(profile.damageType);
   const [mode, setMode] = useState<AttackMode>('normal');
   const [cost, setCost] = useState<AttackCost>('action');
+  const [range, setRange] = useState<AttackRange>('melee');
+  const [distance, setDistance] = useState('5');
+  const [attacks, setAttacks] = useState('1');
   const [message, setMessage] = useState('');
   const target = targets.find(item => item.id === targetId);
   if (!targets.length) return <p className="cmb-hint">当前没有可攻击的目标。</p>;
@@ -160,8 +183,13 @@ function AttackForm({ battle, attacker, onAttack }: { battle: Battle; attacker: 
     const attackBonus = Number(bonus);
     if (!Number.isInteger(attackBonus)) { setMessage('攻击加值须为整数。'); return; }
     if (!/^\s*\d{1,2}\s*d\s*\d{1,3}\s*([+-]\s*\d{1,3})?\s*$/i.test(damage)) { setMessage('伤害骰格式无效，请使用如 2d6+3 的写法。'); return; }
+    const distanceFt = Number(distance);
+    if (!Number.isInteger(distanceFt) || distanceFt < 0 || distanceFt > 600) { setMessage('距离须为 0 至 600 尺的整数。'); return; }
+    const count = Number(attacks);
+    if (!Number.isInteger(count) || count < 1 || count > maxAttacks) { setMessage(`本回合的攻击次数须为 1 至 ${maxAttacks} 次。`); return; }
     setMessage('');
-    onAttack({ attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost });
+    const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count };
+    if (count > 1) onAttackSequence(options); else onAttack(options);
   };
   return <form className="cmb-attack" onSubmit={submit}>
     <div className="cmb-attack-head"><h4>攻击</h4><small>目标 AC {target?.template.armorClass ?? '—'}</small></div>
@@ -170,11 +198,14 @@ function AttackForm({ battle, attacker, onAttack }: { battle: Battle; attacker: 
       <label>攻击加值<input type="number" step={1} value={bonus} onChange={event => setBonus(event.target.value)} aria-label="攻击加值" /></label>
       <label>伤害骰<input value={damage} onChange={event => setDamage(event.target.value)} aria-label="伤害骰" placeholder="2d6+3" /></label>
       <label>伤害类型<select value={type} onChange={event => setType(event.target.value as DamageType)} aria-label="伤害类型">{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
+      <label>距离<select value={range} aria-label="攻击距离" onChange={event => { const next = event.target.value as AttackRange; setRange(next); setDistance(next === 'melee' ? '5' : '30'); }}><option value="melee">近战</option><option value="ranged">远程</option></select></label>
+      <label>距离（尺）<input type="number" min={0} max={600} step={5} value={distance} onChange={event => setDistance(event.target.value)} aria-label="与目标距离" /></label>
+      <label>攻击次数<input type="number" min={1} max={maxAttacks} step={1} value={attacks} onChange={event => setAttacks(event.target.value)} aria-label="攻击次数" title={`额外攻击：本回合最多 ${maxAttacks} 次`} /></label>
       <label>检定<select value={mode} onChange={event => setMode(event.target.value as AttackMode)} aria-label="检定方式"><option value="normal">正常</option><option value="advantage">优势</option><option value="disadvantage">劣势</option></select></label>
       <label>消耗<select value={cost} onChange={event => setCost(event.target.value as AttackCost)} aria-label="消耗动作"><option value="action">动作</option><option value="bonus">附赠动作</option><option value="reaction">反应</option></select></label>
     </div>
     {message && <p role="alert" className="battle-error">{message}</p>}
-    <div className="cmb-attack-actions"><span className="cmb-hint">伤害由本地掷骰；抗性、易伤、免疫、临时生命与倒地会自动结算。</span><button className="button-primary" type="submit">投掷攻击</button></div>
+    <div className="cmb-attack-actions"><span className="cmb-hint">伤害由本地掷骰；状态（目盲、倒地、麻痹等）会自动修正检定并结算重击，抗性、易伤、免疫与临时生命照常处理。</span><button className="button-primary" type="submit">{Number(attacks) > 1 ? `投掷 ${attacks} 次攻击` : '投掷攻击'}</button></div>
   </form>;
 }
 
