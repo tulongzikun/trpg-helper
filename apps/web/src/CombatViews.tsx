@@ -4,6 +4,7 @@ import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
 import { actorAttackProfile, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId } from './combat';
 import { actionSurgeMax, attacksPerAction, hasSecondWind } from './combatModifiers';
+import { battleTranscript, exportBattle } from './battleTransfer';
 import type { AttackRange } from './combatModifiers';
 import type { Ability } from './characters';
 
@@ -339,5 +340,46 @@ export function CombatLog({ battle }: { battle: Battle }) {
   return <section className="cmb-log">
     <div className="cmb-panel-head"><div><div className="section-label">COMBAT LOG</div><h3>战斗日志</h3></div><span>{log.length} 条</span></div>
     {log.length ? <ol>{[...log].reverse().slice(0, 30).map(entry => <li key={entry.id}><div><strong>R{entry.round}</strong> {entry.text}</div>{entry.detail && <p>{entry.detail}</p>}</li>)}</ol> : <p className="cmb-hint">开始战斗后，攻击、伤害与回合变化会记录在这里。</p>}
+  </section>;
+}
+
+/** 战斗档案的导出、导入与战报。 */
+export function BattleIo({ battle, onImport }: { battle: Battle; onImport: (text: string) => void }) {
+  const [importText, setImportText] = useState('');
+  const [transcript, setTranscript] = useState('');
+  const [notice, setNotice] = useState('');
+  const exportText = exportBattle(battle);
+  const download = () => {
+    const blob = new Blob([exportText], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${battle.name || 'battle'}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setNotice('已开始下载战斗档案。');
+  };
+  return <section className="cmb-io">
+    <details>
+      <summary><span>导入 / 导出战斗</span><small>JSON 档案与 Markdown 战报</small></summary>
+      <div className="cmb-io-body">
+        <label>导出档案
+          <textarea readOnly rows={6} value={exportText} onFocus={event => event.currentTarget.select()} />
+        </label>
+        <div className="cmb-io-actions">
+          <button className="button-secondary" type="button" onClick={download}>下载 JSON</button>
+          <button className="button-secondary" type="button" onClick={async () => { try { await navigator.clipboard.writeText(exportText); setNotice('已复制到剪贴板。'); } catch { setNotice('当前环境不支持复制，请手动选择文本。'); } }}>复制</button>
+          <button className="button-secondary" type="button" onClick={() => setTranscript(battleTranscript(battle))}>生成战报</button>
+        </div>
+        {transcript && <textarea readOnly rows={8} value={transcript} onFocus={event => event.currentTarget.select()} />}
+        <label>导入档案
+          <textarea rows={5} value={importText} placeholder="粘贴导出的 JSON，或导出文件的内容" onChange={event => setImportText(event.target.value)} />
+        </label>
+        <div className="cmb-io-actions">
+          <button className="button-primary" type="button" disabled={!importText.trim()} onClick={() => { onImport(importText); setImportText(''); setNotice('已导入战斗档案。'); }}>导入战斗</button>
+        </div>
+        {notice && <p className="cmb-hint">{notice}</p>}
+      </div>
+    </details>
   </section>;
 }

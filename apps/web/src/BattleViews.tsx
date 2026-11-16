@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Card } from './catalog';
 import type { BattleStore, Side } from './battle';
 import type { CombatHandlers } from './CombatViews';
-import { CombatLog, CombatSetup, CombatToolbar, InitiativeRail, TurnPanel } from './CombatViews';
+import { BattleIo, CombatLog, CombatSetup, CombatToolbar, InitiativeRail, TurnPanel } from './CombatViews';
 import { currentActorId } from './combat';
 
 export function AddMonsterDialog({ card, store, onClose, onAdd }: { card: Card; store: BattleStore; onClose: () => void; onAdd: (options: { battleId?: string; newBattleName?: string; side: Side; count: number }) => string | null }) {
@@ -20,7 +20,7 @@ export function AddMonsterDialog({ card, store, onClose, onAdd }: { card: Card; 
 
 const sideClass = (side: Side) => side === '敌方' ? 'enemy' : side === '友方' ? 'ally' : 'neutral';
 
-export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRemove, bindCombat, error }: {
+export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRemove, bindCombat, onImportBattle, error }: {
   store: BattleStore;
   selectedId: string;
   onSelect: (id: string) => void;
@@ -28,6 +28,7 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
   onHp: (battleId: string, actorId: string, hp: number) => void;
   onRemove: (battleId: string, actorId: string) => void;
   bindCombat: (battleId: string) => CombatHandlers;
+  onImportBattle: (text: string) => void;
   error: string;
 }) {
   const battle = store.battles.find(b => b.id === selectedId) ?? store.battles[0];
@@ -69,6 +70,7 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
             </article>;
           })}</div> : <div className="battle-empty"><span>✧</span><h3>战场还是空的</h3><p>从怪物图鉴添加单位，开始准备这场战斗。</p><button className="button-secondary" onClick={onCatalog}>浏览怪物图鉴</button></div>}
           {battle.combat && <CombatLog battle={battle} />}
+          <BattleIo battle={battle} onImport={onImportBattle} />
         </> : <div className="battle-empty"><span>✧</span><h3>准备第一场战斗</h3><p>在怪物详情页选择“加入战斗”，即可创建战斗并安排阵营。</p><button className="button-primary" onClick={onCatalog}>浏览怪物图鉴</button></div>}
       </section>
     </div>

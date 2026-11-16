@@ -105,4 +105,13 @@
 
 .character-section .inspiration-toggle{display:flex;align-items:center;gap:9px}.character-section .inspiration-toggle input{display:inline-block;width:auto;margin:0}
 
+.cmb-io{margin-top:18px;background:#fff;border:1px solid #e3e6dc}
+.cmb-io summary{display:flex;align-items:baseline;gap:10px;padding:16px 22px;cursor:pointer;font:600 13px 'Noto Serif SC',serif;color:#405c48}
+.cmb-io summary small{font-weight:400;font-size:11px;color:#87968a}
+.cmb-io-body{display:flex;flex-direction:column;gap:10px;padding:0 22px 18px}
+.cmb-io-body label{font-size:11px;color:#617063;letter-spacing:.04em}
+.cmb-io-body textarea{width:100%;margin-top:6px;border:1px solid #dce1d7;background:#fafbf8;padding:10px;font:12px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;color:#303b32;resize:vertical}
+.cmb-io-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.cmb-io-actions button{padding:8px 12px;font-size:11px}
+
 

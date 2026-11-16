@@ -113,6 +113,12 @@ function isBattle(value: unknown): boolean {
     && (value.combat === undefined || isCombatState(value.combat));
 }
 
+/** 校验外部来源的战斗数据，失败时抛出中文错误，供导入功能使用。 */
+export function validateBattle(value: unknown): Battle {
+  if (!isBattle(value)) throw new Error('战斗数据格式无效，无法导入。');
+  return value as Battle;
+}
+
 export function readBattles(storage: Pick<Storage, 'getItem'>): BattleStore {
   const raw = storage.getItem(storageKey);
   if (raw === null) return emptyStore();
