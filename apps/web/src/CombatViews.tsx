@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import type { Actor, Battle, DamageType } from './battle';
 import { damageTypes } from './battle';
-import type { AttackCost, AttackMode, AttackOptions } from './combat';
+import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions } from './combat';
 import { actorAttackProfile, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId } from './combat';
 import { actionSurgeMax, attacksPerAction, hasSecondWind } from './combatModifiers';
 import type { AttackRange } from './combatModifiers';
+import type { Ability } from './characters';
+
+const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
 
 export type CombatHandlers = {
   onStart: (initiatives: Record<string, number>) => void;
@@ -13,6 +16,8 @@ export type CombatHandlers = {
   onReset: () => void;
   onAttack: (options: AttackOptions) => void;
   onAttackSequence: (options: AttackOptions) => void;
+  onSave: (options: SaveOptions) => void;
+  onAreaSave: (options: AreaSaveOptions) => void;
   onActionSurge: (actorId: string) => void;
   onSecondWind: (actorId: string) => void;
   onDeathSave: (actorId: string) => void;
@@ -117,6 +122,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     </div>
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
     <AttackForm key={actor.id} battle={battle} attacker={actor} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} />
+    <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
       <label className="cmb-temp">临时生命<input key={state.tempHp} type="number" min={0} step={1} defaultValue={state.tempHp} aria-label="临时生命值" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0) handlers.onTempHp(actor.id, value); }} /></label>
@@ -207,6 +213,64 @@ function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: 
     {message && <p role="alert" className="battle-error">{message}</p>}
     <div className="cmb-attack-actions"><span className="cmb-hint">伤害由本地掷骰；状态（目盲、倒地、麻痹等）会自动修正检定并结算重击，抗性、易伤、免疫与临时生命照常处理。</span><button className="button-primary" type="submit">{Number(attacks) > 1 ? `投掷 ${attacks} 次攻击` : '投掷攻击'}</button></div>
   </form>;
+}
+
+export function AreaEffectForm({ battle, onSave, onAreaSave }: { battle: Battle; onSave: (options: SaveOptions) => void; onAreaSave: (options: AreaSaveOptions) => void }) {
+  const actors = battle.actors.filter(actor => actor.combat?.status !== 'dead');
+  const [selected, setSelected] = useState<string[]>(() => actors.map(actor => actor.id));
+  const [ability, setAbility] = useState<Ability>('dex');
+  const [dc, setDc] = useState('13');
+  const [bonus, setBonus] = useState('0');
+  const [damage, setDamage] = useState('2d6');
+  const [type, setType] = useState<DamageType>('火焰');
+  const [halfOnSuccess, setHalfOnSuccess] = useState(true);
+  const [message, setMessage] = useState('');
+  if (!actors.length) return null;
+  const toggle = (id: string) => setSelected(old => old.includes(id) ? old.filter(item => item !== id) : [...old, id]);
+  const readDc = () => {
+    const value = Number(dc);
+    if (!Number.isInteger(value) || value < 1 || value > 40) { setMessage('豁免 DC 须为 1 至 40 的整数。'); return null; }
+    return value;
+  };
+  const readBonus = () => {
+    const value = Number(bonus);
+    if (!Number.isInteger(value) || value < -10 || value > 30) { setMessage('豁免加值须为 -10 至 30 的整数。'); return null; }
+    return value;
+  };
+  const single = (event: React.FormEvent) => {
+    event.preventDefault();
+    const parsedDc = readDc(); const parsedBonus = readBonus();
+    if (parsedDc === null || parsedBonus === null) return;
+    if (selected.length !== 1) { setMessage('单体豁免需要恰好选择一个目标。'); return; }
+    setMessage('');
+    onSave({ actorId: selected[0], ability, dc: parsedDc, bonus: parsedBonus });
+  };
+  const area = (event: React.FormEvent) => {
+    event.preventDefault();
+    const parsedDc = readDc();
+    if (parsedDc === null) return;
+    if (!selected.length) { setMessage('请至少选择一个目标。'); return; }
+    if (!/^\s*\d{1,2}\s*d\s*\d{1,3}\s*([+-]\s*\d{1,3})?\s*$/i.test(damage)) { setMessage('伤害骰格式无效，请使用如 8d6 的写法。'); return; }
+    setMessage('');
+    onAreaSave({ targetIds: selected, ability, dc: parsedDc, damageExpression: damage, damageType: type, halfOnSuccess });
+  };
+  return <div className="cmb-area">
+    <div className="cmb-attack-head"><h4>豁免与范围效果</h4><small>已选 {selected.length} / {actors.length}</small></div>
+    <div className="cmb-targets">
+      {actors.map(actor => <label key={actor.id} className="cmb-target"><input type="checkbox" checked={selected.includes(actor.id)} onChange={() => toggle(actor.id)} />{actorLabel(battle, actor)}<small>HP {actor.currentHp}/{actor.maxHp}</small></label>)}
+    </div>
+    <div className="cmb-attack-grid">
+      <label>豁免属性<select value={ability} onChange={event => setAbility(event.target.value as Ability)} aria-label="豁免属性">{(['str', 'dex', 'con', 'int', 'wis', 'cha'] as Ability[]).map(item => <option key={item} value={item}>{abilityNames[item]}</option>)}</select></label>
+      <label>豁免 DC<input type="number" min={1} max={40} value={dc} onChange={event => setDc(event.target.value)} aria-label="豁免 DC" /></label>
+      <label>豁免加值（单体）<input type="number" min={-10} max={30} value={bonus} onChange={event => setBonus(event.target.value)} aria-label="豁免加值" /></label>
+      <label>伤害骰<input value={damage} onChange={event => setDamage(event.target.value)} aria-label="范围伤害骰" placeholder="8d6" /></label>
+      <label>伤害类型<select value={type} onChange={event => setType(event.target.value as DamageType)} aria-label="范围伤害类型">{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
+      <label className="cmb-check"><input type="checkbox" checked={halfOnSuccess} onChange={event => setHalfOnSuccess(event.target.checked)} />豁免成功伤害减半</label>
+    </div>
+    {message && <p role="alert" className="battle-error">{message}</p>}
+    <div className="cmb-attack-actions"><span className="cmb-hint">单体豁免只掷骰并写入日志；范围效果对每个目标分别掷豁免，成功减半（可关闭），抗性与临时生命照常结算。</span>
+      <div className="cmb-area-actions"><button className="button-secondary" type="button" onClick={single}>单体豁免</button><button className="button-primary" type="submit" onClick={area}>结算范围伤害</button></div></div>
+  </div>;
 }
 
 export function CombatLog({ battle }: { battle: Battle }) {

@@ -54,6 +54,14 @@
 .cmb-class-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .cmb-class-actions button{font-size:11px;padding:8px 12px}
 .cmb-class-actions button:disabled{opacity:.5;cursor:not-allowed}
+.cmb-area{border-top:1px solid #e9ebe3;margin-top:18px;padding-top:16px}
+.cmb-targets{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:12px}
+.cmb-target{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#5d665c}
+.cmb-target input{margin:0}
+.cmb-target small{font-weight:400;color:#8b968b}
+.cmb-check{display:flex;align-items:center;gap:8px;flex-direction:row}
+.cmb-check input{width:auto;margin:0}
+.cmb-area-actions{display:flex;gap:8px;flex-wrap:wrap}
 .cmb-attack{border-top:1px solid #e9ebe3;margin-top:18px;padding-top:16px}
 .cmb-attack-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
 .cmb-attack-head h4{font:600 15px 'Noto Serif SC',serif;margin:0;color:#314a36}

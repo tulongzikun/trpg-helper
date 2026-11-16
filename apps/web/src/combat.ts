@@ -1,10 +1,11 @@
 import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
+import type { Ability } from './characters';
 import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType } from './battle';
 import { damageTypes } from './battle.ts';
 import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
-import type { AttackRange } from './combatModifiers.ts';
+import type { AttackRange, ModeAdjustment } from './combatModifiers.ts';
 
 export type Random = () => number;
 export type CombatDeps = { random?: Random; makeId?: () => string };
@@ -530,6 +531,95 @@ export function recoverClassResources(battle: Battle, deps: CombatDeps = {}): Ba
   }
   addLog(next, '短休：所有单位的动作、附赠动作、反应、移动，以及动作如潮与回气均已恢复（生命值不变）。', deps);
   return next;
+}
+
+export type SaveOptions = { actorId: string; ability: Ability; dc: number; bonus?: number; mode?: AttackMode };
+export type SaveOutcome = { natural: number; total: number; dc: number; success: boolean; mode: AttackMode; notes: string[]; automaticFailure: boolean };
+export type AreaSaveOptions = {
+  targetIds: string[];
+  ability: Ability;
+  dc: number;
+  damageExpression: string;
+  damageType: DamageType;
+  /** 豁免成功时伤害减半，默认 true。 */
+  halfOnSuccess?: boolean;
+  /** 逐目标的豁免加值，缺省为 0。 */
+  bonuses?: Record<string, number>;
+  mode?: AttackMode;
+};
+export type AreaSaveResult = { actorId: string; save: SaveOutcome; damage: number; tempAbsorbed: number; status: CombatStatus };
+
+const saveNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
+
+function resolveSave(actor: Actor, options: SaveOptions, random: Random): SaveOutcome {
+  const conditions = actor.combat?.conditions ?? [];
+  const bonus = options.bonus ?? 0;
+  const automaticFailure = (options.ability === 'str' || options.ability === 'dex') && ['麻痹', '昏迷', '石化'].some(condition => conditions.includes(condition));
+  const adjustments: ModeAdjustment[] = [];
+  if (options.ability === 'dex' && conditions.includes('束缚')) adjustments.push({ mode: 'disadvantage', notes: ['目标束缚：敏捷豁免劣势'] });
+  const combined = combineAttackModes(options.mode ?? 'normal', adjustments);
+  if (automaticFailure) {
+    return { natural: 0, total: 0, dc: options.dc, success: false, mode: 'normal', automaticFailure: true, notes: [...combined.notes, '麻痹、昏迷或石化：力量／敏捷豁免自动失败'] };
+  }
+  const mode = combined.mode;
+  const first = rollDie(20, random);
+  const second = mode === 'normal' ? first : rollDie(20, random);
+  const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
+  const total = natural + bonus;
+  const success = natural === 20 || (natural !== 1 && total >= options.dc);
+  return { natural, total, dc: options.dc, success, mode, automaticFailure: false, notes: combined.notes };
+}
+
+function saveDetail(actor: Actor, battle: Battle, options: SaveOptions, outcome: SaveOutcome): string {
+  const bonus = options.bonus ?? 0;
+  const rollText = outcome.automaticFailure ? '自动失败' : outcome.mode === 'normal' ? `d20(${outcome.natural})` : `${outcome.mode === 'advantage' ? '优势' : '劣势'} d20→${outcome.natural}`;
+  return [
+    `${actorLabel(battle, actor)} 的${saveNames[options.ability]}豁免`,
+    `DC ${outcome.dc}`,
+    outcome.automaticFailure ? '自动失败' : `${rollText}${bonus >= 0 ? '+' : ''}${bonus} = ${outcome.total}`,
+    outcome.success ? '成功' : '失败',
+    outcome.notes.join('；'),
+  ].filter(Boolean).join(' · ');
+}
+
+export function savingThrow(battle: Battle, options: SaveOptions, deps: CombatDeps = {}): { battle: Battle; outcome: SaveOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, options.actorId);
+  if (!Number.isInteger(options.dc) || options.dc < 1 || options.dc > 40) throw new Error('豁免 DC 须为 1 至 40 的整数。');
+  const bonus = options.bonus ?? 0;
+  if (!Number.isInteger(bonus) || bonus < -10 || bonus > 30) throw new Error('豁免加值须为 -10 至 30 的整数。');
+  const outcome = resolveSave(actor, options, randomOf(deps));
+  addLog(next, `${actorLabel(next, actor)} 的${saveNames[options.ability]}豁免${outcome.success ? '成功' : '失败'}。`, deps, saveDetail(actor, next, options, outcome));
+  return { battle: next, outcome };
+}
+
+export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatDeps = {}): { battle: Battle; results: AreaSaveResult[] } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  parseDice(options.damageExpression);
+  if (!damageTypes.includes(options.damageType)) throw new Error('请选择有效的伤害类型。');
+  if (!Number.isInteger(options.dc) || options.dc < 1 || options.dc > 40) throw new Error('豁免 DC 须为 1 至 40 的整数。');
+  const targetIds = [...new Set(options.targetIds)];
+  if (!targetIds.length) throw new Error('请至少选择一个目标。');
+  if (targetIds.length > 20) throw new Error('一次最多结算 20 个目标。');
+  const random = randomOf(deps);
+  const raw = rollDamage(options.damageExpression, random, false);
+  const results: AreaSaveResult[] = [];
+  for (const targetId of targetIds) {
+    const actor = actorOf(next, targetId);
+    if (actor.combat?.status === 'dead') continue;
+    const save = resolveSave(actor, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: options.bonuses?.[targetId] ?? 0, mode: options.mode }, random);
+    const amount = save.success ? (options.halfOnSuccess === false ? 0 : Math.floor(raw.total / 2)) : raw.total;
+    const defense = defenseOf(actor, options.damageType);
+    const damage = amount > 0 ? applyDamageToActor(actor, amount, options.damageType) : { damage: 0, tempAbsorbed: 0, status: actor.combat?.status ?? 'active' };
+    results.push({ actorId: targetId, save, damage: damage.damage, tempAbsorbed: damage.tempAbsorbed, status: damage.status });
+    addLog(next, `${actorLabel(next, actor)} 的${saveNames[options.ability]}豁免${save.success ? '成功' : '失败'}，承受 ${damage.damage} 点${options.damageType}伤害。`, deps,
+      [saveDetail(actor, next, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: options.bonuses?.[targetId] ?? 0 }, save), `伤害 ${raw.total}${save.success ? `（减半 ${amount}）` : ''}`, defense.label, `剩余 ${actor.currentHp}/${actor.maxHp}`].filter(Boolean).join(' · '));
+  }
+  addLog(next, `范围效果结算：${results.length} 个目标，${results.filter(item => item.save.success).length} 个豁免成功。`, deps,
+    `${saveNames[options.ability]}豁免 DC ${options.dc} · ${options.damageExpression} ${options.damageType}${options.halfOnSuccess === false ? '' : '（成功减半）'}`);
+  return { battle: next, results };
 }
 
 export function rollDeathSave(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; outcome: DeathSaveOutcome } {
