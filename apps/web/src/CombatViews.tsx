@@ -4,9 +4,9 @@ import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
 import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, summonsOf } from './combat';
 import { attackSources, originLabels } from './attackSources';
-import { actionSurgeMax, attacksPerAction, hasSecondWind } from './combatModifiers';
+import { actionSurgeMax, attacksPerAction, coverTypes, hasSecondWind } from './combatModifiers';
 import { battleTranscript, exportBattle } from './battleTransfer';
-import type { AttackRange } from './combatModifiers';
+import type { AttackRange, CoverType } from './combatModifiers';
 import type { Ability } from './characters';
 
 const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
@@ -253,6 +253,7 @@ function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: 
   const [cost, setCost] = useState<AttackCost>('action');
   const [range, setRange] = useState<AttackRange>(first?.range ?? 'melee');
   const [distance, setDistance] = useState(String(first?.distanceFt ?? 5));
+  const [cover, setCover] = useState<CoverType>('无');
   const [attacks, setAttacks] = useState('1');
   const [message, setMessage] = useState('');
   const target = targets.find(item => item.id === targetId);
@@ -278,7 +279,7 @@ function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: 
     if (!Number.isInteger(count) || count < 1 || count > maxAttacks) { setMessage(`本回合的攻击次数须为 1 至 ${maxAttacks} 次。`); return; }
     setMessage('');
     const reachFt = range === 'melee' ? sources.find(item => item.id === sourceId)?.distanceFt : undefined;
-    const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count, ...(reachFt === undefined ? {} : { reachFt }) };
+    const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count, ...(reachFt === undefined ? {} : { reachFt }), ...(cover === '无' ? {} : { cover }) };
     if (count > 1) onAttackSequence(options); else onAttack(options);
   };
   return <form className="cmb-attack" onSubmit={submit}>
@@ -291,6 +292,7 @@ function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: 
       <label>伤害类型<select value={type} onChange={event => setType(event.target.value as DamageType)} aria-label="伤害类型">{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
       <label>距离<select value={range} aria-label="攻击距离" onChange={event => { const next = event.target.value as AttackRange; setRange(next); setDistance(next === 'melee' ? '5' : '30'); }}><option value="melee">近战</option><option value="ranged">远程</option></select></label>
       <label>距离（尺）<input type="number" min={0} max={600} step={5} value={distance} onChange={event => setDistance(event.target.value)} aria-label="与目标距离" /></label>
+      <label>目标掩体<select value={cover} onChange={event => setCover(event.target.value as CoverType)} aria-label="目标掩体">{coverTypes.map(item => <option key={item}>{item}</option>)}</select></label>
       <label>攻击次数<input type="number" min={1} max={maxAttacks} step={1} value={attacks} onChange={event => setAttacks(event.target.value)} aria-label="攻击次数" title={`额外攻击：本回合最多 ${maxAttacks} 次`} /></label>
       <label>检定<select value={mode} onChange={event => setMode(event.target.value as AttackMode)} aria-label="检定方式"><option value="normal">正常</option><option value="advantage">优势</option><option value="disadvantage">劣势</option></select></label>
       <label>消耗<select value={cost} onChange={event => setCost(event.target.value as AttackCost)} aria-label="消耗动作"><option value="action">动作</option><option value="bonus">附赠动作</option><option value="reaction">反应</option></select></label>

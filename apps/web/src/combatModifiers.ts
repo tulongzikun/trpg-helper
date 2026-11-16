@@ -5,6 +5,16 @@ export type AttackMode = 'normal' | 'advantage' | 'disadvantage';
 
 export type ModeAdjustment = { mode: AttackMode; notes: string[] };
 
+/** 掩体：半掩体 AC +2、四分之三掩体 AC +5；由攻击方在面板选择。 */
+export type CoverType = '无' | '半掩体' | '四分之三掩体';
+export const coverTypes: CoverType[] = ['无', '半掩体', '四分之三掩体'];
+export function coverAcBonus(cover: CoverType): number {
+  return cover === '半掩体' ? 2 : cover === '四分之三掩体' ? 5 : 0;
+}
+export function coverNote(cover: CoverType): string {
+  return cover === '无' ? '' : `目标处于${cover}（AC +${coverAcBonus(cover)}）`;
+}
+
 const conditionOf = (actor: Actor, condition: string) => actor.combat?.conditions.includes(condition) ?? false;
 const hasAny = (actor: Actor, list: string[]) => list.some(condition => conditionOf(actor, condition));
 

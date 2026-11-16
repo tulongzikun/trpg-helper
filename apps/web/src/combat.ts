@@ -4,8 +4,8 @@ import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
 import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, Position } from './battle';
 import { damageTypes } from './battle.ts';
-import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
-import type { AttackRange, ModeAdjustment } from './combatModifiers.ts';
+import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
+import type { AttackRange, CoverType, ModeAdjustment } from './combatModifiers.ts';
 
 export type Random = () => number;
 export type CombatDeps = { random?: Random; makeId?: () => string };
@@ -26,6 +26,8 @@ export type AttackOptions = {
   distanceFt?: number;
   /** 近战攻击的触及范围（尺），默认 5；远程忽略。 */
   reachFt?: number;
+  /** 目标所处的掩体，影响 AC。 */
+  cover?: CoverType;
   /** 一次攻击动作内的攻击次数，默认 1，不能超过该单位的额外攻击次数。 */
   attacks?: number;
 };
@@ -466,6 +468,7 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (range !== 'melee' && range !== 'ranged') throw new Error('请选择近战或远程攻击。');
   const reachFt = options.reachFt ?? 5;
   if (!Number.isInteger(reachFt) || reachFt < 5 || reachFt > 30) throw new Error('近战触及范围须为 5 至 30 尺的整数。');
+  if (options.cover !== undefined && !coverTypes.includes(options.cover)) throw new Error('掩体取值无效。');
   const measured = actorDistance(battle, attacker.id, target.id);
   if (measured !== undefined && range === 'melee' && measured > reachFt) throw new Error(`目标距离 ${measured} 尺，超出近战触及范围（${reachFt} 尺）。`);
   if (measured !== undefined && range === 'ranged' && measured > 600) throw new Error('目标距离超出远程攻击范围（600 尺）。');
@@ -487,7 +490,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const second = mode === 'normal' ? first : rollDie(20, random);
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
   const total = natural + options.attackBonus;
-  const targetAc = target.template.armorClass;
+  const targetAc = target.template.armorClass + (options.cover ? coverAcBonus(options.cover) : 0);
   const hit = natural === 20 || (natural !== 1 && total >= targetAc);
   const automaticCritical = hit && isAutomaticCritical(target, context.range, context.distanceFt);
   const critical = hit && (natural >= context.criticalRange || automaticCritical);
@@ -518,6 +521,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     `${actorLabel(battle, attacker)} → ${actorLabel(battle, target)}`,
     `攻击检定 ${rollText}${options.attackBonus >= 0 ? '+' : ''}${options.attackBonus} = ${total} vs AC ${targetAc}`,
     context.measured ? `方格距离 ${context.distanceFt} 尺` : '',
+    options.cover ? coverNote(options.cover) : '',
     hit ? (critical ? '重击' : '命中') : (natural === 1 ? '大失败' : '未命中'),
     damageText,
     defense,
