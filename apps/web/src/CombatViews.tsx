@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
@@ -32,6 +32,9 @@ export type CombatHandlers = {
   onDifficult: (x: number, y: number) => void;
   onWall: (x: number, y: number) => void;
   onDisengage: (actorId: string) => void;
+  onReady: (actorId: string, input: { action: string; trigger: string }) => void;
+  onTriggerReady: (actorId: string) => void;
+  onCancelReady: (actorId: string) => void;
   onOpportunity: (reactorId: string) => void;
   onDeclineOpportunity: (reactorId: string) => void;
   onActionSurge: (actorId: string) => void;
@@ -141,6 +144,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" disabled={state.actionUsed || state.disengaged} onClick={() => handlers.onDisengage(actor.id)}>{state.disengaged ? '本回合已撤离' : '撤离（消耗动作，本回合移动不引发借机攻击）'}</button>
     </div>
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
+    <ReadyPanel key={`ready-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <AiPanel key={`ai-${actor.id}`} battle={battle} actor={actor} onApply={setSuggestion} />
     <AttackForm key={actor.id} battle={battle} attacker={actor} suggestion={suggestion} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} />
     <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
@@ -272,8 +276,27 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   </div>;
 }
 
-function AiPanel({ battle, actor, onApply }: { battle: Battle; actor: Actor; onApply: (suggestion: AttackSuggestion) => void }) {
-  const suggestions = suggestAttacks(battle, actor.id);
+function ReadyPanel({ battle, actor, handlers }: { battle: Battle; actor: Actor; handlers: CombatHandlers }) {
+  const state = actor.combat;
+  const [action, setAction] = useState('');
+  const [trigger, setTrigger] = useState('');
+  if (!state) return null;
+  if (state.ready) {
+    return <div className="cmb-ongoing-list">
+      <span className="cmb-chip">准备中：{state.ready.action}（触发：{state.ready.trigger}）
+        <button type="button" className="cmb-chip-remove" aria-label="放弃准备动作" onClick={() => handlers.onCancelReady(actor.id)}>×</button>
+      </span>
+      <button type="button" className="button-secondary" disabled={state.reactionUsed} onClick={() => handlers.onTriggerReady(actor.id)}>触发（消耗反应）</button>
+    </div>;
+  }
+  return <div className="cmb-ready">
+    <label>准备动作<input value={action} maxLength={120} placeholder="例如：用短弓射击" aria-label="准备执行的动作" onChange={event => setAction(event.target.value)} /></label>
+    <label>触发条件<input value={trigger} maxLength={120} placeholder="例如：敌人进入射程" aria-label="触发条件" onChange={event => setTrigger(event.target.value)} /></label>
+    <button type="button" className="button-secondary" disabled={state.actionUsed || !action.trim() || !trigger.trim()} onClick={() => { handlers.onReady(actor.id, { action, trigger }); setAction(''); setTrigger(''); }}>准备动作（消耗动作）</button>
+  </div>;
+}
+
+function AiPanel({ battle, actor, onApply }: { battle: Battle; actor: Actor; onApply: (suggestion: AttackSuggestion) => void }) {  const suggestions = suggestAttacks(battle, actor.id);
   if (!suggestions.length) return null;
   const nameOf = (targetId: string) => {
     const target = battle.actors.find(item => item.id === targetId);

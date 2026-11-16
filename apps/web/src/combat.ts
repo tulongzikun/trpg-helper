@@ -1,8 +1,8 @@
-﻿import { abilityModifier, proficiencyBonus } from './characterRules.ts';
+import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
-import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, OpportunityPrompt, Position } from './battle';
+import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, OpportunityPrompt, Position, ReadyAction } from './battle';
 import { damageTypes } from './battle.ts';
 import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
 import { attackSources } from './attackSources.ts';
@@ -489,10 +489,59 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   const actor = nextTurnIndex(next);
   resetTurnResources(next, actor.id);
   addLog(next, `第 ${combat.round} 轮 · 轮到 ${actorLabel(next, actor)}（先攻 ${combatantOf(actor).initiative}）。`, deps);
+  if (actor.combat?.ready) { delete actor.combat.ready; addLog(next, `${actorLabel(next, actor)} 的准备动作在回合开始时失效。`, deps); }
   applyOngoingDamage(next, deps);
   syncSummonsInPlace(next, deps);
   tickSummonDurations(next, deps);
   delete combat.pendingOpportunity;
+  return next;
+}
+/** 准备动作：用本回合的动作换一个「满足触发条件时用反应执行」的承诺。 */
+export function readyAction(battle: Battle, actorId: string, input: ReadyAction, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (currentActorId(next) !== actor.id) throw new Error('只有当前回合的单位可以准备动作。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (state.ready) throw new Error('该单位已经有准备好的动作。');
+  const action = (input.action ?? '').trim();
+  const trigger = (input.trigger ?? '').trim();
+  if (!action) throw new Error('请填写准备执行的动作。');
+  if (!trigger) throw new Error('请填写触发条件。');
+  if (action.length > 120 || trigger.length > 120) throw new Error('动作与触发条件各不能超过 120 个字符。');
+  state.actionUsed = true;
+  state.ready = { action, trigger };
+  addLog(next, `${actorLabel(next, actor)} 准备「${action}」，触发条件：${trigger}。`, deps);
+  return next;
+}
+/** 触发准备好的动作：消耗反应并清空准备。 */
+export function triggerReadyAction(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (!state.ready) throw new Error('该单位没有准备好的动作。');
+  if (state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
+  if (state.status !== 'active') throw new Error('只有在场的单位可以执行准备好的动作。');
+  const ready = state.ready;
+  delete state.ready;
+  state.reactionUsed = true;
+  addLog(next, `${actorLabel(next, actor)} 用反应执行准备好的「${ready.action}」。`, deps);
+  return next;
+}
+/** 放弃准备好的动作（动作不返还）。 */
+export function cancelReadyAction(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (!state.ready) throw new Error('该单位没有准备好的动作。');
+  const action = state.ready.action;
+  delete state.ready;
+  addLog(next, `${actorLabel(next, actor)} 放弃准备好的「${action}」。`, deps);
   return next;
 }
 export function spendResource(battle: Battle, actorId: string, kind: AttackCost, deps: CombatDeps = {}): Battle {
@@ -1188,5 +1237,6 @@ export function combatantSummary(actor: Actor): string {
   if (state.status === 'down') return state.deathSaves.successes >= 3 ? '倒地（稳定）' : `倒地（${state.deathSaves.successes} 成功 / ${state.deathSaves.failures} 失败）`;
   return `先攻 ${state.initiative}`;
 }
+
 
 

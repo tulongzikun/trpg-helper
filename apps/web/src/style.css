@@ -140,3 +140,7 @@
 .cmb-ai li small { grid-column: 1 / -1; color: var(--muted); }
 .cmb-ai-ready { font-weight: 600; }
 .cmb-ai-wait { color: var(--muted); }
+
+.cmb-ready { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; background: #fbfcfe; }
+.cmb-ready label { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+.cmb-ready input { font-size: 0.9rem; padding: 4px 6px; }

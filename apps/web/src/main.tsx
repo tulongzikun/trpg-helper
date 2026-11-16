@@ -8,7 +8,7 @@ import { Characters } from './CharacterViews';
 import type { CharacterSnapshot } from './characters';
 import { addCharacter, addMonsters, emptyStore, readBattles, removeActor, writeBattles, type BattleStore, type Side } from './battle';
 import { importBattle } from './battleTransfer';
-import { addOngoingEffect, areaSave, attack, attackSequence, configureGrid, declineOpportunity, disengage, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
+import { addOngoingEffect, areaSave, attack, attackSequence, configureGrid, declineOpportunity, disengage, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -49,6 +49,9 @@ function App() {
   onDifficult:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleDifficultCell(battle,x,y))),
   onWall:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleWallCell(battle,x,y))),
   onDisengage:actorId=>tryBattle(()=>changeBattle(battleId,battle=>disengage(battle,actorId))),
+  onReady:(actorId,input)=>tryBattle(()=>changeBattle(battleId,battle=>readyAction(battle,actorId,input))),
+  onTriggerReady:actorId=>tryBattle(()=>changeBattle(battleId,battle=>triggerReadyAction(battle,actorId))),
+  onCancelReady:actorId=>tryBattle(()=>changeBattle(battleId,battle=>cancelReadyAction(battle,actorId))),
   onOpportunity:reactorId=>tryBattle(()=>changeBattle(battleId,battle=>opportunityAttack(battle,reactorId).battle)),
   onDeclineOpportunity:reactorId=>tryBattle(()=>changeBattle(battleId,battle=>declineOpportunity(battle,reactorId))),
   onActionSurge:actorId=>tryBattle(()=>changeBattle(battleId,battle=>useActionSurge(battle,actorId))),
@@ -74,4 +77,5 @@ function App() {
 }
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+
 

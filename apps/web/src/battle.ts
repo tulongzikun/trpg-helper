@@ -21,6 +21,8 @@ export type Concentration = { spell: string };
 export type OpportunityPrompt = { reactorId: string; targetId: string };
 /** 召唤物绑定：失去专注、施法者倒地或倒计时结束时消散。 */
 export type Summon = { ownerId: string; spell: string; rounds?: number };
+/** 准备动作：把动作换成「满足触发条件时用反应执行」。 */
+export type ReadyAction = { action: string; trigger: string };
 export type CombatantState = {
   initiative: number;
   tempHp: number;
@@ -41,6 +43,8 @@ export type CombatantState = {
   concentration?: Concentration;
   /** 本回合是否已撤离（移动不引发借机攻击）。 */
   disengaged?: boolean;
+  /** 准备动作：已经准备好了什么，以及触发的条件。 */
+  ready?: ReadyAction;
 };
 export type CombatLogEntry = { id: string; round: number; text: string; detail?: string };
 export type CombatState = {
@@ -89,6 +93,11 @@ function isOngoingEffect(value: unknown): value is OngoingEffect {
   const saveEnds = value.saveEnds;
   return isObject(saveEnds) && abilityKeys.includes(saveEnds.ability as Ability) && isInteger(saveEnds.dc, 1, 40);
 }
+function isReadyAction(value: unknown): value is ReadyAction {
+  if (!isObject(value)) return false;
+  const text = (item: unknown) => typeof item === 'string' && item.length > 0 && item.length <= 120;
+  return text(value.action) && text(value.trigger);
+}
 function isCombatant(value: unknown): value is CombatantState {
   if (!isObject(value)) return false;
   if (!isInteger(value.initiative, -99, 99)) return false;
@@ -98,6 +107,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.actionSurgeUsed !== undefined && !isInteger(value.actionSurgeUsed, 0, 2)) return false;
   if (value.secondWindUsed !== undefined && typeof value.secondWindUsed !== 'boolean') return false;
   if (value.disengaged !== undefined && typeof value.disengaged !== 'boolean') return false;
+  if (value.ready !== undefined && !isReadyAction(value.ready)) return false;
   if (value.ongoing !== undefined && (!Array.isArray(value.ongoing) || !value.ongoing.every(isOngoingEffect))) return false;
   if (value.concentration !== undefined && !(isObject(value.concentration) && typeof value.concentration.spell === 'string' && value.concentration.spell.length > 0)) return false;
   if (value.status !== 'active' && value.status !== 'down' && value.status !== 'dead') return false;
