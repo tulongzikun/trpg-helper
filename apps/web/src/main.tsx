@@ -8,7 +8,7 @@ import { Characters } from './CharacterViews';
 import type { CharacterSnapshot } from './characters';
 import { addCharacter, addMonsters, emptyStore, readBattles, removeActor, writeBattles, type BattleStore, type Side } from './battle';
 import { importBattle } from './battleTransfer';
-import { addOngoingEffect, areaSave, attack, attackSequence, configureGrid, declineOpportunity, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, undoCombat, useActionSurge } from './combat';
+import { addOngoingEffect, areaSave, attack, attackSequence, configureGrid, declineOpportunity, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -47,6 +47,7 @@ function App() {
   onGrid:grid=>tryBattle(()=>changeBattle(battleId,battle=>configureGrid(battle,grid))),
   onPlace:(actorId,x,y)=>tryBattle(()=>changeBattle(battleId,battle=>moveActorToCell(battle,actorId,x,y))),
   onDifficult:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleDifficultCell(battle,x,y))),
+  onWall:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleWallCell(battle,x,y))),
   onOpportunity:reactorId=>tryBattle(()=>changeBattle(battleId,battle=>opportunityAttack(battle,reactorId).battle)),
   onDeclineOpportunity:reactorId=>tryBattle(()=>changeBattle(battleId,battle=>declineOpportunity(battle,reactorId))),
   onActionSurge:actorId=>tryBattle(()=>changeBattle(battleId,battle=>useActionSurge(battle,actorId))),

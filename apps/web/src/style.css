@@ -125,6 +125,7 @@
 .cmb-cell.difficult{background-image:repeating-linear-gradient(45deg,#efe6cf 0 3px,#f8f2e2 3px 6px);border-style:dashed;border-color:#c9b489}
 .cmb-cell.difficult.occupied{background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.06) 0 3px,transparent 3px 6px)}
 .cmb-cell.terrain-edit{border-color:#b08a4a}
+.cmb-cell.wall{background:#5b5b52;border-color:#3f3f38;background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.08) 0 4px,transparent 4px 8px)}
 .cmb-chip-action{cursor:pointer;border-style:dashed}
 .cmb-chip-action:hover{background:#e9f0e2}
 

@@ -223,12 +223,57 @@ export function toggleDifficultCell(battle: Battle, x: number, y: number, deps: 
   else delete next.difficult;
   return next;
 }
+/** 墙体格子。 */
+export function wallCells(battle: Battle): Position[] {
+  return battle.walls ?? [];
+}
+/** 判断某个格子是否为墙体。 */
+export function isWallCell(battle: Battle, x: number, y: number): boolean {
+  return (battle.walls ?? []).some(cell => cell.x === x && cell.y === y);
+}
+/** 两点之间（不含端点）经过的格子，按 Chebyshev 距离逐格取整。 */
+function lineCells(from: Position, to: Position): Position[] {
+  const steps = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+  const cells: Position[] = [];
+  for (let step = 1; step < steps; step += 1) {
+    cells.push({ x: from.x + Math.round((to.x - from.x) * step / steps), y: from.y + Math.round((to.y - from.y) * step / steps) });
+  }
+  return cells;
+}
+/** 两格之间是否没有被墙体阻挡的直线视线。 */
+export function hasLineOfSight(battle: Battle, from: Position, to: Position): boolean {
+  if (!battle.grid) return true;
+  return !lineCells(from, to).some(cell => isWallCell(battle, cell.x, cell.y));
+}
+/** 在方格战场上切换某格的墙体标记（阻挡移动与远程视线）。 */
+export function toggleWallCell(battle: Battle, x: number, y: number, deps: CombatDeps = {}): Battle {
+  const grid = battle.grid;
+  if (!grid) throw new Error('请先启用方格战场。');
+  if (!Number.isInteger(x) || !Number.isInteger(y)) throw new Error('格子坐标须为整数。');
+  if (x < 0 || y < 0 || x >= grid.width || y >= grid.height) throw new Error('目标格子超出战场范围。');
+  const next = recordUndo(structuredClone(battle));
+  const list = [...(next.walls ?? [])];
+  const index = list.findIndex(cell => cell.x === x && cell.y === y);
+  if (index >= 0) {
+    list.splice(index, 1);
+    addLog(next, `拆除 (${x}, ${y}) 的墙体。`, deps);
+  } else {
+    const occupant = next.actors.find(actor => actor.position?.x === x && actor.position?.y === y);
+    if (occupant) throw new Error(`该格已有单位：${occupant.name}，无法设为墙体。`);
+    list.push({ x, y });
+    addLog(next, `(${x}, ${y}) 设为墙体。`, deps);
+  }
+  if (list.length) next.walls = list;
+  else delete next.walls;
+  return next;
+}
 /** 启用、调整或关闭方格战场；关闭时清除所有位置。 */
 export function configureGrid(battle: Battle, grid: GridConfig | null, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   if (grid === null) {
     delete next.grid;
     delete next.difficult;
+    delete next.walls;
     next.actors.forEach(actor => { delete actor.position; });
     addLog(next, '关闭方格战场，清除所有单位位置。', deps);
     return next;
@@ -246,6 +291,11 @@ export function configureGrid(battle: Battle, grid: GridConfig | null, deps: Com
     if (kept.length) next.difficult = kept;
     else delete next.difficult;
   }
+  if (next.walls) {
+    const kept = next.walls.filter(cell => cell.x < width && cell.y < height);
+    if (kept.length) next.walls = kept;
+    else delete next.walls;
+  }
   addLog(next, `方格战场设为 ${width}×${height}，每格 ${cellFt} 尺。`, deps);
   return next;
 }
@@ -261,6 +311,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   if (from && from.x === x && from.y === y) throw new Error('单位已经在该格。');
   const occupied = battle.actors.find(actor => actor.id !== actorId && actor.position?.x === x && actor.position?.y === y);
   if (occupied) throw new Error(`该格已有单位：${occupied.name}。`);
+  if (isWallCell(battle, x, y)) throw new Error('不能移动到墙体格子。');
   const next = recordUndo(structuredClone(battle));
   const actor = actorOf(next, actorId);
   if (!from) {
@@ -273,6 +324,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const state = combatantOf(actor);
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
+  if (lineCells(from, { x, y }).some(cell => isWallCell(next, cell.x, cell.y))) throw new Error('移动路径被墙体阻挡。');
   const rough = isDifficultCell(next, x, y);
   const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1);
   const speed = actorSpeed(actor);
@@ -586,6 +638,7 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   const measured = actorDistance(battle, attacker.id, target.id);
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'melee' && measured > reachFt) throw new Error(`目标距离 ${measured} 尺，超出近战触及范围（${reachFt} 尺）。`);
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && measured > 600) throw new Error('目标距离超出远程攻击范围（600 尺）。');
+  if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && attacker.position && target.position && !hasLineOfSight(battle, attacker.position, target.position)) throw new Error('视线被墙体阻挡，无法进行远程攻击。');
   const distanceFt = options.ignoreDistanceCheck ? (options.distanceFt ?? reachFt) : (measured ?? options.distanceFt ?? (range === 'melee' ? reachFt : 30));
   if (!Number.isInteger(distanceFt) || distanceFt < 0 || distanceFt > 600) throw new Error('距离须为 0 至 600 尺的整数。');
   return { attacker, target, cost, criticalRange, range, distanceFt, measured: measured !== undefined };

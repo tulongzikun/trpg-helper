@@ -70,7 +70,7 @@ export type Actor = {
   /** 在方格战场上的位置；未放置时不参与距离校验。 */
   position?: Position;
 };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; difficult?: Position[] };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; difficult?: Position[]; walls?: Position[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -144,7 +144,8 @@ function isBattle(value: unknown): boolean {
     && Array.isArray(value.actors) && value.actors.every(isActor)
     && (value.combat === undefined || isCombatState(value.combat))
     && (value.grid === undefined || isGrid(value.grid))
-    && (value.difficult === undefined || (Array.isArray(value.difficult) && value.difficult.length <= 400 && value.difficult.every(isPosition)));
+    && (value.difficult === undefined || (Array.isArray(value.difficult) && value.difficult.length <= 400 && value.difficult.every(isPosition)))
+    && (value.walls === undefined || (Array.isArray(value.walls) && value.walls.length <= 400 && value.walls.every(isPosition)));
 }
 
 /** 校验外部来源的战斗数据，失败时抛出中文错误，供导入功能使用。 */
