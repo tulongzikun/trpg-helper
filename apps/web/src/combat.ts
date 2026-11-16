@@ -1,4 +1,4 @@
-import { abilityModifier, proficiencyBonus } from './characterRules.ts';
+﻿import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
@@ -29,6 +29,7 @@ export type AttackOptions = {
   reachFt?: number;
   /** 目标所处的掩体，影响 AC。 */
   cover?: CoverType;
+  autoCover?: boolean;
   /** 借机攻击等场合：跳过方格距离与触及校验（触发时机在离开触及范围的瞬间）。 */
   ignoreDistanceCheck?: boolean;
   /** 一次攻击动作内的攻击次数，默认 1，不能超过该单位的额外攻击次数。 */
@@ -244,6 +245,18 @@ function lineCells(from: Position, to: Position): Position[] {
 export function hasLineOfSight(battle: Battle, from: Position, to: Position): boolean {
   if (!battle.grid) return true;
   return !lineCells(from, to).some(cell => isWallCell(battle, cell.x, cell.y));
+}
+/** 由墙体与射击线上相邻的遮挡推算掩体等级：贴着一道墙为半掩体，被两处以上夹住为四分之三掩体。 */
+export function coverFromWalls(battle: Battle, from: Position, to: Position): CoverType {
+  if (!battle.grid) return '无';
+  const walls = battle.walls ?? [];
+  if (!walls.length) return '无';
+  const path = lineCells(from, to);
+  const neighbours: Position[] = [...path, from, to];
+  const touching = walls.filter(wall => neighbours.some(cell => Math.max(Math.abs(cell.x - wall.x), Math.abs(cell.y - wall.y)) <= 1));
+  if (touching.length >= 2) return '四分之三掩体';
+  if (touching.length === 1) return '半掩体';
+  return '无';
 }
 /** 在方格战场上切换某格的墙体标记（阻挡移动与远程视线）。 */
 export function toggleWallCell(battle: Battle, x: number, y: number, deps: CombatDeps = {}): Battle {
@@ -627,7 +640,7 @@ export function toggleCondition(battle: Battle, actorId: string, condition: stri
   addLog(next, `${actorLabel(next, actor)} ${active ? '移除' : '获得'}状态：${condition}。`, deps);
   return next;
 }
-type AttackContext = { attacker: Actor; target: Actor; cost: AttackCost; criticalRange: number; range: AttackRange; distanceFt: number; measured: boolean };
+type AttackContext = { attacker: Actor; target: Actor; cost: AttackCost; criticalRange: number; range: AttackRange; distanceFt: number; measured: boolean; cover?: CoverType };
 
 function validateAttackOptions(battle: Battle, options: AttackOptions): AttackContext {
   requireCombat(battle);
@@ -659,7 +672,8 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && attacker.position && target.position && !hasLineOfSight(battle, attacker.position, target.position)) throw new Error('视线被墙体阻挡，无法进行远程攻击。');
   const distanceFt = options.ignoreDistanceCheck ? (options.distanceFt ?? reachFt) : (measured ?? options.distanceFt ?? (range === 'melee' ? reachFt : 30));
   if (!Number.isInteger(distanceFt) || distanceFt < 0 || distanceFt > 600) throw new Error('距离须为 0 至 600 尺的整数。');
-  return { attacker, target, cost, criticalRange, range, distanceFt, measured: measured !== undefined };
+  const cover = options.cover ?? (options.autoCover && attacker.position && target.position ? coverFromWalls(battle, attacker.position, target.position) : undefined);
+  return { attacker, target, cost, criticalRange, range, distanceFt, measured: measured !== undefined, cover };
 }
 
 function resolveOneAttack(battle: Battle, options: AttackOptions, context: AttackContext, deps: CombatDeps, consumeCost: boolean): AttackOutcome {
@@ -675,7 +689,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const second = mode === 'normal' ? first : rollDie(20, random);
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
   const total = natural + options.attackBonus;
-  const targetAc = target.template.armorClass + (options.cover ? coverAcBonus(options.cover) : 0);
+  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0);
   const hit = natural === 20 || (natural !== 1 && total >= targetAc);
   const automaticCritical = hit && isAutomaticCritical(target, context.range, context.distanceFt);
   const critical = hit && (natural >= context.criticalRange || automaticCritical);
@@ -706,7 +720,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     `${actorLabel(battle, attacker)} → ${actorLabel(battle, target)}`,
     `攻击检定 ${rollText}${options.attackBonus >= 0 ? '+' : ''}${options.attackBonus} = ${total} vs AC ${targetAc}`,
     context.measured ? `方格距离 ${context.distanceFt} 尺` : '',
-    options.cover ? coverNote(options.cover) : '',
+    context.cover ? coverNote(context.cover) : '',
     hit ? (critical ? '重击' : '命中') : (natural === 1 ? '大失败' : '未命中'),
     damageText,
     defense,
@@ -1174,3 +1188,5 @@ export function combatantSummary(actor: Actor): string {
   if (state.status === 'down') return state.deathSaves.successes >= 3 ? '倒地（稳定）' : `倒地（${state.deathSaves.successes} 成功 / ${state.deathSaves.failures} 失败）`;
   return `先攻 ${state.initiative}`;
 }
+
+
