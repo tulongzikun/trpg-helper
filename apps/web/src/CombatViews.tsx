@@ -1,9 +1,11 @@
-﻿import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
 import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
 import { attackSources, originLabels } from './attackSources';
+import type { AttackSuggestion } from './combatAi';
+import { suggestAttacks } from './combatAi';
 import { actionSurgeMax, attacksPerAction, coverTypes, hasSecondWind } from './combatModifiers';
 import { battleTranscript, exportBattle } from './battleTransfer';
 import type { AttackRange, CoverType } from './combatModifiers';
@@ -109,6 +111,7 @@ export function InitiativeRail({ battle }: { battle: Battle }) {
 }
 
 export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: CombatHandlers }) {
+  const [suggestion, setSuggestion] = useState<AttackSuggestion | null>(null);
   const actor = currentActor(battle);
   if (!actor || !actor.combat) return null;
   const state = actor.combat;
@@ -138,7 +141,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" disabled={state.actionUsed || state.disengaged} onClick={() => handlers.onDisengage(actor.id)}>{state.disengaged ? '本回合已撤离' : '撤离（消耗动作，本回合移动不引发借机攻击）'}</button>
     </div>
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
-    <AttackForm key={actor.id} battle={battle} attacker={actor} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} />
+    <AiPanel key={`ai-${actor.id}`} battle={battle} actor={actor} onApply={setSuggestion} />
+    <AttackForm key={actor.id} battle={battle} attacker={actor} suggestion={suggestion} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} />
     <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
     <OngoingPanel key={`ongoing-${actor.id}`} battle={battle} handlers={handlers} />
     <SummonPanel key={`summon-${actor.id}`} battle={battle} handlers={handlers} />
@@ -268,7 +272,26 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   </div>;
 }
 
-function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: Battle; attacker: Actor; onAttack: (options: AttackOptions) => void; onAttackSequence: (options: AttackOptions) => void }) {
+function AiPanel({ battle, actor, onApply }: { battle: Battle; actor: Actor; onApply: (suggestion: AttackSuggestion) => void }) {
+  const suggestions = suggestAttacks(battle, actor.id);
+  if (!suggestions.length) return null;
+  const nameOf = (targetId: string) => {
+    const target = battle.actors.find(item => item.id === targetId);
+    return target ? actorLabel(battle, target) : '未知目标';
+  };
+  return <div className="cmb-ai">
+    <div className="cmb-ai-head"><h4>战术建议</h4><small>按能否立即攻击、目标血量与平均伤害排序</small></div>
+    <ul>
+      {suggestions.map(item => <li key={`${item.targetId}:${item.source.id}`}>
+        <span className={item.inRange ? 'cmb-ai-ready' : 'cmb-ai-wait'}>{nameOf(item.targetId)} · {item.source.label}</span>
+        <small>{item.reason}</small>
+        <button type="button" className="button-secondary" disabled={!item.inRange} onClick={() => onApply(item)}>填入攻击表单</button>
+      </li>)}
+    </ul>
+  </div>;
+}
+
+function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence }: { battle: Battle; attacker: Actor; suggestion?: AttackSuggestion | null; onAttack: (options: AttackOptions) => void; onAttackSequence: (options: AttackOptions) => void }) {
   const sources = attackSources(attacker);
   const first = sources[0];
   const targets = availableTargets(battle, attacker.id);
@@ -285,6 +308,18 @@ function AttackForm({ battle, attacker, onAttack, onAttackSequence }: { battle: 
   const [cover, setCover] = useState<CoverType>('无');
   const [attacks, setAttacks] = useState('1');
   const [message, setMessage] = useState('');
+  useEffect(() => {
+    if (!suggestion) return;
+    setTargetId(suggestion.targetId);
+    const source = sources.find(item => item.id === suggestion.source.id);
+    if (!source) return;
+    setSourceId(source.id);
+    setBonus(String(source.attackBonus));
+    setDamage(source.damageExpression);
+    setType(source.damageType);
+    setRange(source.range);
+    setDistance(String(source.distanceFt));
+  }, [suggestion]);
   const target = targets.find(item => item.id === targetId);
   if (!targets.length) return <p className="cmb-hint">当前没有可攻击的目标。</p>;
   const applySource = (id: string) => {
@@ -550,4 +585,7 @@ export function BattleIo({ battle, onImport }: { battle: Battle; onImport: (text
     </details>
   </section>;
 }
+
+
+
 
