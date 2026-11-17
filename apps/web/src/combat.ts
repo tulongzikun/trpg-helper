@@ -492,6 +492,54 @@ export function blessTargets(battle: Battle, casterId: string): Actor[] {
     && (!battle.grid || !caster.position || !item.position || (actorDistance(battle, casterId, item.id) ?? 0) <= 30));
 }
 
+const GREASE_DC = 13;
+
+/** 该格是否被油腻术覆盖。 */
+export function greaseAt(battle: Battle, x: number, y: number): boolean {
+  return (battle.grease ?? []).some(cell => cell.x === x && cell.y === y);
+}
+
+/** 站在油污上的单位做 DC 13 敏捷豁免，失败倒地；飞行单位不受影响。 */
+function greaseFall(battle: Battle, actor: Actor, deps: CombatDeps): boolean {
+  const state = combatantOf(actor);
+  if (state.flying === true) return false;
+  const position = actor.position;
+  if (!position || !greaseAt(battle, position.x, position.y)) return false;
+  const save = resolveSave(actor, { actorId: actor.id, ability: 'dex', dc: GREASE_DC, bonus: defaultSaveBonus(actor, 'dex') + auraBonus(battle, actor.id, 'saves') }, randomOf(deps));
+  if (save.success) {
+    addLog(battle, `${actorLabel(battle, actor)} 在油污上稳住了脚（敏捷豁免 DC ${GREASE_DC} 成功）。`, deps);
+    return false;
+  }
+  if (!state.conditions.includes('倒地')) state.conditions.push('倒地');
+  addLog(battle, `${actorLabel(battle, actor)} 在油污上滑倒，倒地。`, deps);
+  return true;
+}
+
+/** 油腻术：动作施放，指定若干格（最多 12 格）；进入或回合开始时需通过 DC 13 敏捷豁免，失败倒地。 */
+export function castGrease(battle: Battle, casterId: string, cells: Position[], deps: CombatDeps = {}): Battle {
+  if (!battle.grid) throw new Error('请先启用方格战场。');
+  const unique = new Map<string, Position>();
+  for (const cell of cells) {
+    if (!Number.isInteger(cell.x) || !Number.isInteger(cell.y)) throw new Error('油腻术的格子坐标须为整数。');
+    if (cell.x < 0 || cell.y < 0 || cell.x >= battle.grid.width || cell.y >= battle.grid.height) throw new Error('油腻术的格子超出战场范围。');
+    unique.set(`${cell.x},${cell.y}`, { x: cell.x, y: cell.y });
+  }
+  if (!unique.size) throw new Error('请选择油腻术覆盖的格子。');
+  if (unique.size > 12) throw new Error('油腻术最多覆盖 12 格。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const state = combatantOf(caster);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放油腻术。');
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  state.actionUsed = true;
+  const list = [...unique.values()];
+  const keys = new Set(list.map(cell => `${cell.x},${cell.y}`));
+  next.grease = [...(next.grease ?? []).filter(cell => !keys.has(`${cell.x},${cell.y}`)), ...list];
+  addLog(next, `${actorLabel(next, caster)} 施放油腻术：油污覆盖 ${list.length} 格，进入或回合开始时需通过 DC ${GREASE_DC} 敏捷豁免，失败倒地。`, deps);
+  return next;
+}
+
 /** 施法者可选的法术目标：同阵营、非自身、在场、默认 30 尺内。 */
 export function spellTargets(battle: Battle, casterId: string, rangeFt = 30): Actor[] {
   const caster = battle.actors.find(item => item.id === casterId);
@@ -956,6 +1004,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   state.movementUsed += cost;
   actor.position = { x, y };
   addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}。`, deps);
+  if (greaseAt(next, x, y) && !flying) greaseFall(next, actor, deps);
   if (icy && !flying) {
     const stumble = resolveSave(actor, { actorId: actor.id, ability: 'dex', dc: 10, bonus: defaultSaveBonus(actor, 'dex') + auraBonus(next, actor.id, 'saves') }, randomOf(deps));
     if (!stumble.success) {
@@ -3037,6 +3086,11 @@ export function tickTurnStart(battle: Battle, deps: CombatDeps = {}): Battle {
   requireCombat(battle);
   const next = recordUndo(structuredClone(battle));
   applyOngoingDamage(next, deps);
+  const current = currentActorId(next);
+  if (current) {
+    const actor = next.actors.find(item => item.id === current);
+    if (actor && (actor.combat?.status ?? 'active') === 'active') greaseFall(next, actor, deps);
+  }
   return next;
 }
 
