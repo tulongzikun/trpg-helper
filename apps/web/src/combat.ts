@@ -1104,6 +1104,27 @@ export function escapeWeb(battle: Battle, actorId: string, deps: CombatDeps = {}
   return { battle: next, outcome: save };
 }
 
+/** 用动作强行挣脱藤蔓：力量豁免 DC 13，成败都消耗动作。 */
+export function escapeEntangle(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; outcome: SaveOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以挣脱藤蔓。');
+  const state = combatantOf(actor);
+  if (state.entangled !== true) throw new Error('该单位没有被藤蔓缠住。');
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const save = resolveSave(actor, { actorId, ability: 'str', dc: ENTANGLE_DC, bonus: defaultSaveBonus(actor, 'str') + auraBonus(next, actorId, 'saves') }, randomOf(deps));
+  state.actionUsed = true;
+  if (save.success) {
+    delete state.entangled;
+    state.conditions = state.conditions.filter(condition => condition !== '束缚');
+  }
+  addLog(next, save.success
+    ? `${actorLabel(next, actor)} 用动作挣脱了藤蔓（力量 ${save.natural} → ${save.total} 对 DC ${ENTANGLE_DC}）。`
+    : `${actorLabel(next, actor)} 没能挣脱藤蔓（力量 ${save.natural} → ${save.total} 对 DC ${ENTANGLE_DC}）。`, deps);
+  return { battle: next, outcome: save };
+}
+
 /** 施法者可选的法术目标：同阵营、非自身、在场、默认 30 尺内。 */
 export function spellTargets(battle: Battle, casterId: string, rangeFt = 30): Actor[] {
   const caster = battle.actors.find(item => item.id === casterId);
