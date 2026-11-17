@@ -49,7 +49,7 @@ function App() {
   onEscapeGrapple:actorId=>tryBattle(()=>changeBattle(battleId,battle=>escapeGrapple(battle,actorId).battle)),
   onAuto:actorId=>tryBattle(()=>changeBattle(battleId,battle=>autoAct(battle,actorId).battle)),
   onAutoTurn:actorId=>tryBattle(()=>changeBattle(battleId,battle=>autoTurn(battle,actorId).battle)),
-  onAutoSide:side=>tryBattle(()=>changeBattle(battleId,battle=>autoSide(battle,side).battle)),
+  onAutoSide:side=>tryBattle(()=>changeBattle(battleId,battle=>{const result=autoSide(battle,side); if(result.stopped&&result.stopped.reason!=='finished'){ console.info(result.stopped.text); } return result.battle;})),
   onFall:(actorId,feet)=>tryBattle(()=>changeBattle(battleId,battle=>applyFallDamage(battle,actorId,feet).battle)),
   onCast:options=>tryBattle(()=>changeBattle(battleId,battle=>castSpell(battle,options).battle)),
   onSetSlots:(actorId,slots)=>tryBattle(()=>changeBattle(battleId,battle=>setSpellSlots(battle,actorId,slots))),

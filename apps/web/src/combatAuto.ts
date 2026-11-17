@@ -228,25 +228,45 @@ export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {},
 
 export type AutoSideOptions = { maxTurns?: number };
 
+/** 自动推行为什么停下来：界面与战报据此提示，不必再猜。 */
+export type AutoSideStop = { reason: 'finished' | 'missing' | 'side' | 'incapacitated' | 'limit'; text: string };
+
 /** 连续推进同一阵营的回合，直到轮到其他阵营或达到上限。 */
-export function autoSide(battle: Battle, side: Side, deps: CombatDeps = {}, options: AutoSideOptions = {}): { battle: Battle; turns: string[] } {
+export function autoSide(battle: Battle, side: Side, deps: CombatDeps = {}, options: AutoSideOptions = {}): { battle: Battle; turns: string[]; stopped?: AutoSideStop } {
   if (!battle.combat) throw new Error('战斗尚未开始。');
   const turns: string[] = [];
+  let stopped: AutoSideStop | undefined;
   let current = battle;
   const maxTurns = Math.max(1, Math.min(30, options.maxTurns ?? 10));
   for (let index = 0; index < maxTurns; index++) {
     const actorId = currentActorId(current);
-    if (!actorId) break;
+    if (!actorId) {
+      stopped = { reason: 'missing', text: '没有当前行动者，停止自动推进。' };
+      break;
+    }
     if (battleOutcome(current) !== 'ongoing') {
       turns.push('战斗已经结束，停止自动推进。');
+      stopped = { reason: 'finished', text: '战斗已经结束，停止自动推进。' };
       break;
     }
     const actor = current.actors.find(item => item.id === actorId);
-    if (!actor || actor.side !== side || actor.combat?.status !== 'active') break;
+    if (!actor) {
+      stopped = { reason: 'missing', text: '当前行动者已不在战斗中，停止自动推进。' };
+      break;
+    }
+    if (actor.side !== side) {
+      stopped = { reason: 'side', text: `轮到 ${actor.name}（${actor.side}），不属于${side}，停止自动推进。` };
+      break;
+    }
+    if (actor.combat?.status !== 'active') {
+      stopped = { reason: 'incapacitated', text: `${actor.name} 已无法行动，停止自动推进。` };
+      break;
+    }
     const result = autoTurn(current, actorId, deps);
     turns.push(`${actor.name}：${result.text}`);
     current = result.battle;
     if (currentActorId(current) === actorId) break;
   }
-  return { battle: current, turns };
+  if (!stopped && turns.length >= maxTurns) stopped = { reason: 'limit', text: `已达到自动推进上限（${maxTurns} 回合）。` };
+  return stopped ? { battle: current, turns, stopped } : { battle: current, turns };
 }
