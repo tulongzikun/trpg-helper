@@ -65,7 +65,7 @@ function App() {
   onWall:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleWallCell(battle,x,y))),
   onHazard:(x,y,expression,type)=>tryBattle(()=>changeBattle(battleId,battle=>hazardAt(battle,x,y)?removeHazard(battle,x,y):addHazard(battle,{x,y,damageExpression:expression,damageType:type}))),
   onDisengage:actorId=>tryBattle(()=>changeBattle(battleId,battle=>disengage(battle,actorId))),
-    onTerrain:(terrain:'normal'|'underwater')=>tryBattle(()=>changeBattle(battleId,battle=>setTerrain(battle,terrain))),
+    onTerrain:(terrain)=>tryBattle(()=>changeBattle(battleId,battle=>setTerrain(battle,terrain))),
       onInitiative:(actorId:string,initiative:number)=>tryBattle(()=>changeBattle(battleId,battle=>setInitiative(battle,actorId,initiative))),
       onCheck:(options)=>tryBattle(()=>changeBattle(battleId,battle=>abilityCheck(battle,options).battle)),
       onHeal:(targetId,amount)=>tryBattle(()=>changeBattle(battleId,battle=>healActor(spendResource(battle,currentActorId(battle) ?? '', 'action'),targetId,amount))),

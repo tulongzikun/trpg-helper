@@ -427,12 +427,14 @@ function applyHazardAt(battle: Battle, actor: Actor, x: number, y: number, deps:
 export function setTerrain(battle: Battle, terrain: Terrain, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
-  if (terrain !== 'normal' && terrain !== 'underwater') throw new Error('战场地形取值无效。');
+  if (terrain !== 'normal' && terrain !== 'underwater' && terrain !== 'climbing') throw new Error('战场地形取值无效。');
   if (terrain === 'normal') delete next.terrain;
   else next.terrain = terrain;
   addLog(next, terrain === 'underwater'
     ? '战场进入水下环境：远程攻击检定劣势，超出常规射程自动失手。'
-    : '战场恢复为普通地形。', deps);
+    : terrain === 'climbing'
+      ? '战场进入攀爬环境：移动消耗翻倍。'
+      : '战场恢复为普通地形。', deps);
   return next;
 }
 
@@ -498,12 +500,13 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   if (lineCells(from, { x, y }).some(cell => isWallCell(next, cell.x, cell.y))) throw new Error('移动路径被墙体阻挡。');
   const rough = isDifficultCell(next, x, y);
   const swimming = next.terrain === 'underwater';
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1) * (swimming ? 2 : 1);
+  const climbing = next.terrain === 'climbing';
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1) * (swimming || climbing ? 2 : 1);
   const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}${swimming ? '，水下游泳使消耗翻倍' : ''}。`, deps);
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}${swimming ? '，水下游泳使消耗翻倍' : ''}${climbing ? '，攀爬使消耗翻倍' : ''}。`, deps);
   applyHazardAt(next, actor, x, y, deps);
   const triggered = threatPrompts(next, actor, from, { x, y });
   if (triggered.length) {

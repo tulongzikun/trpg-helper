@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Actor, Battle, DamageType, GridConfig, Position, Side } from './battle';
+import type { Actor, Battle, DamageType, GridConfig, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput } from './combat';
 import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
@@ -20,7 +20,7 @@ const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', co
 export type CombatHandlers = {
   onStart: (initiatives: Record<string, number>) => void;
   onEndTurn: () => void;
-  onTerrain: (terrain: 'normal' | 'underwater') => void;
+  onTerrain: (terrain: Terrain) => void;
   onInitiative: (actorId: string, initiative: number) => void;
   onCheck: (options: CheckOptions) => void;
   onHeal: (targetId: string, amount: number) => void;
@@ -104,7 +104,7 @@ export function CombatSetup({ battle, onStart }: { battle: Battle; onStart: (ini
   </section>;
 }
 
-export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain }: { battle: Battle; onEndTurn: () => void; onUndo: () => void; onReset: () => void; onTerrain?: (terrain: 'normal' | 'underwater') => void }) {
+export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain }: { battle: Battle; onEndTurn: () => void; onUndo: () => void; onReset: () => void; onTerrain?: (terrain: Terrain) => void }) {
   const combat = battle.combat;
   if (!combat) return null;
   const current = currentActor(battle);
@@ -114,7 +114,7 @@ export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain }:
       <button className="button-primary" type="button" onClick={onEndTurn}>结束回合</button>
       <button className="button-secondary" type="button" onClick={onUndo} disabled={!combat.undo.length}>撤销上一步</button>
       <button className="button-secondary" type="button" onClick={onReset} title="清除先攻与回合记录；生命值不会恢复">重置战斗</button>
-      {onTerrain ? <label className="cmb-inline-action">地形<select value={battle.terrain ?? 'normal'} onChange={event => onTerrain(event.target.value as 'normal' | 'underwater')} aria-label="战场地形"><option value="normal">普通</option><option value="underwater">水下</option></select></label> : null}
+      {onTerrain ? <label className="cmb-inline-action">地形<select value={battle.terrain ?? 'normal'} onChange={event => onTerrain(event.target.value as Terrain)} aria-label="战场地形"><option value="normal">普通</option><option value="underwater">水下</option><option value="climbing">攀爬</option></select></label> : null}
     </div>
   </div>;
 }

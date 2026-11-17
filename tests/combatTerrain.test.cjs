@@ -115,3 +115,20 @@ test('水下移动超出速度上限时拒绝', () => {
   const underwater = setTerrain(battle, 'underwater');
   assert.throws(() => moveActorToCell(underwater, friend.id, 8, 1), /移动距离超出速度上限（30 尺）/);
 });
+
+test('攀爬地形下移动消耗翻倍', () => {
+  const { battle, friend } = setup('短弓', 3);
+  const climbing = setTerrain(battle, 'climbing');
+  const moved = moveActorToCell(climbing, friend.id, 1, 2);
+  assert.equal(moved.actors.find(actor => actor.id === friend.id).combat.movementUsed, 10);
+  assert.match(moved.combat.log.at(-1).text, /攀爬使消耗翻倍/);
+});
+
+test('攀爬地形不影响火焰伤害', () => {
+  const { battle, monster } = setup('短弓', 3);
+  const climbing = setTerrain(battle, 'climbing');
+  const before = climbing.actors.find(actor => actor.id === monster.id).currentHp;
+  const result = damageActor(climbing, monster.id, 6, '火焰', { random: sequence(0.5), makeId: ids() });
+  const after = result.battle.actors.find(actor => actor.id === monster.id).currentHp;
+  assert.equal(before - after, 6);
+});
