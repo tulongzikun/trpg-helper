@@ -34,6 +34,36 @@ export function readyOf(actor: Actor): string {
   return `准备「${ready.action}」${trigger}${used}`;
 }
 
+/** 单位身上还在生效的状态，带剩余轮数，例如「祝福（10 轮）」「被藤蔓缠住」。 */
+export function effectsOf(actor: Actor): string[] {
+  const state = actor.combat;
+  if (!state) return [];
+  const parts: string[] = [];
+  const add = (label: string, rounds?: number) => {
+    if (rounds === undefined || rounds === null || rounds <= 0) return;
+    parts.push(`${label}（${rounds} 轮）`);
+  };
+  if (state.sleeping === true) parts.push('沉睡');
+  if (state.commanded === 'halt') parts.push('命令：停止');
+  if (state.entangled === true) parts.push('被藤蔓缠住');
+  if (state.suppressed === true) parts.push('被压制');
+  if (state.aimed === true) parts.push('瞄准');
+  if (state.shield) parts.push(`护盾（AC +${state.shield}）`);
+  add('祝福', state.blessed);
+  add('加速', state.hasted);
+  add('隐形', state.invisible);
+  add('麻痹', state.paralyzed);
+  add('耳聋', state.deafened);
+  add('缓慢', state.slowed);
+  add('魅惑', state.charmed);
+  add('目盲', state.blinded);
+  add('恐慌', state.frightened);
+  add('变形', state.polymorphed);
+  add('树肤', state.barkskin);
+  if (state.aided) parts.push(`援助（生命上限 +${state.aided}）`);
+  return parts;
+}
+
 /** 把一场战斗渲染成可直接贴进跑团记录的 Markdown。 */
 export function battleReport(battle: Battle): string {
   const reward = encounterReward(battle);
@@ -71,6 +101,15 @@ export function battleReport(battle: Battle): string {
     lines.push('## 防御');
     lines.push('');
     for (const item of guarded) lines.push(`- ${item.actor.name}：${item.text}`);
+  }
+  const affected = battle.actors
+    .map(actor => ({ actor, text: effectsOf(actor).join('、') }))
+    .filter(item => item.text.length > 0);
+  if (affected.length) {
+    lines.push('');
+    lines.push('## 状态');
+    lines.push('');
+    for (const item of affected) lines.push(`- ${item.actor.name}：${item.text}`);
   }
   const stats = battleStatistics(battle);
   const active = stats.rows.filter(row => row.attacks > 0 || row.damageDealt > 0 || row.damageTaken > 0 || row.healing > 0);
