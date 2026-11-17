@@ -348,7 +348,12 @@ function exhaustionSpeedPenalty(actor: Actor): number {
 /** 本回合可用的移动力：基础速度加上疾跑带来的额外移动力，并扣除减速与力竭。 */
 function movementAllowance(actor: Actor): number {
   const base = actor.combat?.hasted ? actorSpeed(actor) * 2 : actorSpeed(actor);
-  return Math.max(0, base - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
+  const paced = actor.combat?.slowed ? Math.floor(base / 2) : base;
+  return Math.max(0, paced - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
+}
+/** 缓慢术：受影响期间无法使用反应。 */
+function requireReactionAllowed(actor: Actor): void {
+  if (actor.combat?.slowed) throw new Error('缓慢术的影响下无法使用反应。');
 }
 /** 长武器大师：用长武器的柄端作附赠动作攻击，造成 1d4 + 力量调整值的钝击伤害。 */
 export function buttEndAttack(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
@@ -471,6 +476,7 @@ export function parry(battle: Battle, actorId: string, deps: CombatDeps = {}): B
   const state = combatantOf(actor);
   if (state.status !== 'active') throw new Error('只有在场的单位可以格挡。');
   if (state.defensiveDuelist !== true) throw new Error('只有持有防守决斗专长的单位可以格挡。');
+  requireReactionAllowed(actor);
   if (state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
   const melee = attackSources(actor).find(item => item.range === 'melee');
   if (!melee) throw new Error('需要持有近战武器才能使用防守决斗。');
@@ -971,9 +977,53 @@ export function castInvisible(battle: Battle, casterId: string, targetId: string
   return next;
 }
 
+const SLOW_DC = 13;
+const SLOW_RANGE_FT = 40;
+const SLOW_MAX_TARGETS = 6;
+/** 缓慢术：动作施放，40 尺内最多 6 个敌对单位各做一次感知豁免，失败者 10 轮内速度减半、AC -2、无法使用反应。 */
+export function castSlow(battle: Battle, casterId: string, targetIds: string[], deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
+  const casterState = combatantOf(caster);
+  if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放缓慢术。');
+  const wanted = [...new Set(targetIds)];
+  if (!wanted.length) throw new Error('请选择缓慢术的目标。');
+  if (wanted.length > SLOW_MAX_TARGETS) throw new Error('缓慢术最多影响 6 名单位。');
+  const targets = wanted.map(id => actorOf(next, id));
+  for (const target of targets) {
+    if (target.id === casterId) throw new Error('缓慢术不能对自己施放。');
+    if (combatantOf(target).status !== 'active') throw new Error('只能对在场的单位施放缓慢术。');
+    if (target.side === caster.side) throw new Error('缓慢术只能影响敌对单位。');
+    const distance = actorDistance(next, casterId, target.id);
+    if (distance !== undefined && distance > SLOW_RANGE_FT) throw new Error('缓慢术只能影响 40 尺内的单位。');
+  }
+  if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (casterState.concentration) throw new Error('施法者已经在维持其他专注。');
+  casterState.actionUsed = true;
+  casterState.concentration = { spell: '缓慢术' };
+  const affected: string[] = [];
+  for (const target of targets) {
+    const save = resolveSave(target, { actorId: target.id, ability: 'wis', dc: SLOW_DC }, randomOf(deps));
+    if (save.success) {
+      addLog(next, `${actorLabel(next, target)} 抵抗了缓慢术（感知 ${save.natural} → ${save.total}，DC ${SLOW_DC}）。`, deps);
+      continue;
+    }
+    const targetState = combatantOf(target);
+    targetState.slowed = 10;
+    targetState.slowedBy = casterId;
+    affected.push(actorLabel(next, target));
+  }
+  addLog(next, affected.length
+    ? `${affected.join('、')} 被缓慢术影响：速度减半、AC -2、无法使用反应，持续 10 轮。`
+    : '缓慢术没有影响到任何单位。', deps);
+  return next;
+}
+
 /** 施法者失去专注（或改用别的专注法术）时，立即结束其施加的祝福。 */
 function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps: CombatDeps = {}): void {
-  for (const [field, byField, name] of [['blessed', 'blessedBy', '祝福术'], ['hasted', 'hastedBy', '加速术'], ['invisible', 'invisibleBy', '隐形术']] as const) {
+  for (const [field, byField, name] of [['blessed', 'blessedBy', '祝福术'], ['hasted', 'hastedBy', '加速术'], ['invisible', 'invisibleBy', '隐形术'], ['slowed', 'slowedBy', '缓慢术']] as const) {
     const affected = battle.actors.filter(item => item.combat?.[byField] === casterId);
     if (!affected.length) continue;
     for (const item of affected) {
@@ -1045,6 +1095,7 @@ export function castShieldReaction(battle: Battle, actorId: string, deps: Combat
   requireVoice(next, actorId);
   const state = combatantOf(actor);
   if (state.status !== 'active') throw new Error('只有在场的单位可以施放护盾术。');
+  requireReactionAllowed(actor);
   if (state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
   state.reactionUsed = true;
   state.shield = 5;
@@ -1692,7 +1743,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
       addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 身上的祝福术结束了。`, {});
     }
   }
-  for (const [key, name] of [['hasted', '加速术'], ['invisible', '隐形术']] as const) {
+  for (const [key, name] of [['hasted', '加速术'], ['invisible', '隐形术'], ['slowed', '缓慢术']] as const) {
     const left = combat[key];
     if (typeof left !== 'number') continue;
     if (left > 1) { combat[key] = left - 1; continue; }
@@ -1897,6 +1948,7 @@ export function triggerReadyAction(battle: Battle, actorId: string, deps: Combat
   const actor = actorOf(next, actorId);
   const state = combatantOf(actor);
   if (!state.ready) throw new Error('该单位没有准备好的动作。');
+  requireReactionAllowed(actor);
   if (state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
   if (state.status !== 'active') throw new Error('只有在场的单位可以执行准备好的动作。');
   const ready = state.ready;
@@ -1927,6 +1979,7 @@ export function spendResource(battle: Battle, actorId: string, kind: AttackCost,
   if (kind !== 'reaction' && currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以使用动作或附赠动作。');
   if (kind === 'action' && state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
   if (kind === 'bonus' && state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
+  if (kind === 'reaction') requireReactionAllowed(actor);
   if (kind === 'reaction' && state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
   if (kind === 'action') state.actionUsed = true;
   if (kind === 'bonus') state.bonusUsed = true;
@@ -2457,6 +2510,7 @@ export function protectAlly(battle: Battle, protectorId: string, targetId: strin
   if (combatantOf(protector).status !== 'active') throw new Error('只有在场的单位可以保护同伴。');
   if (combatantOf(target).status !== 'active') throw new Error('只能保护在场的同伴。');
   if (protector.side !== target.side || protector.side === '中立') throw new Error('只能保护同阵营的同伴。');
+  requireReactionAllowed(protector);
   if (combatantOf(protector).reactionUsed) throw new Error('该单位本回合已经使用过反应。');
   if (protector.position && target.position && cellDistance(protector.position, target.position) > 1) throw new Error('保护的目标需要在 5 尺内。');
   combatantOf(protector).reactionUsed = true;
@@ -2527,7 +2581,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const blessDie = combatantOf(attacker).blessed ? rollDie(4, random) : 0;
   if (blessDie) notes.push(`祝福：攻击检定 +${blessDie}`);
   const total = natural + options.attackBonus + archery + blessDie - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
-  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) + defenseBonus(target);
+  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) - (combatantOf(target).slowed ? 2 : 0) + defenseBonus(target);
   if (guard) delete combatantOf(guard).guarding;
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
@@ -3130,6 +3184,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.blessedBy;
     delete actor.combat.hasted;
     delete actor.combat.hastedBy;
+    delete actor.combat.slowed;
+    delete actor.combat.slowedBy;
     delete actor.combat.invisible;
     delete actor.combat.invisibleBy;
     delete actor.combat.shield;
