@@ -101,3 +101,17 @@ test('普通地形下火焰伤害不减半', () => {
   const after = result.battle.actors.find(actor => actor.id === monster.id).currentHp;
   assert.equal(before - after, 6);
 });
+
+test('水下移动消耗翻倍', () => {
+  const { battle, friend } = setup('短弓', 3);
+  const underwater = setTerrain(battle, 'underwater');
+  const moved = moveActorToCell(underwater, friend.id, 1, 2);
+  assert.equal(moved.actors.find(actor => actor.id === friend.id).combat.movementUsed, 10);
+  assert.match(moved.combat.log.at(-1).text, /水下游泳使消耗翻倍/);
+});
+
+test('水下移动超出速度上限时拒绝', () => {
+  const { battle, friend } = setup('短弓', 3);
+  const underwater = setTerrain(battle, 'underwater');
+  assert.throws(() => moveActorToCell(underwater, friend.id, 8, 1), /移动距离超出速度上限（30 尺）/);
+});

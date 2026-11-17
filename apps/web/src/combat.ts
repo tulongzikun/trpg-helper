@@ -440,12 +440,13 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   if (blocker) throw new Error(blocker);
   if (lineCells(from, { x, y }).some(cell => isWallCell(next, cell.x, cell.y))) throw new Error('移动路径被墙体阻挡。');
   const rough = isDifficultCell(next, x, y);
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1);
+  const swimming = next.terrain === 'underwater';
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1) * (swimming ? 2 : 1);
   const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}。`, deps);
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}${swimming ? '，水下游泳使消耗翻倍' : ''}。`, deps);
   const triggered = threatPrompts(next, actor, from, { x, y });
   if (triggered.length) {
     const combat = requireCombat(next);
