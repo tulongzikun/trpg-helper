@@ -40,6 +40,9 @@ export function effectsOf(actor: Actor): string[] {
   const state = actor.combat;
   if (!state) return [];
   const parts: string[] = [];
+  const level = actor.characterSnapshot?.sheet?.level ?? 0;
+  const remaining = state.hitDice;
+  if (typeof remaining === 'number' && level > 0 && remaining < level) parts.push(`生命骰 ${remaining}/${level}`);
   const add = (label: string, rounds?: number) => {
     if (rounds === undefined || rounds === null || rounds <= 0) return;
     parts.push(`${label}（${rounds} 轮）`);

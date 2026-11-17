@@ -4906,6 +4906,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     const restedConditions = ['失能', '束缚', '麻痹', '目盲', '耳聋', '恐慌', '魅惑', '倒地'];
     actor.combat.conditions = actor.combat.conditions.filter(condition => !restedConditions.includes(condition));
     actor.combat.tempHp = 0;
+    // 长休恢复全部生命骰：把登记值清掉，`hitDiceRemaining` 会回落到按等级推算的上限。
+    delete actor.combat.hitDice;
     actor.combat.delayed = false;
     if (actor.combat.spellSlotsMax) actor.combat.spellSlots = actor.combat.spellSlotsMax.slice();
     if (actor.combat.status !== 'dead') {
