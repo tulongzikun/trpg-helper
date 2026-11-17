@@ -320,6 +320,17 @@ export function setElevation(battle: Battle, actorId: string, feet: number, deps
   addLog(next, feet === 0 ? `${actorLabel(next, actor)} 回到地面。` : `${actorLabel(next, actor)} 的高度设为 ${feet} 尺。`, deps);
   return next;
 }
+/** 切换「战地施法者」专长：开启后专注检定具有优势。 */
+export function setWarCaster(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (enabled) state.warCaster = true; else delete state.warCaster;
+  addLog(next, enabled ? `${actorLabel(next, actor)} 使用战地施法者：专注检定具有优势。` : `${actorLabel(next, actor)} 不再享受战地施法者的专注优势。`, deps);
+  return next;
+}
+
 /** 切换「防守决斗」专长标记。 */
 export function setDefensiveDuelist(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -2277,8 +2288,9 @@ function concentrationCheck(battle: Battle, actor: Actor, damage: number, random
     dismissSummonsOf(battle, actor.id, `施法者失去专注「${concentration.spell}」`, deps);
     return { lost: true, dc, natural: 0, total: 0, text: `失去对「${concentration.spell}」的专注` };
   }
-  const outcome = resolveSave(actor, { actorId: actor.id, ability: 'con', dc, bonus: defaultSaveBonus(actor, 'con') + auraBonus(battle, actor.id, 'saves') }, random);
-  if (outcome.success) return { lost: false, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，维持「${concentration.spell}」` };
+  const warcaster = actor.combat?.warCaster === true;
+  const outcome = resolveSave(actor, { actorId: actor.id, ability: 'con', dc, bonus: defaultSaveBonus(actor, 'con') + auraBonus(battle, actor.id, 'saves'), ...(warcaster ? { mode: 'advantage' as const } : {}) }, random);
+  if (outcome.success) return { lost: false, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，维持「${concentration.spell}」${warcaster ? '（战地施法者：优势）' : ''}` };
   delete actor.combat!.concentration;
   dismissSummonsOf(battle, actor.id, `施法者失去专注「${concentration.spell}」`, deps);
   return { lost: true, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，失去对「${concentration.spell}」的专注` };

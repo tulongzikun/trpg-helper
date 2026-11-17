@@ -35,6 +35,7 @@ export type CombatHandlers = {
   onDelay: (actorId: string) => void;
   onFlying: (actorId: string, enabled: boolean) => void;
   onDefensiveDuelist: (actorId: string, enabled: boolean) => void;
+  onWarCaster: (actorId: string, enabled: boolean) => void;
   onParry: (actorId: string) => void;
   onInitiative: (actorId: string, initiative: number) => void;
   onRerollInitiative: () => void;
@@ -241,6 +242,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
               {actor.combat?.conditions.includes('倒地') && <button type="button" className="button-secondary" onClick={() => handlers.onStand(actor.id)}>起身（消耗一半移动力）</button>}
       <label className="cmb-check"><input type="checkbox" checked={state.defensiveDuelist === true} onChange={event => handlers.onDefensiveDuelist(actor.id, event.target.checked)} aria-label="防守决斗" title="用反应让自己 AC 加上熟练加值" />防守决斗</label>
+      <label className="cmb-check"><input type="checkbox" checked={state.warCaster === true} onChange={event => handlers.onWarCaster(actor.id, event.target.checked)} aria-label="战地施法者" />战地施法者（专注检定优势）</label>
       {state.defensiveDuelist === true ? <button type="button" className="button-secondary" disabled={state.reactionUsed} onClick={() => handlers.onParry(actor.id)} aria-label="格挡">格挡（反应，AC +{state.parryBonus ?? '熟练'}）</button> : null}
       <label className="cmb-check"><input type="checkbox" checked={state.dualWielder === true} onChange={event => handlers.onDualWielder(actor.id, event.target.checked)} aria-label="双持战斗者" title="AC +1，副手攻击可用非轻型武器" />双持战斗者（AC +1，副手可用非轻型）</label>
       <label className="cmb-check"><input type="checkbox" checked={state.sentinel === true} onChange={event => handlers.onSentinel(actor.id, event.target.checked)} aria-label="哨兵" title="长武器命中使目标本回合移动力清零；邻近敌人攻击他人时可花反应反击" />哨兵（长武器减速、可反击）</label>
