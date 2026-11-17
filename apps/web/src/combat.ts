@@ -284,6 +284,22 @@ function threatPrompts(battle: Battle, mover: Actor, from: Position, to: Positio
     })
     .map(other => ({ reactorId: other.id, targetId: mover.id }));
 }
+
+/** 长武器借机：敌对单位「进入」持长武器者的触及范围时也可以借机攻击。 */
+function enteringReachPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
+  const grid = battle.grid;
+  if (!grid || !battle.enterReachOpportunity || mover.side === '中立' || mover.combat?.disengaged) return [];
+  return battle.actors
+    .filter(other => other.id !== mover.id && other.side !== '中立' && other.side !== mover.side && other.position && other.combat?.status === 'active')
+    .filter(other => attackSources(other).some(item => item.range === 'melee' && item.properties?.includes('长武器')))
+    .filter(other => {
+      const reach = actorReach(other);
+      const before = cellDistance(other.position!, from) * grid.cellFt;
+      const after = cellDistance(other.position!, to) * grid.cellFt;
+      return before > reach && after <= reach;
+    })
+    .map(other => ({ reactorId: other.id, targetId: mover.id }));
+}
 /** 当前待结算的借机攻击。 */
 export function pendingOpportunities(battle: Battle): OpportunityPrompt[] {
   return battle.combat?.pendingOpportunity ?? [];
@@ -539,6 +555,18 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   applyHazardAt(next, actor, x, y, deps);
   applyLavaAt(next, actor, deps);
   const triggered = threatPrompts(next, actor, from, { x, y });
+  const entered = enteringReachPrompts(next, actor, from, { x, y });
+  if (entered.length) {
+    const combat = requireCombat(next);
+    const list = [...(combat.pendingOpportunity ?? [])];
+    for (const prompt of entered) {
+      if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId)) continue;
+      list.push(prompt);
+      const reactor = actorOf(next, prompt.reactorId);
+      addLog(next, `${actorLabel(next, actor)} 进入 ${actorLabel(next, reactor)} 的触及范围，${actorLabel(next, reactor)} 可以借机攻击。`, deps);
+    }
+    combat.pendingOpportunity = list.slice(-8);
+  }
   if (triggered.length) {
     const combat = requireCombat(next);
     const list = [...(combat.pendingOpportunity ?? [])];
@@ -841,6 +869,16 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   syncSummonsInPlace(next, deps);
   tickSummonDurations(next, deps);
   delete combat.pendingOpportunity;
+  return next;
+}
+
+/** 开关：敌对单位进入长武器持有者的触及范围时是否也能借机攻击。 */
+export function setEnterReachOpportunity(battle: Battle, enabled: boolean, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (enabled) next.enterReachOpportunity = true;
+  else delete next.enterReachOpportunity;
+  addLog(next, enabled ? '已开启：敌对单位进入长武器触及范围时也可以借机攻击。' : '已关闭：长武器只在目标离开触及范围时借机。', deps);
   return next;
 }
 

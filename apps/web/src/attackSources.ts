@@ -120,7 +120,7 @@ export const weapons: Weapon[] = [
   { name: '长矛', mastery: '削韧', aliases: ['spear'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'melee', distanceFt: 5, versatile: '1d8', properties: ['投掷'], thrownRangeFt: 20, thrownMaxRangeFt: 60 },
   { name: '手斧', aliases: ['handaxe'], damage: '1d6', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5, properties: ['轻型', '投掷'], thrownRangeFt: 20, thrownMaxRangeFt: 60 },
   { name: '轻锤', aliases: ['light hammer'], damage: '1d4', damageType: '钝击', ability: 'str', range: 'melee', distanceFt: 5, properties: ['轻型', '投掷'], thrownRangeFt: 20, thrownMaxRangeFt: 60 },
-  { name: '戟', aliases: ['halberd'], damage: '1d10', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 10, properties: ['重型', '双手'] },
+  { name: '戟', aliases: ['halberd'], damage: '1d10', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 10, properties: ['重型', '双手', '长武器'] },
   { name: '长弓', mastery: '迟滞', aliases: ['longbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 150, longRangeFt: 600, properties: ['弹药'] },
   { name: '短弓', aliases: ['shortbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80, longRangeFt: 320, properties: ['弹药'] },
   { name: '轻弩', aliases: ['light crossbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80, longRangeFt: 320, properties: ['弹药', '装填'] },

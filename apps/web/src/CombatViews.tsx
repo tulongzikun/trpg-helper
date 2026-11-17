@@ -22,6 +22,7 @@ export type CombatHandlers = {
   onEndTurn: () => void;
   onTerrain: (terrain: Terrain) => void;
   onAutoDeathSaves: (enabled: boolean) => void;
+  onEnterReachOpportunity: (enabled: boolean) => void;
   onInitiative: (actorId: string, initiative: number) => void;
   onCheck: (options: CheckOptions) => void;
   onHeal: (targetId: string, amount: number) => void;
@@ -107,7 +108,7 @@ export function CombatSetup({ battle, onStart }: { battle: Battle; onStart: (ini
   </section>;
 }
 
-export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain, onAutoDeathSaves }: { battle: Battle; onEndTurn: () => void; onUndo: () => void; onReset: () => void; onTerrain?: (terrain: Terrain) => void; onAutoDeathSaves?: (enabled: boolean) => void }) {
+export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain, onAutoDeathSaves, onEnterReachOpportunity }: { battle: Battle; onEndTurn: () => void; onUndo: () => void; onReset: () => void; onTerrain?: (terrain: Terrain) => void; onAutoDeathSaves?: (enabled: boolean) => void; onEnterReachOpportunity?: (enabled: boolean) => void }) {
   const combat = battle.combat;
   if (!combat) return null;
   const current = currentActor(battle);
@@ -117,6 +118,7 @@ export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain, o
       <button className="button-primary" type="button" onClick={onEndTurn}>结束回合</button>
       <button className="button-secondary" type="button" onClick={onUndo} disabled={!combat.undo.length}>撤销上一步</button>
       <button className="button-secondary" type="button" onClick={onReset} title="清除先攻与回合记录；生命值不会恢复">重置战斗</button>
+      {onEnterReachOpportunity ? <label className="cmb-check"><input type="checkbox" checked={battle.enterReachOpportunity === true} onChange={event => onEnterReachOpportunity(event.target.checked)} aria-label="长武器进入触及时借机" />长武器进入触及时借机</label> : null}
       {onAutoDeathSaves ? <label className="cmb-check"><input type="checkbox" checked={battle.autoDeathSaves === true} onChange={event => onAutoDeathSaves(event.target.checked)} aria-label="回合开始自动掷死亡豁免" />回合开始自动掷死亡豁免</label> : null}
       {onTerrain ? <label className="cmb-inline-action">地形<select value={battle.terrain ?? 'normal'} onChange={event => onTerrain(event.target.value as Terrain)} aria-label="战场地形"><option value="normal">普通</option><option value="underwater">水下</option><option value="climbing">攀爬</option><option value="ice">冰面</option><option value="lava">岩浆</option></select></label> : null}
     </div>
