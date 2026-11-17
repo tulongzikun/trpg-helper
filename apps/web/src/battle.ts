@@ -137,6 +137,10 @@ export type CombatantState = {
   slowed?: number;
   /** 施加缓慢术的施法者 id。 */
   slowedBy?: string;
+  /** 魅惑术：剩余轮数（无法攻击施法者）。 */
+  charmed?: number;
+  /** 施加魅惑术的施法者 id。 */
+  charmedBy?: string;
   /** 护盾术：AC 加值，直到自己下个回合开始。 */
   shield?: number;
 };
@@ -278,6 +282,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.commanded !== undefined && value.commanded !== 'halt') return false;
   if (value.slowed !== undefined && !isInteger(value.slowed, 0, 100)) return false;
   if (value.slowedBy !== undefined && (typeof value.slowedBy !== 'string' || value.slowedBy.length === 0 || value.slowedBy.length > 64)) return false;
+  if (value.charmed !== undefined && !isInteger(value.charmed, 0, 100)) return false;
+  if (value.charmedBy !== undefined && (typeof value.charmedBy !== 'string' || value.charmedBy.length === 0 || value.charmedBy.length > 64)) return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
   if (value.warCaster !== undefined && typeof value.warCaster !== 'boolean') return false;
   if (value.counterspell !== undefined && typeof value.counterspell !== 'boolean') return false;

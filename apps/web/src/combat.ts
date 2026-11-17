@@ -977,6 +977,54 @@ export function castInvisible(battle: Battle, casterId: string, targetId: string
   return next;
 }
 
+const CHARM_DC = 13;
+const CHARM_RANGE_FT = 30;
+/** 魅惑术：动作施放，30 尺内单体感知豁免 DC 13，失败者 10 轮内无法攻击施法者，每到自己回合可再豁免一次。 */
+export function castCharmPerson(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
+  const casterState = combatantOf(caster);
+  if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放魅惑术。');
+  const target = actorOf(next, targetId);
+  if (target.id === casterId) throw new Error('魅惑术不能对自己施放。');
+  if (combatantOf(target).status !== 'active') throw new Error('只能对在场的单位施放魅惑术。');
+  if (target.side === caster.side) throw new Error('魅惑术只能影响敌对单位。');
+  const distance = actorDistance(next, casterId, target.id);
+  if (distance !== undefined && distance > CHARM_RANGE_FT) throw new Error('魅惑术只能影响 30 尺内的单位。');
+  if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (casterState.concentration) throw new Error('施法者已经在维持其他专注。');
+  casterState.actionUsed = true;
+  casterState.concentration = { spell: '魅惑术' };
+  const save = resolveSave(target, { actorId: target.id, ability: 'wis', dc: CHARM_DC }, randomOf(deps));
+  if (save.success) {
+    addLog(next, `${actorLabel(next, target)} 抵抗了魅惑术（感知 ${save.natural} → ${save.total}，DC ${CHARM_DC}）。`, deps);
+    return next;
+  }
+  const targetState = combatantOf(target);
+  targetState.charmed = 10;
+  targetState.charmedBy = casterId;
+  if (!targetState.conditions.includes('魅惑')) targetState.conditions.push('魅惑');
+  addLog(next, `${actorLabel(next, target)} 被魅惑：无法攻击 ${actorLabel(next, caster)}，持续 10 轮。`, deps);
+  return next;
+}
+
+/** 魅惑术的每轮解除：受影响单位在自己回合开始时做感知豁免，成功即摆脱。 */
+function charmRecover(battle: Battle, actor: Actor, deps: CombatDeps = {}): void {
+  const state = actor.combat;
+  if (!state || state.charmed === undefined || state.charmed <= 0) return;
+  const save = resolveSave(actor, { actorId: actor.id, ability: 'wis', dc: CHARM_DC }, randomOf(deps));
+  if (!save.success) {
+    addLog(battle, `${actorLabel(battle, actor)} 仍被魅惑束缚（感知 ${save.natural} → ${save.total}，DC ${CHARM_DC}）。`, deps);
+    return;
+  }
+  delete state.charmed;
+  delete state.charmedBy;
+  state.conditions = state.conditions.filter(condition => condition !== '魅惑');
+  addLog(battle, `${actorLabel(battle, actor)} 摆脱了魅惑术（感知 ${save.natural} → ${save.total}，DC ${CHARM_DC}）。`, deps);
+}
+
 const SLOW_DC = 13;
 const SLOW_RANGE_FT = 40;
 const SLOW_MAX_TARGETS = 6;
@@ -1041,6 +1089,15 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
     delete battle.darkness;
     delete battle.darknessBy;
     addLog(battle, `${reason}，魔法黑暗消散了。`, deps);
+  }
+  const charmedOnes = battle.actors.filter(item => item.combat?.charmedBy === casterId);
+  if (charmedOnes.length) {
+    for (const item of charmedOnes) {
+      delete item.combat!.charmed;
+      delete item.combat!.charmedBy;
+      item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '魅惑');
+    }
+    addLog(battle, `${reason}，${charmedOnes.map(item => actorLabel(battle, item)).join('、')} 的魅惑术结束了。`, deps);
   }
   const held = battle.actors.filter(item => item.combat?.paralyzedBy === casterId);
   if (held.length) {
@@ -1750,6 +1807,15 @@ function resetTurnResources(battle: Battle, actorId: string) {
     delete combat[key];
     addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 身上的${name}结束了。`, {});
   }
+  if (typeof combat.charmed === 'number') {
+    combat.charmed -= 1;
+    if (combat.charmed <= 0) {
+      delete combat.charmed;
+      delete combat.charmedBy;
+      combat.conditions = combat.conditions.filter(condition => condition !== '魅惑');
+      addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 摆脱了魅惑术。`, {});
+    }
+  }
   combat.sneakUsed = false;
   combat.reckless = false;
   for (const other of battle.actors) {
@@ -1877,6 +1943,7 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   if (actor.combat?.ready) { delete actor.combat.ready; addLog(next, `${actorLabel(next, actor)} 的准备动作在回合开始时失效。`, deps); }
   applyOngoingDamage(next, deps);
   holdRecover(next, actor, deps);
+  charmRecover(next, actor, deps);
   if (actor.position) {
     applyHazardAt(next, actor, actor.position.x, actor.position.y, deps, '回合开始');
     applyLavaAt(next, actor, deps, '回合开始');
@@ -2523,6 +2590,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const attacker = actorOf(battle, options.attackerId);
   const target = actorOf(battle, options.targetId);
   const state = combatantOf(attacker);
+  if (state.conditions.includes('魅惑') && state.charmedBy === target.id) throw new Error('被魅惑的单位无法攻击魅惑它的施法者。');
   const targetWasDown = combatantOf(target).status === 'down';
   const ammoWeapon = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
   if (ammoWeapon?.properties?.includes('弹药')) state.ammo = Math.max(0, (state.ammo ?? defaultAmmo) - 1);
@@ -3186,6 +3254,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.hastedBy;
     delete actor.combat.slowed;
     delete actor.combat.slowedBy;
+    delete actor.combat.charmed;
+    delete actor.combat.charmedBy;
     delete actor.combat.invisible;
     delete actor.combat.invisibleBy;
     delete actor.combat.shield;
