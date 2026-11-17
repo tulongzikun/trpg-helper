@@ -36,6 +36,9 @@ export type CombatHandlers = {
   onFlying: (actorId: string, enabled: boolean) => void;
   onDefensiveDuelist: (actorId: string, enabled: boolean) => void;
   onWarCaster: (actorId: string, enabled: boolean) => void;
+  onSetCounterspell: (actorId: string, enabled: boolean) => void;
+  onCounterspell: (reactorId: string) => void;
+  onResolveCast: () => void;
   onParry: (actorId: string) => void;
   onInitiative: (actorId: string, initiative: number) => void;
   onRerollInitiative: () => void;
@@ -239,6 +242,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <HelpPanel key={`help-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <ProtectionPanel key={`protect-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <ItemPanel key={`item-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
+            <CounterspellPanel key={`counter-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <CheckPanel key={`check-${actor.id}`} actor={actor} handlers={handlers} />
     <HealPanel key={`heal-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <StudyPanel key={`study-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
@@ -1027,6 +1031,7 @@ function SpellPanel({ battle, actor, onCast, onSetSlots }: { battle: Battle; act
   const [concentration, setConcentration] = useState(false);
   const [slotText, setSlotText] = useState('');
   const [shape, setShape] = useState<'single' | 'sphere' | 'cone' | 'line' | 'cube'>('single');
+  const [defer, setDefer] = useState(false);
   const [sizeFt, setSizeFt] = useState(20);
   const slotSummary = (actor.combat?.spellSlots ?? []).map((count, index) => count > 0 ? `${index + 1} 环 ${count}` : '').filter(Boolean).join(' · ') || '未记录';
   const targets = battle.actors.filter(item => item.id !== actor.id && item.combat?.status === 'active');
@@ -1075,10 +1080,12 @@ function SpellPanel({ battle, actor, onCast, onSetSlots }: { battle: Battle; act
         : <label>攻击加值<input type="number" value={bonus} onChange={event => setBonus(Number(event.target.value))} aria-label="法术攻击加值" /></label>}
       <label className="cmb-check"><input type="checkbox" checked={bonusAction} onChange={event => setBonusAction(event.target.checked)} aria-label="附赠动作施法" />附赠动作</label>
       <label className="cmb-check"><input type="checkbox" checked={concentration} onChange={event => setConcentration(event.target.checked)} aria-label="需要专注" />专注</label>
+      <label className="cmb-check"><input type="checkbox" checked={defer} onChange={event => setDefer(event.target.checked)} aria-label="延后结算" />延后结算（等待反制）</label>
       <button type="button" className="button-secondary" aria-label="施放法术" disabled={!spell.trim() || !target} onClick={() => onCast({
         casterId: actor.id, spell: spell.trim(), level,
         ...(bonusAction ? { cost: 'bonus' as const } : {}),
         ...(concentration ? { concentration: true } : {}),
+        ...(defer ? { defer: true } : {}),
         ...(mode === 'save'
           ? { save: { ability, dc, targetIds: area, damageExpression: damage, damageType: type } }
           : { attack: { targetId: target, attackBonus: bonus, damageExpression: damage, damageType: type } }),
@@ -1087,6 +1094,22 @@ function SpellPanel({ battle, actor, onCast, onSetSlots }: { battle: Battle; act
   );
 }
 
+
+export function CounterspellPanel({ battle, actor, handlers }: { battle: Battle; actor: Actor; handlers: CombatHandlers }) {
+  const pending = battle.pendingCast;
+  const learner = actor.combat?.counterspell === true;
+  return (
+    <div className="cmb-aura">
+      <span className="cmb-muted">法术反制</span>
+      <label className="cmb-check"><input type="checkbox" checked={learner} onChange={event => handlers.onSetCounterspell(actor.id, event.target.checked)} aria-label="会法术反制" />会法术反制（反应）</label>
+      {pending ? <>
+        <span className="cmb-chip cmb-chip-action">待结算：{pending.spell}（{pending.level} 环）</span>
+        <button type="button" className="button-secondary" disabled={!learner || actor.combat?.reactionUsed === true} onClick={() => handlers.onCounterspell(actor.id)} aria-label="反制法术">反制（反应）</button>
+        <button type="button" className="button-secondary" onClick={() => handlers.onResolveCast()} aria-label="让法术生效">让法术生效</button>
+      </> : <span className="cmb-muted">当前没有待结算的法术。</span>}
+    </div>
+  );
+}
 
 export function SettlementPanel({ battle }: { battle: Battle }) {
   const [copied, setCopied] = useState('');

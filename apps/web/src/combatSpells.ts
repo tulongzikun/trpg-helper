@@ -1,7 +1,7 @@
-import { appendLog, areaSave, attack, currentActorId, spendResource, startConcentration } from './combat.ts';
+import { appendLog, areaSave, attack, cellDistance, currentActorId, spendResource, startConcentration } from './combat.ts';
 import type { CombatDeps } from './combat.ts';
 import type { Ability } from './characters';
-import type { Battle, DamageType, Position } from './battle';
+import type { Actor, Battle, DamageType, Position } from './battle';
 
 export type SpellAttackPlan = {
   targetId: string;
@@ -27,6 +27,8 @@ export type SpellCastOptions = {
   concentration?: boolean;
   attack?: SpellAttackPlan;
   save?: SpellSavePlan;
+  /** 延后结算：先消耗动作与法术位，进入反制窗口。 */
+  defer?: boolean;
 };
 
 export type SpellCastResult = { battle: Battle; results: string[] };
@@ -118,6 +120,21 @@ export function castSpell(battle: Battle, options: SpellCastOptions, deps: Comba
   const start = battle.combat.log.length;
   let next = appendLog(battle, `${caster.name} 施放「${spell}」${options.level > 0 ? `（${options.level} 环）` : '（戏法）'}。`, deps);
   if (options.level > 0 && tracked) next = appendLog(next, `消耗 1 个 ${options.level} 环法术位，剩余 ${tracked[options.level - 1]} 个。`, deps);
+  if (options.defer) {
+    next = spendResource(next, options.casterId, cost, deps);
+    next.pendingCast = {
+      casterId: options.casterId,
+      spell,
+      level: options.level,
+      cost,
+      concentration: options.concentration === true,
+      ...(options.attack ? { attack: options.attack } : {}),
+      ...(options.save ? { save: options.save } : {}),
+    };
+    next = appendLog(next, `「${spell}」进入反制窗口：60 尺内的施法者可以用反应尝试反制。`, deps);
+    const queued = (next.combat?.log ?? []).slice(start).map(entry => entry.text);
+    return { battle: next, results: queued };
+  }
   if (options.attack) {
     next = attack(next, {
       attackerId: options.casterId,
@@ -141,6 +158,92 @@ export function castSpell(battle: Battle, options: SpellCastOptions, deps: Comba
   if (options.concentration) {
     next = startConcentration(next, options.casterId, spell, deps);
   }
+  const results = (next.combat?.log ?? []).slice(start).map(entry => entry.text);
+  return { battle: next, results };
+}
+
+/** 记录或取消某单位是否学会法术反制。 */
+export function setCounterspell(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
+  const next = structuredClone(battle);
+  const actor = next.actors.find(item => item.id === actorId);
+  if (!actor) throw new Error('该单位不在战斗中。');
+  if (!actor.combat) throw new Error('该单位还没有加入战斗。');
+  if (enabled) {
+    actor.combat.counterspell = true;
+    return appendLog(next, `${actor.name} 学会了法术反制。`, deps);
+  }
+  delete actor.combat.counterspell;
+  return appendLog(next, `${actor.name} 不再会法术反制。`, deps);
+}
+
+export type CounterspellResult = { battle: Battle; success: boolean; total: number; dc: number };
+
+function spellcastingModifier(actor: Actor): number {
+  const abilities = actor.characterSnapshot?.sheet.abilities ?? actor.template.abilities ?? { int: 10, wis: 10, cha: 10 };
+  const mod = (score: number) => Math.floor((score - 10) / 2);
+  return Math.max(mod(abilities.int ?? 10), mod(abilities.wis ?? 10), mod(abilities.cha ?? 10));
+}
+
+/** 用反应反制待结算的法术：施法者等级不足时用智力/感知/魅力中最高者对抗 DC 10 + 环阶。 */
+export function counterspell(battle: Battle, reactorId: string, deps: CombatDeps = {}): CounterspellResult {
+  const plan = battle.pendingCast;
+  if (!plan) throw new Error('没有待反制的法术。');
+  const next = structuredClone(battle);
+  const reactor = next.actors.find(item => item.id === reactorId);
+  if (!reactor) throw new Error('反制者不存在。');
+  if (reactor.combat?.status !== 'active') throw new Error('只有在场的单位可以反制法术。');
+  if (reactor.combat.counterspell !== true) throw new Error('该单位不会法术反制。');
+  if (reactor.combat.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
+  const caster = next.actors.find(item => item.id === plan.casterId);
+  if (caster && reactor.position && caster.position) {
+    const cellFt = next.grid?.cellFt ?? 5;
+    const distance = cellDistance(reactor.position, caster.position) * cellFt;
+    if (distance > 60) throw new Error(`反制法术需要 60 尺内的施法者（当前 ${distance} 尺）。`);
+  }
+  const random = deps.random ?? Math.random;
+  const natural = 1 + Math.floor(random() * 20);
+  const bonus = spellcastingModifier(reactor);
+  const total = natural + bonus;
+  const dc = 10 + plan.level;
+  reactor.combat.reactionUsed = true;
+  if (total >= dc) {
+    delete next.pendingCast;
+    const log = appendLog(next, `${reactor.name} 用反应反制了「${plan.spell}」。`, deps, `DC ${dc} · d20(${natural})+${bonus}=${total}`);
+    return { battle: log, success: true, total, dc };
+  }
+  const log = appendLog(next, `${reactor.name} 反制「${plan.spell}」失败。`, deps, `DC ${dc} · d20(${natural})+${bonus}=${total}`);
+  return { battle: log, success: false, total, dc };
+}
+
+/** 反制窗口结束，让待结算的法术生效。 */
+export function resolvePendingCast(battle: Battle, deps: CombatDeps = {}): SpellCastResult {
+  const plan = battle.pendingCast;
+  if (!plan) throw new Error('没有待结算的法术。');
+  let next = structuredClone(battle);
+  delete next.pendingCast;
+  const start = next.combat?.log.length ?? 0;
+  next = appendLog(next, `反制窗口结束，「${plan.spell}」生效。`, deps);
+  if (plan.attack) {
+    next = attack(next, {
+      attackerId: plan.casterId,
+      targetId: plan.attack.targetId,
+      attackBonus: plan.attack.attackBonus,
+      damageExpression: plan.attack.damageExpression,
+      damageType: plan.attack.damageType,
+      cost: plan.cost,
+      ignoreCostCheck: true,
+    }, deps).battle;
+  } else if (plan.save) {
+    next = areaSave(next, {
+      targetIds: plan.save.targetIds,
+      ability: plan.save.ability,
+      dc: plan.save.dc,
+      damageExpression: plan.save.damageExpression,
+      damageType: plan.save.damageType,
+      ...(plan.save.halfOnSuccess === false ? { halfOnSuccess: false } : {}),
+    }, deps).battle;
+  }
+  if (plan.concentration) next = startConcentration(next, plan.casterId, plan.spell, deps);
   const results = (next.combat?.log ?? []).slice(start).map(entry => entry.text);
   return { battle: next, results };
 }

@@ -21,6 +21,15 @@ export type OngoingEffect = {
 };
 /** 正在维持的专注法术。 */
 export type Concentration = { spell: string };
+export type PendingCastPlan = {
+  casterId: string;
+  spell: string;
+  level: number;
+  cost: 'action' | 'bonus';
+  concentration: boolean;
+  attack?: { targetId: string; attackBonus: number; damageExpression: string; damageType: DamageType };
+  save?: { ability: Ability; dc: number; targetIds: string[]; damageExpression: string; damageType: DamageType; halfOnSuccess?: boolean };
+};
 
 export type CombatItem = {
   name: string;
@@ -74,6 +83,8 @@ export type CombatantState = {
   revealed?: boolean;
   /** 战地施法者专长：专注检定时具有优势。 */
   warCaster?: boolean;
+  /** 是否学会了法术反制（可用反应反制待结算的法术）。 */
+  counterspell?: boolean;
   guarding?: string;
   items?: CombatItem[];
   delayed?: boolean;
@@ -142,7 +153,7 @@ export type Actor = {
   elevation?: number;
 };
 export type Aura = { id: string; name: string; ownerId: string; radiusFt: number; bonus: number; kind: 'ac' | 'saves' };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; auras?: Aura[] };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; auras?: Aura[]; pendingCast?: PendingCastPlan };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -151,6 +162,31 @@ const isObject = (value: unknown): value is Record<string, unknown> => !!value &
 const isInteger = (value: unknown, minimum = Number.MIN_SAFE_INTEGER, maximum = Number.MAX_SAFE_INTEGER): value is number => typeof value === 'number' && Number.isInteger(value) && value >= minimum && value <= maximum;
 const isSide = (value: unknown): value is Side => value === '友方' || value === '敌方' || value === '中立';
 const abilityKeys: Ability[] = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+function isPendingCastPlan(value: unknown): value is PendingCastPlan {
+  if (!value || typeof value !== 'object') return false;
+  const plan = value as Record<string, unknown>;
+  if (typeof plan.casterId !== 'string' || !plan.casterId) return false;
+  if (typeof plan.spell !== 'string' || !plan.spell.trim()) return false;
+  if (!isInteger(plan.level, 0, 9)) return false;
+  if (plan.cost !== 'action' && plan.cost !== 'bonus') return false;
+  if (typeof plan.concentration !== 'boolean') return false;
+  if (plan.attack !== undefined) {
+    if (!plan.attack || typeof plan.attack !== 'object') return false;
+    const attack = plan.attack as Record<string, unknown>;
+    if (typeof attack.targetId !== 'string') return false;
+    if (typeof attack.damageExpression !== 'string') return false;
+    if (!damageTypes.includes(attack.damageType as DamageType)) return false;
+  }
+  if (plan.save !== undefined) {
+    if (!plan.save || typeof plan.save !== 'object') return false;
+    const save = plan.save as Record<string, unknown>;
+    if (!Array.isArray(save.targetIds)) return false;
+    if (typeof save.damageExpression !== 'string') return false;
+    if (!damageTypes.includes(save.damageType as DamageType)) return false;
+  }
+  return true;
+}
+
 function isOngoingEffect(value: unknown): value is OngoingEffect {
   if (!isObject(value)) return false;
   if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.damageExpression !== 'string') return false;
@@ -197,6 +233,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.stable !== undefined && typeof value.stable !== 'boolean') return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
   if (value.warCaster !== undefined && typeof value.warCaster !== 'boolean') return false;
+  if (value.counterspell !== undefined && typeof value.counterspell !== 'boolean') return false;
   if (value.guarding !== undefined && (typeof value.guarding !== 'string' || value.guarding.length === 0 || value.guarding.length > 64)) return false;
   if (value.items !== undefined && (!Array.isArray(value.items) || value.items.length > 20 || !value.items.every(isCombatItem))) return false;
   if (value.delayed !== undefined && typeof value.delayed !== 'boolean') return false;
@@ -287,7 +324,7 @@ function isBattle(value: unknown): boolean {
     && (value.difficult === undefined || (Array.isArray(value.difficult) && value.difficult.length <= 400 && value.difficult.every(isPosition)))
     && (value.walls === undefined || (Array.isArray(value.walls) && value.walls.length <= 400 && value.walls.every(isPosition)))
     && (value.hazards === undefined || (Array.isArray(value.hazards) && value.hazards.length <= 200 && value.hazards.every(isHazard)))
-  && (value.auras === undefined || (Array.isArray(value.auras) && value.auras.length <= 8 && value.auras.every(isAura)));
+  && (value.pendingCast === undefined || isPendingCastPlan(value.pendingCast)) && (value.auras === undefined || (Array.isArray(value.auras) && value.auras.length <= 8 && value.auras.every(isAura)));
 }
 
 /** 校验外部来源的战斗数据，失败时抛出中文错误，供导入功能使用。 */
