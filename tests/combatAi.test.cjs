@@ -106,3 +106,62 @@ test('同等血线比例下优先推荐能被一击打掉的残血目标', () =>
   const suggestions = suggestAttacks(battle, archer.id);
   assert.equal(suggestions[0].targetName, '甲');
 });
+
+function duo(actions = sword) {
+  const base = addMonsters(emptyStore(), card, { newBattleName: '集火测试', side: '敌方', count: 2 }, ids(), () => '2026-01-01T00:00:00Z').store;
+  const battle = base.battles[0];
+  const first = addCharacter(base, hero(actions), { battleId: battle.id, side: '友方' }, ids()).store;
+  const secondHero = hero(actions);
+  secondHero.characterId = 'char-2';
+  secondHero.sheet = { ...secondHero.sheet, name: '同伴' };
+  const store = addCharacter(first, secondHero, { battleId: battle.id, side: '友方' }, ids()).store;
+  const built = store.battles[0];
+  const allies = built.actors.filter(actor => actor.side === '友方');
+  const enemies = built.actors.filter(actor => actor.side === '敌方');
+  const order = { [allies[0].id]: 20, [allies[1].id]: 15, [enemies[0].id]: 10, [enemies[1].id]: 9 };
+  return { battle: startCombat(built, order), allies, enemies };
+}
+
+test('同伴贴身的敌人会因集火加权排在前面', () => {
+  const { battle, allies, enemies } = duo();
+  let grid = configureGrid(battle, { width: 12, height: 12, cellFt: 5 });
+  grid = moveActorToCell(grid, allies[0].id, 0, 0);
+  grid = moveActorToCell(grid, allies[1].id, 2, 0);
+  grid = moveActorToCell(grid, enemies[0].id, 3, 0);
+  grid = moveActorToCell(grid, enemies[1].id, 0, 3);
+  grid.actors.find(actor => actor.id === enemies[0].id).name = '甲';
+  grid.actors.find(actor => actor.id === enemies[1].id).name = '乙';
+  const suggestions = suggestAttacks(grid, allies[0].id, 50).filter(item => item.source.range === 'melee');
+  assert.equal(suggestions[0].targetName, '甲');
+  assert.match(suggestions[0].reason, /集火/);
+});
+
+test('倒地的目标在近战建议里加权并说明原因', () => {
+  const { battle, allies, enemies } = duo();
+  let grid = configureGrid(battle, { width: 12, height: 12, cellFt: 5 });
+  grid = moveActorToCell(grid, allies[0].id, 0, 0);
+  grid = moveActorToCell(grid, enemies[0].id, 1, 0);
+  grid = moveActorToCell(grid, enemies[1].id, 0, 1);
+  grid.actors.find(actor => actor.id === enemies[0].id).name = '甲';
+  grid.actors.find(actor => actor.id === enemies[1].id).name = '乙';
+  const prone = grid.actors.find(actor => actor.id === enemies[0].id);
+  prone.combat.conditions.push('倒地');
+  const suggestions = suggestAttacks(grid, allies[0].id, 50).filter(item => item.source.range === 'melee');
+  assert.equal(suggestions[0].targetName, '甲');
+  assert.match(suggestions[0].reason, /倒地/);
+});
+
+test('远程建议不受倒地加权影响', () => {
+  const { battle, allies, enemies } = duo(bow);
+  enemies[0].name = '甲';
+  enemies[1].name = '乙';
+  let grid = configureGrid(battle, { width: 12, height: 12, cellFt: 5 });
+  grid = moveActorToCell(grid, allies[0].id, 0, 0);
+  grid = moveActorToCell(grid, enemies[0].id, 2, 0);
+  grid = moveActorToCell(grid, enemies[1].id, 0, 2);
+  const prone = grid.actors.find(actor => actor.id === enemies[0].id);
+  prone.combat.conditions.push('倒地');
+  const ranged = suggestAttacks(grid, allies[0].id, 50).filter(item => item.source.range === 'ranged');
+  assert.ok(ranged.length >= 2);
+  assert.doesNotMatch(ranged[0].reason, /倒地/);
+});

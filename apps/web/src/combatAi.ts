@@ -1,7 +1,7 @@
 import type { Actor, Battle } from './battle.ts';
 import type { AttackSource } from './attackSources.ts';
 import { attackSources } from './attackSources.ts';
-import { actorDistance, hasLineOfSight } from './combat.ts';
+import { actorDistance, cellDistance, hasLineOfSight } from './combat.ts';
 
 export type AttackSuggestion = {
   targetId: string;
@@ -56,8 +56,17 @@ export function suggestAttacks(battle: Battle, actorId: string, limit = 3): Atta
       const hpRatio = enemy.maxHp > 0 ? enemy.currentHp / enemy.maxHp : 0;
       // 能一击打掉的残血目标优先：命中期望 ≥ 剩余生命值时额外加权。
       const finisher = inRange && average >= enemy.currentHp;
-      const score = Math.round(((inRange ? 1000 : 0) + (1 - hpRatio) * 100 + average * 2 - (distanceFt ?? 0) * 0.2 + (finisher ? 300 : 0)) * 10) / 10;
-      suggestions.push({ targetId: enemy.id, targetName: enemy.name, source, distanceFt, inRange, score, reason });
+      // 集火：目标身边已经有同伴贴身时加权，鼓励集中火力。
+      const enemyPosition = enemy.position;
+      const allyCount = enemyPosition
+        ? battle.actors.filter(item => item.id !== actor.id && item.id !== enemy.id && item.combat?.status === 'active' && item.side === actor.side && item.side !== '中立' && !!item.position && cellDistance(item.position, enemyPosition) <= 1).length
+        : 0;
+      const focusBonus = Math.min(80, allyCount * 40);
+      // 倒地目标在近战里更容易命中。
+      const proneBonus = source.range === 'melee' && (enemy.combat?.conditions ?? []).includes('倒地') ? 25 : 0;
+      const score = Math.round(((inRange ? 1000 : 0) + (1 - hpRatio) * 100 + average * 2 - (distanceFt ?? 0) * 0.2 + (finisher ? 300 : 0) + focusBonus + proneBonus) * 10) / 10;
+      const extra = [allyCount > 0 ? `已有 ${allyCount} 名同伴贴身，适合集火。` : '', proneBonus ? '目标倒地，近战更容易命中。' : ''].filter(Boolean).join(' ');
+      suggestions.push({ targetId: enemy.id, targetName: enemy.name, source, distanceFt, inRange, score, reason: extra ? `${reason} ${extra}` : reason });
     }
   }
   return suggestions.sort((left, right) => right.score - left.score || left.targetName.localeCompare(right.targetName)).slice(0, Math.max(1, limit));
