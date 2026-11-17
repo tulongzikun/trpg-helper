@@ -4804,6 +4804,7 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     actor.combat.hidden = false;
     actor.combat.sapped = false;
     delete actor.combat.sleeping;
+    delete actor.combat.sleepingBy;
     delete actor.combat.entangled;
   delete actor.combat.paralyzed;
   delete actor.combat.paralyzedBy;
@@ -4839,6 +4840,10 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.slowSourceId;
     delete actor.combat.ammo;
     delete actor.combat.stable;
+    // 上面清掉的各种法术字段会留下同名的条件标记，长休后必须一并清除，否则麻痹／失能等单位会永远无法行动；
+    // 倒地也一并恢复——休息八小时后没理由还趴在地上。
+    const restedConditions = ['失能', '束缚', '麻痹', '目盲', '耳聋', '恐慌', '魅惑', '倒地'];
+    actor.combat.conditions = actor.combat.conditions.filter(condition => !restedConditions.includes(condition));
     actor.combat.tempHp = 0;
     actor.combat.delayed = false;
     if (actor.combat.spellSlotsMax) actor.combat.spellSlots = actor.combat.spellSlotsMax.slice();
