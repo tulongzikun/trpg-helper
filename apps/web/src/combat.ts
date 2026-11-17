@@ -342,7 +342,8 @@ export function coverFromWalls(battle: Battle, from: Position, to: Position): Co
   const path = lineCells(from, to);
   const neighbours: Position[] = [...path, from, to];
   const touching = walls.filter(wall => neighbours.some(cell => Math.max(Math.abs(cell.x - wall.x), Math.abs(cell.y - wall.y)) <= 1));
-  if (touching.length >= 2) return '四分之三掩体';
+  if (touching.length >= 3) return '全掩体';
+  if (touching.length === 2) return '四分之三掩体';
   if (touching.length === 1) return '半掩体';
   return '无';
 }
@@ -1066,6 +1067,7 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   const distanceFt = options.ignoreDistanceCheck ? (options.distanceFt ?? reachFt) : (measured ?? options.distanceFt ?? (range === 'melee' ? reachFt : 30));
   if (!Number.isInteger(distanceFt) || distanceFt < 0 || distanceFt > 600) throw new Error('距离须为 0 至 600 尺的整数。');
   const cover = options.cover ?? (options.autoCover && attacker.position && target.position ? coverFromWalls(battle, attacker.position, target.position) : undefined);
+  if (cover === '全掩体') throw new Error('目标处于全掩体，无法被直接攻击。');
   return { attacker, target, cost, criticalRange, range, distanceFt, measured: measured !== undefined, cover };
 }
 
