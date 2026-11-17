@@ -3094,7 +3094,7 @@ export function startCombat(battle: Battle, initiatives: Record<string, number> 
       if (!Number.isInteger(manual) || manual < -20 || manual > 60) throw new Error('先攻值须为 -20 至 60 的整数。');
       initiative = manual;
     } else {
-      const bonus = actorInitiativeBonus(actor);
+      const bonus = actorInitiativeBonus(actor) - exhaustionPenalty(actor);
       initiative = rollDie(20, random) + bonus;
       if (initiativeAdvantage(actor)) initiative = Math.max(initiative, rollDie(20, random) + bonus);
     }
@@ -3150,7 +3150,7 @@ export function rerollInitiative(battle: Battle, deps: CombatDeps = {}): Battle 
   for (const actor of next.actors) {
     if (!actor.combat) continue;
     if (actor.combat.status === 'dead') continue;
-    const bonus = actorInitiativeBonus(actor);
+    const bonus = actorInitiativeBonus(actor) - exhaustionPenalty(actor);
     const face = 1 + Math.floor(random() * 20);
     actor.combat.initiative = face + bonus;
   }
