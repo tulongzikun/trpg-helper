@@ -1,4 +1,5 @@
-﻿import { actorDistance, attack, currentActorId, endTurn, moveActorToCell, offhandAttack } from './combat.ts';
+﻿import { actorDistance, attack, currentActorId, drinkHealingPotion, endTurn, moveActorToCell, offhandAttack, secondWind } from './combat.ts';
+import { hasSecondWind } from './combatModifiers.ts';
 import { attackSources } from './attackSources.ts';
 import type { CombatDeps } from './combat.ts';
 import { suggestAttacks } from './combatAi.ts';
@@ -45,8 +46,32 @@ function offhandFollowUp(battle: Battle, actorId: string, targetId: string, deps
   }
 }
 
+/** 生命值低于三分之一时先自救：战士用回气，其他人喝治疗药水。 */
+function selfCare(battle: Battle, actorId: string, deps: CombatDeps): AutoAction | null {
+  const actor = battle.actors.find(item => item.id === actorId);
+  if (!actor || actor.combat?.status !== 'active') return null;
+  if (actor.currentHp > Math.floor(actor.maxHp / 3)) return null;
+  if (hasSecondWind(actor) && actor.combat?.secondWindUsed !== true) {
+    try {
+      const result = secondWind(battle, actorId, deps);
+      return { battle: result.battle, kind: 'attack', text: `自动行动：生命值偏低，使用回气恢复 ${result.healed} 点生命值。` };
+    } catch {
+      /* 回气不可用时继续尝试药水 */
+    }
+  }
+  if (actor.combat?.actionUsed) return null;
+  try {
+    const result = drinkHealingPotion(battle, actorId, deps);
+    return { battle: result.battle, kind: 'attack', text: `自动行动：生命值偏低，饮下治疗药水恢复 ${result.healed} 点生命值。` };
+  } catch {
+    return null;
+  }
+}
+
 export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): AutoAction {
   if (currentActorId(battle) !== actorId) throw new Error('只有当前回合的单位可以自动行动。');
+  const care = selfCare(battle, actorId, deps);
+  if (care) return care;
   const suggestions = suggestAttacks(battle, actorId, 6);
   if (!suggestions.length) return { battle, kind: 'wait', text: '自动行动：没有可攻击的敌人，原地待命。' };
   const ready = suggestions.find(item => item.inRange);

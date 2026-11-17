@@ -183,3 +183,27 @@ test('自动行动：非轻型武器不追加副手攻击', () => {
   const actor = result.battle.actors.find(item => item.id === hero.id);
   assert.equal(actor.combat.bonusUsed, false);
 });
+
+test('自动行动：低血量战士先用回气自救', () => {
+  const { battle, hero } = setup();
+  const wounded = structuredClone(battle);
+  const actor = wounded.actors.find(item => item.id === hero.id);
+  actor.currentHp = 10;
+  actor.characterSnapshot.sheet.characterClass = '战士';
+  const result = autoAct(wounded, hero.id, { random: sequence(0.5) });
+  assert.match(result.text, /回气/);
+  const after = result.battle.actors.find(item => item.id === hero.id);
+  assert.ok(after.currentHp > 10);
+  assert.equal(after.combat.secondWindUsed, true);
+});
+
+test('自动行动：非战士低血量改喝治疗药水', () => {
+  const { battle, hero } = setup();
+  const wounded = structuredClone(battle);
+  wounded.actors.find(item => item.id === hero.id).currentHp = 10;
+  const result = autoAct(wounded, hero.id, { random: sequence(0.5, 0.5) });
+  assert.match(result.text, /治疗药水/);
+  const after = result.battle.actors.find(item => item.id === hero.id);
+  assert.ok(after.currentHp > 10);
+  assert.equal(after.combat.actionUsed, true);
+});
