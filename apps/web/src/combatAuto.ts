@@ -70,6 +70,10 @@ function selfCare(battle: Battle, actorId: string, deps: CombatDeps): AutoAction
 
 export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): AutoAction {
   if (currentActorId(battle) !== actorId) throw new Error('只有当前回合的单位可以自动行动。');
+  const self = battle.actors.find(item => item.id === actorId);
+  if (!self || self.combat?.status !== 'active') {
+    return { battle, kind: 'wait', text: '自动行动：该单位已无法行动，原地待命。' };
+  }
   const care = selfCare(battle, actorId, deps);
   if (care) return care;
   const suggestions = suggestAttacks(battle, actorId, 6);

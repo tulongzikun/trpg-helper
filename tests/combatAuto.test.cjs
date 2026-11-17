@@ -1,7 +1,7 @@
 ﻿const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { emptyStore, addMonsters, addCharacter } = require('../apps/web/src/battle.ts');
-const { addHazard, configureGrid, currentActorId, endTurn, moveActorToCell, startCombat, toggleWallCell } = require('../apps/web/src/combat.ts');
+const { addHazard, configureGrid, currentActorId, endTurn, moveActorToCell, setActorHp, startCombat, toggleWallCell } = require('../apps/web/src/combat.ts');
 const { autoAct, autoSide, autoTurn } = require('../apps/web/src/combatAuto.ts');
 const entry = require('../packages/contracts/examples/monster-entry.json');
 const card = { entry, block: entry.statBlocks[0] };
@@ -229,4 +229,13 @@ test('自动行动：四周都是危险地形时仍然可以移动', () => {
   assert.equal(result.kind, 'move');
   const moved = result.battle.actors.find(item => item.id === hero.id);
   assert.ok(moved.combat.movementUsed > 0);
+});
+
+test('倒下的单位自动行动只会原地待命', () => {
+  const { battle, hero } = setup();
+  const downed = setActorHp(battle, hero.id, 0);
+  const result = autoAct(downed, hero.id);
+  assert.equal(result.kind, 'wait');
+  assert.match(result.text, /无法行动/);
+  assert.equal(result.battle, downed);
 });

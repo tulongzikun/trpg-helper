@@ -54,7 +54,9 @@ export function suggestAttacks(battle: Battle, actorId: string, limit = 3): Atta
             : `距离 ${distanceFt} 尺，超出「${source.label}」的射程。`;
       }
       const hpRatio = enemy.maxHp > 0 ? enemy.currentHp / enemy.maxHp : 0;
-      const score = Math.round(((inRange ? 1000 : 0) + (1 - hpRatio) * 100 + average * 2 - (distanceFt ?? 0) * 0.2) * 10) / 10;
+      // 能一击打掉的残血目标优先：命中期望 ≥ 剩余生命值时额外加权。
+      const finisher = inRange && average >= enemy.currentHp;
+      const score = Math.round(((inRange ? 1000 : 0) + (1 - hpRatio) * 100 + average * 2 - (distanceFt ?? 0) * 0.2 + (finisher ? 300 : 0)) * 10) / 10;
       suggestions.push({ targetId: enemy.id, targetName: enemy.name, source, distanceFt, inRange, score, reason });
     }
   }

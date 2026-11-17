@@ -91,3 +91,18 @@ test('平均伤害按骰子期望值计算', () => {
   assert.equal(averageDamage('不是骰子'), 0);
 });
 
+
+test('同等血线比例下优先推荐能被一击打掉的残血目标', () => {
+  const { battle, archer } = setup(bow, 2);
+  const enemies = battle.actors.filter(actor => actor.side === '敌方');
+  const first = enemies[0];
+  const second = enemies[1];
+  first.name = '甲';
+  second.name = '乙';
+  first.maxHp = 10;
+  first.currentHp = 5;
+  second.maxHp = 40;
+  second.currentHp = 20;
+  const suggestions = suggestAttacks(battle, archer.id);
+  assert.equal(suggestions[0].targetName, '甲');
+});
