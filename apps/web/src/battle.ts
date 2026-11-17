@@ -80,7 +80,8 @@ export type Actor = {
   /** 在方格战场上的位置；未放置时不参与距离校验。 */
   position?: Position;
 };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; difficult?: Position[]; walls?: Position[] };
+export type Aura = { id: string; name: string; ownerId: string; radiusFt: number; bonus: number; kind: 'ac' | 'saves' };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; difficult?: Position[]; walls?: Position[]; auras?: Aura[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -158,13 +159,23 @@ function isActor(value: unknown): boolean {
     && (value.summon === undefined || isSummon(value.summon))
     && (value.position === undefined || isPosition(value.position));
 }
+function isAura(value: unknown): boolean {
+  if (!isObject(value)) return false;
+  if (typeof value.id !== 'string' || !value.id.trim() || value.id.length > 64) return false;
+  if (typeof value.name !== 'string' || !value.name.trim() || value.name.length > 64) return false;
+  if (typeof value.ownerId !== 'string' || !value.ownerId.trim() || value.ownerId.length > 64) return false;
+  if (!isInteger(value.radiusFt, 5, 60)) return false;
+  if (!isInteger(value.bonus, 1, 5)) return false;
+  return value.kind === 'ac' || value.kind === 'saves';
+}
 function isBattle(value: unknown): boolean {
   return isObject(value) && typeof value.id === 'string' && typeof value.name === 'string' && typeof value.createdAt === 'string'
     && Array.isArray(value.actors) && value.actors.every(isActor)
     && (value.combat === undefined || isCombatState(value.combat))
     && (value.grid === undefined || isGrid(value.grid))
     && (value.difficult === undefined || (Array.isArray(value.difficult) && value.difficult.length <= 400 && value.difficult.every(isPosition)))
-    && (value.walls === undefined || (Array.isArray(value.walls) && value.walls.length <= 400 && value.walls.every(isPosition)));
+    && (value.walls === undefined || (Array.isArray(value.walls) && value.walls.length <= 400 && value.walls.every(isPosition)))
+  && (value.auras === undefined || (Array.isArray(value.auras) && value.auras.length <= 8 && value.auras.every(isAura)));
 }
 
 /** 校验外部来源的战斗数据，失败时抛出中文错误，供导入功能使用。 */
@@ -245,5 +256,6 @@ export function replaceBattle(store: BattleStore, battle: Battle): BattleStore {
   result.battles[index] = battle;
   return result;
 }
+
 
 

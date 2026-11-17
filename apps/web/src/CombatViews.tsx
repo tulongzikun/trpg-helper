@@ -1,8 +1,8 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Position, Side } from './battle';
 import { damageTypes } from './battle';
-import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
-import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
+import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, SaveOptions, OngoingInput } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import type { AttackSuggestion } from './combatAi';
 import { suggestAttacks } from './combatAi';
@@ -40,6 +40,8 @@ export type CombatHandlers = {
   onRemoveOngoing: (targetId: string, effectId: string) => void;
   onSummon: (actorId: string, ownerId: string, spell: string, rounds?: number) => void;
   onDismissSummon: (actorId: string) => void;
+  onAura: (input: AuraInput) => void;
+  onRemoveAura: (auraId: string) => void;
   onGrid: (grid: GridConfig | null) => void;
   onPlace: (actorId: string, x: number, y: number) => void;
   onDifficult: (x: number, y: number) => void;
@@ -171,6 +173,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
     <OngoingPanel key={`ongoing-${actor.id}`} battle={battle} handlers={handlers} />
     <SummonPanel key={`summon-${actor.id}`} battle={battle} handlers={handlers} />
+    <AuraPanel key={`aura-${actor.id}`} battle={battle} handlers={handlers} />
     <OpportunityPanel key={`opportunity-${actor.id}`} battle={battle} handlers={handlers} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
@@ -630,6 +633,44 @@ function SummonPanel({ battle, handlers }: { battle: Battle; handlers: CombatHan
   </div>;
 }
 
+export function AuraPanel({ battle, handlers }: { battle: Battle; handlers: CombatHandlers }) {
+  const actor = currentActor(battle);
+  const [name, setName] = useState('');
+  const [radius, setRadius] = useState('10');
+  const [bonus, setBonus] = useState('1');
+  const [kind, setKind] = useState<'ac' | 'saves'>('ac');
+  const [message, setMessage] = useState('');
+  const auras = aurasOf(battle);
+  const ownerLabel = (id: string) => battle.actors.find(item => item.id === id)?.name ?? id;
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!actor) return;
+    const radiusFt = Number(radius);
+    const bonusValue = Number(bonus);
+    if (!Number.isInteger(radiusFt) || radiusFt < 5 || radiusFt > 60) { setMessage('半径须为 5 至 60 尺的整数。'); return; }
+    if (!Number.isInteger(bonusValue) || bonusValue < 1 || bonusValue > 5) { setMessage('加值须为 1 至 5 的整数。'); return; }
+    if (!name.trim()) { setMessage('请填写灵光名称。'); return; }
+    handlers.onAura({ name: name.trim(), ownerId: actor.id, radiusFt, bonus: bonusValue, kind });
+    setName(''); setMessage('');
+  };
+  return <div className="cmb-area">
+    <div className="cmb-attack-head"><h4>灵光</h4><small>{auras.length} 个</small></div>
+    <p className="cmb-hint">灵光由当前行动者产生，只影响同阵营且在其半径内的单位；AC 灵光计入攻击目标的 AC，豁免灵光计入豁免检定。</p>
+    <div className="cmb-ongoing-list">
+      {auras.map(aura => <span key={aura.id} className="cmb-chip">{aura.name}（{ownerLabel(aura.ownerId)} · {aura.radiusFt} 尺 · {aura.kind === 'ac' ? 'AC' : '豁免'} +{aura.bonus}）<button type="button" className="cmb-chip-remove" onClick={() => handlers.onRemoveAura(aura.id)} aria-label={`结束${aura.name}的灵光`}>×</button></span>)}
+      {!auras.length ? <span className="cmb-muted">当前没有灵光。</span> : null}
+    </div>
+    {message && <p role="alert" className="battle-error">{message}</p>}
+    <form className="cmb-attack-grid" onSubmit={submit}>
+      <label>名称<input value={name} onChange={event => setName(event.target.value)} placeholder="守护灵光" aria-label="灵光名称" /></label>
+      <label>半径（尺）<input type="number" min={5} max={60} step={5} value={radius} onChange={event => setRadius(event.target.value)} aria-label="灵光半径" /></label>
+      <label>加值<input type="number" min={1} max={5} value={bonus} onChange={event => setBonus(event.target.value)} aria-label="灵光加值" /></label>
+      <label>效果<select value={kind} onChange={event => setKind(event.target.value === 'saves' ? 'saves' : 'ac')} aria-label="灵光效果"><option value="ac">AC</option><option value="saves">豁免</option></select></label>
+      <label className="cmb-inline-action"><button className="button-secondary" type="submit">添加灵光</button></label>
+    </form>
+  </div>;
+}
+
 export function CombatLog({ battle }: { battle: Battle }) {
   const log = battle.combat?.log ?? [];
   return <section className="cmb-log">
@@ -836,3 +877,4 @@ export function SettlementPanel({ battle }: { battle: Battle }) {
     </details>
   );
 }
+

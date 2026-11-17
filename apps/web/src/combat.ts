@@ -1,8 +1,8 @@
-﻿import { abilityModifier, proficiencyBonus } from './characterRules.ts';
+import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
-import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
+import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
 import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
@@ -111,6 +111,58 @@ export function currentActorId(battle: Battle): string | null {
 export function currentActor(battle: Battle): Actor | null {
   const id = currentActorId(battle);
   return id ? battle.actors.find(a => a.id === id) ?? null : null;
+}
+export function aurasOf(battle: Battle): Aura[] {
+  return battle.auras ?? [];
+}
+
+/** 影响该单位的灵光：施放者在场、阵营相同（或自己）、且在半径内。 */
+export function activeAuras(battle: Battle, actorId: string): Aura[] {
+  const actor = battle.actors.find(item => item.id === actorId);
+  if (!actor || actor.combat?.status !== 'active') return [];
+  return aurasOf(battle).filter(aura => {
+    const owner = battle.actors.find(item => item.id === aura.ownerId);
+    if (!owner || owner.combat?.status !== 'active') return false;
+    if (owner.id === actor.id) return true;
+    if (owner.side === '中立' || actor.side === '中立') return false;
+    if (owner.side !== actor.side) return false;
+    const distance = actorDistance(battle, owner.id, actor.id);
+    return distance !== undefined && distance <= aura.radiusFt;
+  });
+}
+
+export function auraBonus(battle: Battle, actorId: string, kind: Aura['kind']): number {
+  return activeAuras(battle, actorId).filter(aura => aura.kind === kind).reduce((sum, aura) => sum + aura.bonus, 0);
+}
+
+export type AuraInput = { name: string; ownerId: string; radiusFt: number; bonus: number; kind: Aura['kind'] };
+
+export function addAura(battle: Battle, input: AuraInput, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const name = input.name?.trim() ?? '';
+  if (!name) throw new Error('请填写灵光名称。');
+  const owner = next.actors.find(actor => actor.id === input.ownerId);
+  if (!owner) throw new Error('灵光的来源单位不存在。');
+  if (owner.combat?.status !== 'active') throw new Error('只有在场的单位可以产生灵光。');
+  if (!Number.isInteger(input.radiusFt) || input.radiusFt < 5 || input.radiusFt > 60) throw new Error('灵光半径须为 5 至 60 尺的整数。');
+  if (!Number.isInteger(input.bonus) || input.bonus < 1 || input.bonus > 5) throw new Error('灵光加值须为 1 至 5 的整数。');
+  if (input.kind !== 'ac' && input.kind !== 'saves') throw new Error('灵光效果只能是 AC 或豁免。');
+  if (aurasOf(next).length >= 8) throw new Error('一场战斗最多维持 8 个灵光。');
+  const aura: Aura = { id: makeIdOf(deps)(), name, ownerId: owner.id, radiusFt: input.radiusFt, bonus: input.bonus, kind: input.kind };
+  next.auras = [...aurasOf(next), aura];
+  addLog(next, `${actorLabel(next, owner)} 的「${name}」开始生效（半径 ${aura.radiusFt} 尺，${aura.kind === 'ac' ? 'AC' : '豁免'} +${aura.bonus}）。`, deps);
+  return next;
+}
+
+export function removeAura(battle: Battle, auraId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const aura = aurasOf(next).find(item => item.id === auraId);
+  if (!aura) throw new Error('灵光不存在。');
+  next.auras = aurasOf(next).filter(item => item.id !== auraId);
+  addLog(next, `「${aura.name}」的灵光结束。`, deps);
+  return next;
 }
 export function appendLog(battle: Battle, text: string, deps: CombatDeps = {}, detail?: string): Battle {
   addLog(battle, text, deps, detail);
@@ -805,7 +857,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const second = mode === 'normal' ? first : rollDie(20, random);
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
   const total = natural + options.attackBonus;
-  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0);
+  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac');
   const hit = natural === 20 || (natural !== 1 && total >= targetAc);
   const automaticCritical = hit && isAutomaticCritical(target, context.range, context.distanceFt);
   const critical = hit && (natural >= context.criticalRange || automaticCritical);
@@ -850,6 +902,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     `攻击检定 ${rollText}${options.attackBonus >= 0 ? '+' : ''}${options.attackBonus} = ${total} vs AC ${targetAc}`,
     context.measured ? `方格距离 ${context.distanceFt} 尺` : '',
     context.cover ? coverNote(context.cover) : '',
+    auraBonus(battle, target.id, 'ac') ? `灵光 AC +${auraBonus(battle, target.id, 'ac')}` : '',
     hit ? (critical ? '重击' : '命中') : (natural === 1 ? '大失败' : '未命中'),
     damageText,
     options.twoHanded && damageExpression !== options.damageExpression ? `双手持用：${damageExpression}` : '',
@@ -1187,8 +1240,10 @@ export function savingThrow(battle: Battle, options: SaveOptions, deps: CombatDe
   if (!Number.isInteger(options.dc) || options.dc < 1 || options.dc > 40) throw new Error('豁免 DC 须为 1 至 40 的整数。');
   const bonus = options.bonus ?? 0;
   if (!Number.isInteger(bonus) || bonus < -10 || bonus > 30) throw new Error('豁免加值须为 -10 至 30 的整数。');
-  const outcome = resolveSave(actor, options, randomOf(deps));
-  addLog(next, `${actorLabel(next, actor)} 的${saveNames[options.ability]}豁免${outcome.success ? '成功' : '失败'}。`, deps, saveDetail(actor, next, options, outcome));
+  const auraSave = auraBonus(next, actor.id, 'saves');
+  const withAura = { ...options, bonus: options.bonus ?? defaultSaveBonus(actor, options.ability) + auraSave };
+  const outcome = resolveSave(actor, withAura, randomOf(deps));
+  addLog(next, `${actorLabel(next, actor)} 的${saveNames[options.ability]}豁免${outcome.success ? '成功' : '失败'}。`, deps, saveDetail(actor, next, withAura, outcome));
   return { battle: next, outcome };
 }
 
@@ -1207,7 +1262,7 @@ export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatD
   for (const targetId of targetIds) {
     const actor = actorOf(next, targetId);
     if (actor.combat?.status === 'dead') continue;
-    const targetBonus = options.bonuses?.[targetId];
+    const targetBonus = options.bonuses?.[targetId] ?? (defaultSaveBonus(actor, options.ability) + auraBonus(next, targetId, 'saves'));
     const save = resolveSave(actor, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: targetBonus, mode: options.mode }, random);
     const amount = save.success ? (options.halfOnSuccess === false ? 0 : Math.floor(raw.total / 2)) : raw.total;
     const defense = defenseOf(actor, options.damageType);
@@ -1335,7 +1390,7 @@ function concentrationCheck(battle: Battle, actor: Actor, damage: number, random
     dismissSummonsOf(battle, actor.id, `施法者失去专注「${concentration.spell}」`, deps);
     return { lost: true, dc, natural: 0, total: 0, text: `失去对「${concentration.spell}」的专注` };
   }
-  const outcome = resolveSave(actor, { actorId: actor.id, ability: 'con', dc }, random);
+  const outcome = resolveSave(actor, { actorId: actor.id, ability: 'con', dc, bonus: defaultSaveBonus(actor, 'con') + auraBonus(battle, actor.id, 'saves') }, random);
   if (outcome.success) return { lost: false, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，维持「${concentration.spell}」` };
   delete actor.combat!.concentration;
   dismissSummonsOf(battle, actor.id, `施法者失去专注「${concentration.spell}」`, deps);
@@ -1418,7 +1473,7 @@ function applyOngoingDamage(battle: Battle, deps: CombatDeps, timing: 'start' | 
     if ((effect.timing ?? 'start') !== timing) { survivors.push(effect); continue; }
     let ended = false;
     if (effect.saveEnds) {
-      const save = resolveSave(actor, { actorId: actor.id, ability: effect.saveEnds.ability, dc: effect.saveEnds.dc }, random);
+      const save = resolveSave(actor, { actorId: actor.id, ability: effect.saveEnds.ability, dc: effect.saveEnds.dc, bonus: defaultSaveBonus(actor, effect.saveEnds.ability) + auraBonus(battle, actor.id, 'saves') }, random);
       if (save.success) {
         ended = true;
         addLog(battle, `${actorLabel(battle, actor)} 通过${saveNames[effect.saveEnds.ability]}豁免，结束「${effect.name}」。`, deps, `d20(${save.natural}) = ${save.total}，DC ${effect.saveEnds.dc}`);
@@ -1566,6 +1621,8 @@ export function standUp(battle: Battle, actorId: string, deps: CombatDeps = {}):
   addLog(next, `${actorLabel(next, actor)} 起身，消耗 ${cost} 尺移动力。`, deps);
   return next;
 }
+
+
 
 
 
