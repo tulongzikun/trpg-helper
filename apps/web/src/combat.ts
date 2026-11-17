@@ -2588,6 +2588,17 @@ function applyBrambles(battle: Battle, actor: Actor, steps: number, deps: Combat
   addLog(battle, `${actorLabel(battle, actor)} 穿过荆棘，受到 ${result.damage} 点穿刺伤害。`, deps, concentration?.text);
 }
 
+/** 与某格相邻的八格（不做边界裁剪，由调用方过滤）。 */
+function adjacentCells(position: Position): Position[] {
+  const cells: Position[] = [];
+  for (let dx = -1; dx <= 1; dx += 1) {
+    for (let dy = -1; dy <= 1; dy += 1) {
+      if (dx === 0 && dy === 0) continue;
+      cells.push({ x: position.x + dx, y: position.y + dy });
+    }
+  }
+  return cells;
+}
 export function moveActorToCell(battle: Battle, actorId: string, x: number, y: number, deps: CombatDeps = {}): Battle {
   if (!battle.grid) throw new Error('请先启用方格战场。');
   if (!Number.isInteger(x) || !Number.isInteger(y)) throw new Error('格子坐标须为整数。');
@@ -2628,14 +2639,31 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const muddy = next.terrain === 'mud';
   const webbed = webAt(next, x, y);
   const entwined = entangleAt(next, x, y);
+  const dragged = next.actors.filter(item => item.id !== actorId && item.combat?.grappledBy === actorId && !!item.position && item.combat?.fled !== true);
   const flying = state.flying === true;
   const crawling = !flying && state.conditions.includes('倒地');
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava || brambles || muddy || webbed || entwined || crawling ? 2 : 1);
+  const heavilyLoaded = dragged.length > 0;
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava || brambles || muddy || webbed || entwined || crawling || heavilyLoaded ? 2 : 1);
   const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && muddy ? '，泥沼使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}${!flying && entwined ? '，藤蔓使消耗翻倍' : ''}${crawling ? '，倒地爬行使消耗翻倍' : ''}。`, deps);
+  for (const victim of dragged) {
+    const free = adjacentCells({ x, y })
+      .filter(cell => cell.x >= 0 && cell.y >= 0 && cell.x < next.grid!.width && cell.y < next.grid!.height)
+      .filter(cell => !isWallCell(next, cell.x, cell.y))
+      .filter(cell => !next.actors.some(item => item.id !== victim.id && item.combat?.fled !== true && item.position?.x === cell.x && item.position?.y === cell.y));
+    const fromVictim = victim.position!;
+    free.sort((left, right) => cellDistance(fromVictim, left) - cellDistance(fromVictim, right));
+    const spot = free[0];
+    if (!spot) {
+      addLog(next, `${actorLabel(next, victim)} 被擒抱，但周围没有空位，只能留在原地。`, deps);
+      continue;
+    }
+    victim.position = spot;
+    addLog(next, `${actorLabel(next, victim)} 被拖拽到 (${spot.x}, ${spot.y})。`, deps);
+  }
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && muddy ? '，泥沼使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}${!flying && entwined ? '，藤蔓使消耗翻倍' : ''}${crawling ? '，倒地爬行使消耗翻倍' : ''}${heavilyLoaded && !flying ? '，拖拽被擒抱的单位使消耗翻倍' : ''}。`, deps);
   if (greaseAt(next, x, y) && !flying) greaseFall(next, actor, deps);
   if (sleepCloudAt(next, x, y)) sleepDust(next, actor, deps);
   if (webbed && !flying) webStuck(next, actor, deps);
