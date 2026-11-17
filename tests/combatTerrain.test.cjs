@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { emptyStore, addMonsters, addCharacter } = require('../apps/web/src/battle.ts');
-const { attack, configureGrid, moveActorToCell, setTerrain, startCombat } = require('../apps/web/src/combat.ts');
+const { attack, configureGrid, damageActor, moveActorToCell, setTerrain, startCombat } = require('../apps/web/src/combat.ts');
 const entry = require('../packages/contracts/examples/monster-entry.json');
 const card = { entry, block: entry.statBlocks[0] };
 let counter = 0;
@@ -73,4 +73,31 @@ test('地形日志与非法取值', () => {
   const normal = setTerrain(underwater, 'normal');
   assert.match(normal.combat.log.at(-1).text, /普通地形/);
   assert.throws(() => setTerrain(battle, 'lava'), /战场地形取值无效/);
+});
+
+test('水下火焰伤害减半', () => {
+  const { battle, monster } = setup('短弓', 3);
+  const underwater = setTerrain(battle, 'underwater');
+  const before = underwater.actors.find(actor => actor.id === monster.id).currentHp;
+  const result = damageActor(underwater, monster.id, 8, '火焰', { random: sequence(0.5), makeId: ids() });
+  const after = result.battle.actors.find(actor => actor.id === monster.id).currentHp;
+  assert.equal(before - after, 4);
+  assert.match(result.battle.combat.log.at(-1).detail, /水下：火焰抗性/);
+});
+
+test('水下非火焰伤害不受影响', () => {
+  const { battle, monster } = setup('短弓', 3);
+  const underwater = setTerrain(battle, 'underwater');
+  const before = underwater.actors.find(actor => actor.id === monster.id).currentHp;
+  const result = damageActor(underwater, monster.id, 4, '挥砍', { random: sequence(0.5), makeId: ids() });
+  const after = result.battle.actors.find(actor => actor.id === monster.id).currentHp;
+  assert.equal(before - after, 4);
+});
+
+test('普通地形下火焰伤害不减半', () => {
+  const { battle, monster } = setup('短弓', 3);
+  const before = battle.actors.find(actor => actor.id === monster.id).currentHp;
+  const result = damageActor(battle, monster.id, 6, '火焰', { random: sequence(0.5), makeId: ids() });
+  const after = result.battle.actors.find(actor => actor.id === monster.id).currentHp;
+  assert.equal(before - after, 6);
 });

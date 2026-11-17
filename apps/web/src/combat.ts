@@ -779,11 +779,16 @@ function defenseOf(actor: Actor, type: DamageType): { multiplier: number; label:
   if (vulnerable) return { multiplier: 2, label: '易伤' };
   return { multiplier: 1, label: '' };
 }
-function applyDamageToActor(actor: Actor, amount: number, type: DamageType): DamageOutcome {
+function terrainDefense(battle: Battle | undefined, type: DamageType): { multiplier: number; label: string } {
+  if (battle?.terrain === 'underwater' && type === '火焰') return { multiplier: 0.5, label: '水下：火焰抗性' };
+  return { multiplier: 1, label: '' };
+}
+function applyDamageToActor(actor: Actor, amount: number, type: DamageType, battle?: Battle): DamageOutcome {
   if (!Number.isInteger(amount) || amount < 0) throw new Error('伤害须为非负整数。');
   const state = combatantOf(actor);
   const defense = defenseOf(actor, type);
-  const adjusted = Math.floor(amount * defense.multiplier);
+  const terrain = terrainDefense(battle, type);
+  const adjusted = Math.floor(amount * defense.multiplier * terrain.multiplier);
   const absorbed = Math.min(state.tempHp, adjusted);
   state.tempHp -= absorbed;
   const remaining = adjusted - absorbed;
@@ -808,8 +813,10 @@ export function damageActor(battle: Battle, actorId: string, amount: number, typ
   const actor = actorOf(next, actorId);
   const state = combatantOf(actor);
   const wasDown = state.status === 'down';
-  const outcome = applyDamageToActor(actor, amount, type);
+  const outcome = applyDamageToActor(actor, amount, type, next);
+  const terrain = terrainDefense(next, type);
   const notes: string[] = [];
+  if (terrain.label) notes.push(terrain.label);
   if (outcome.tempAbsorbed) notes.push(`临时生命吸收 ${outcome.tempAbsorbed}`);
   if (wasDown && outcome.damage > outcome.tempAbsorbed) notes.push('倒地受击：死亡豁免失败 +1（是否重击按距离人工裁定）');
   if (state.status === 'down') notes.push('倒地，需要死亡豁免');
@@ -1026,15 +1033,16 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   if (hit) {
     const rolled = rollDamage(damageExpression, random, critical);
     const defenseResult = defenseOf(target, options.damageType);
-    defense = defenseResult.label;
-    const result = applyDamageToActor(target, rolled.total, options.damageType);
+    const terrainResult = terrainDefense(battle, options.damageType);
+    defense = [defenseResult.label, terrainResult.label].filter(Boolean).join('，');
+    const result = applyDamageToActor(target, rolled.total, options.damageType, battle);
     damage = result.damage;
     tempAbsorbed = result.tempAbsorbed;
     status = result.status;
     if (options.extraDamageExpression && options.extraDamageType) {
       const extraRoll = rollDamage(options.extraDamageExpression, random, critical && options.extraDamageCritical !== false);
       const extraDefense = defenseOf(target, options.extraDamageType);
-      const extraResult = applyDamageToActor(target, extraRoll.total, options.extraDamageType);
+      const extraResult = applyDamageToActor(target, extraRoll.total, options.extraDamageType, battle);
       extraDamage = extraResult.damage;
       damage += extraDamage;
       tempAbsorbed += extraResult.tempAbsorbed;
@@ -1068,7 +1076,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
           if (!neighbor) {
             masteryNote = '精通·顺劈：5 尺内没有其他敌对单位';
           } else if (splash > 0) {
-            const result = applyDamageToActor(neighbor, splash, options.damageType);
+            const result = applyDamageToActor(neighbor, splash, options.damageType, battle);
             masteryNote = `精通·顺劈：邻近的 ${actorLabel(battle, neighbor)} 受到 ${result.damage} 点${options.damageType}伤害`;
           } else {
             masteryNote = '精通·顺劈：力量调整值不足以造成额外伤害';
@@ -1108,7 +1116,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     const abilities = attacker.characterSnapshot?.sheet.abilities ?? attacker.template.abilities ?? { str: 10 };
     const graze = Math.max(0, abilityModifier(abilities.str ?? 10));
     if (graze > 0) {
-      const result = applyDamageToActor(target, graze, options.damageType);
+      const result = applyDamageToActor(target, graze, options.damageType, battle);
       damage = result.damage;
       tempAbsorbed = result.tempAbsorbed;
       status = result.status;
@@ -1526,7 +1534,7 @@ export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatD
     const save = resolveSave(actor, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: targetBonus, mode: options.mode }, random);
     const amount = save.success ? (options.halfOnSuccess === false ? 0 : Math.floor(raw.total / 2)) : raw.total;
     const defense = defenseOf(actor, options.damageType);
-    const damage = amount > 0 ? applyDamageToActor(actor, amount, options.damageType) : { damage: 0, tempAbsorbed: 0, status: actor.combat?.status ?? 'active' };
+    const damage = amount > 0 ? applyDamageToActor(actor, amount, options.damageType, battle) : { damage: 0, tempAbsorbed: 0, status: actor.combat?.status ?? 'active' };
     const concentration = damage.damage > 0 ? concentrationCheck(next, actor, damage.damage, random, deps) : null;
     results.push({ actorId: targetId, save, damage: damage.damage, tempAbsorbed: damage.tempAbsorbed, status: damage.status });
     addLog(next, `${actorLabel(next, actor)} 的${saveNames[options.ability]}豁免${save.success ? '成功' : '失败'}，承受 ${damage.damage} 点${options.damageType}伤害。`, deps,
@@ -1741,7 +1749,7 @@ function applyOngoingDamage(battle: Battle, deps: CombatDeps, timing: 'start' | 
     }
     if (!ended) {
       const rolled = rollDamage(effect.damageExpression, random, false);
-      const outcome = applyDamageToActor(actor, rolled.total, effect.damageType);
+      const outcome = applyDamageToActor(actor, rolled.total, effect.damageType, battle);
       const concentration = concentrationCheck(battle, actor, outcome.damage, random, deps);
       addLog(battle, `${timing === 'start' ? '回合开始' : '回合结束'}：「${effect.name}」对 ${actorLabel(battle, actor)} 造成 ${outcome.damage} 点${effect.damageType}伤害，剩余 ${actor.currentHp}/${actor.maxHp}。`, deps,
         [`${effect.damageExpression} → ${rolled.total}`, concentration?.text, statusNow() === 'down' ? '倒地，需要死亡豁免' : statusNow() === 'dead' ? '死亡' : ''].filter(Boolean).join('；'));
