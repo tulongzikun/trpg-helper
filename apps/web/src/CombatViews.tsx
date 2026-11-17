@@ -18,6 +18,7 @@ import type { SpellCastOptions } from './combatSpells';
 import { filterLog, logRounds } from './combatLog';
 import { replayFrames } from './combatReplay';
 import { spellAreaTargets } from './combatSpells';
+import { difficultyText } from './encounterDifficulty';
 import { settlementText } from './combatSettlement';
 
 const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
@@ -547,6 +548,7 @@ function AiPanel({ battle, actor, onApply }: { battle: Battle; actor: Actor; onA
   };
   return <div className="cmb-ai">
     <div className="cmb-ai-head"><h4>战术建议</h4><small>按能否立即攻击、目标血量与平均伤害排序</small></div>
+    <p className="cmb-hint">${difficultyText(battle)}</p>
     {(() => { const turn = suggestTurn(battle); return turn.action === 'hold' ? <p className="cmb-hint">本回合建议：{turn.note}</p> : <p className="cmb-hint">本回合建议：{turn.action === 'attack' ? '直接攻击' : '先靠近再攻击'} —— {turn.note}</p>; })()}
     <ul>
       {suggestions.map(item => <li key={`${item.targetId}:${item.source.id}`}>
