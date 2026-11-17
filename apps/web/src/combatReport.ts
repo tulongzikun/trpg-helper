@@ -25,6 +25,15 @@ export function defenseOf(actor: Actor): string {
   return parts.join('、');
 }
 
+/** 单位准备动作的摘要，例如「准备「攻击靠近的敌人」（触发：有人进入 5 尺）」。 */
+export function readyOf(actor: Actor): string {
+  const ready = actor.combat?.ready;
+  if (!ready) return '';
+  const trigger = ready.trigger ? `（触发：${ready.trigger}）` : '';
+  const used = actor.combat?.reactionUsed === true ? '，反应已用' : '';
+  return `准备「${ready.action}」${trigger}${used}`;
+}
+
 /** 把一场战斗渲染成可直接贴进跑团记录的 Markdown。 */
 export function battleReport(battle: Battle): string {
   const reward = encounterReward(battle);
@@ -44,6 +53,15 @@ export function battleReport(battle: Battle): string {
     const conditions = (actor.combat?.conditions ?? []).join('、') || '—';
     const concentration = actor.combat?.concentration?.spell ?? '—';
     lines.push(`| ${actor.name} | ${actor.side} | ${actor.currentHp}/${actor.maxHp} | ${statusOf(actor)} | ${conditions} | ${concentration} |`);
+  }
+  const prepared = battle.actors
+    .map(actor => ({ actor, text: readyOf(actor) }))
+    .filter(item => item.text.length > 0);
+  if (prepared.length) {
+    lines.push('');
+    lines.push('## 准备动作');
+    lines.push('');
+    for (const item of prepared) lines.push(`- ${item.actor.name}：${item.text}`);
   }
   const guarded = battle.actors
     .map(actor => ({ actor, text: defenseOf(actor) }))
