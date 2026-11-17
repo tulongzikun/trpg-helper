@@ -38,6 +38,8 @@ export type AttackOptions = {
   weaponId?: string;
   /** 两用武器改用双手持用时的伤害骰（需要 weaponId 指向一把两用武器）。 */
   twoHanded?: boolean;
+  /** 强力攻击（重武器专长）：攻击检定 -5，命中伤害 +10；需要 weaponId 指向带「重型」的武器。 */
+  powerAttack?: boolean;
   nick?: boolean;
   ignoreCostCheck?: boolean;
   /** 附带的额外伤害骰（如猎人印记、至圣斩），随重击一起翻倍。 */
@@ -1100,6 +1102,10 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
     const versatile = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId)?.versatileDamage : undefined;
     if (!versatile) throw new Error('该武器没有两用形态，无法双手持用。');
   }
+  if (options.powerAttack) {
+    const heavy = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
+    if (!heavy?.properties?.includes('重型')) throw new Error('只有重型武器可以使用强力攻击。');
+  }
   const measured = actorDistance(battle, attacker.id, target.id);
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'melee' && measured > reachFt) throw new Error(`目标距离 ${measured} 尺，超出近战触及范围（${reachFt} 尺）。`);
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && measured > 600) throw new Error('目标距离超出远程攻击范围（600 尺）。');
@@ -1182,7 +1188,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const first = rollDie(20, random);
   const second = mode === 'normal' ? first : rollDie(20, random);
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
-  const total = natural + options.attackBonus;
+  const total = natural + options.attackBonus - (options.powerAttack ? 5 : 0);
   const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac');
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
@@ -1205,7 +1211,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     const defenseResult = defenseOf(target, options.damageType);
     const terrainResult = terrainDefense(battle, options.damageType);
     defense = [defenseResult.label, terrainResult.label].filter(Boolean).join('，');
-    const result = applyDamageToActor(target, rolled.total, options.damageType, battle);
+    const result = applyDamageToActor(target, rolled.total + (options.powerAttack ? 10 : 0), options.damageType, battle);
     damage = result.damage;
     tempAbsorbed = result.tempAbsorbed;
     status = result.status;
@@ -1323,6 +1329,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     hit ? (critical ? '重击' : '命中') : (natural === 1 ? '大失败' : '未命中'),
     damageText,
     options.twoHanded && damageExpression !== options.damageExpression ? `双手持用：${damageExpression}` : '',
+    options.powerAttack ? '强力攻击：攻击检定 -5，伤害 +10' : '',
     extraNote,
     sneakNote,
     masteryNote,
