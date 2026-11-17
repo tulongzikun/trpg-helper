@@ -6,7 +6,7 @@ import type { Ability } from './characters';
 import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side, AttackPreset } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
-import { jumpDistance } from './combatMovement.ts';
+import { applyFallDamage, jumpDistance } from './combatMovement.ts';
 import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, criticalThreshold, hasCunningAction, hasEvasion, hasRecklessAttack, hasSecondWind, isAutomaticCritical, sneakAttackDice, targetAdjustment } from './combatModifiers.ts';
 import { attackSources, type AttackSource } from './attackSources.ts';
 import type { AttackRange, CoverType, ModeAdjustment } from './combatModifiers.ts';
@@ -420,6 +420,23 @@ export function setElevation(battle: Battle, actorId: string, feet: number, deps
   addLog(next, feet === 0 ? `${actorLabel(next, actor)} 回到地面。` : `${actorLabel(next, actor)} 的高度设为 ${feet} 尺。`, deps);
   return next;
 }
+/** 从当前高度跳下：按坠落规则结算伤害（每 10 尺 1d6），并清除高度。 */
+export function dropDown(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; fallen: number } {
+  const probe = structuredClone(battle);
+  requireCombat(probe);
+  const actor = actorOf(probe, actorId);
+  const feet = actor.elevation ?? 0;
+  if (feet <= 0) throw new Error('该单位没有高度，无法跳下。');
+  if (combatantOf(actor).status !== 'active') throw new Error('只有在场的单位可以跳下。');
+  const fall = feet >= 10 ? applyFallDamage(probe, actorId, feet, deps) : null;
+  const next = fall ? fall.battle : recordUndo(probe);
+  const diver = actorOf(next, actorId);
+  delete diver.elevation;
+  addLog(next, `${actorLabel(next, diver)} 从 ${feet} 尺高处跳下。`, deps);
+  if (diver.combat) diver.combat.flying = false;
+  return { battle: next, fallen: feet };
+}
+
 /** 切换「战地施法者」专长：开启后专注检定具有优势。 */
 export function setWarCaster(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));

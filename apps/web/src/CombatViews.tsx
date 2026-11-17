@@ -31,6 +31,7 @@ export type CombatHandlers = {
   onLongRest: () => void;
   onExhaustion: (actorId: string, level: number) => void;
   onElevation: (actorId: string, feet: number) => void;
+  onDropDown: (actorId: string) => void;
   onDualWielder: (actorId: string, enabled: boolean) => void;
   onSentinel: (actorId: string, enabled: boolean) => void;
   onDelay: (actorId: string) => void;
@@ -268,6 +269,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <label className="cmb-check"><input type="checkbox" checked={state.flying === true} onChange={event => handlers.onFlying(actor.id, event.target.checked)} aria-label="飞行" title="飞行时移动忽略地形消耗与危险地形伤害" />飞行</label>
       <label className="cmb-temp">力竭<input key={`ex-${state.exhaustion ?? 0}`} type="number" min={0} max={6} step={1} defaultValue={state.exhaustion ?? 0} aria-label="力竭等级" title="每级：攻击、豁免、属性检定 -2，速度 -5 尺" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0 && value <= 6) handlers.onExhaustion(actor.id, value); }} /></label>
       <label className="cmb-temp">高度<input key={`el-${actor.elevation ?? 0}`} type="number" min={0} max={500} step={5} defaultValue={actor.elevation ?? 0} aria-label="高度（尺）" title="高空射击 10 尺以上有优势，仰射高空目标有劣势" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0 && value <= 500) handlers.onElevation(actor.id, value); }} /></label>
+      {(actor.elevation ?? 0) > 0 ? <button type="button" className="button-secondary" onClick={() => handlers.onDropDown(actor.id)} disabled={state.status !== 'active'} aria-label="跳下">跳下（结算坠落）</button> : null}
       <label className="cmb-temp">临时生命<input key={state.tempHp} type="number" min={0} step={1} defaultValue={state.tempHp} aria-label="临时生命值" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0) handlers.onTempHp(actor.id, value); }} /></label>
     </div>
     {state.conditions.length > 0 && <div className="cmb-conditions">{state.conditions.map(condition => <span key={condition}>{condition}</span>)}</div>}
