@@ -1,4 +1,4 @@
-import { abilityModifier, proficiencyBonus } from './characterRules.ts';
+﻿import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
@@ -347,6 +347,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   requireCombat(next);
   if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以移动。');
   const state = combatantOf(actor);
+  if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法移动。');
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
   if (lineCells(from, { x, y }).some(cell => isWallCell(next, cell.x, cell.y))) throw new Error('移动路径被墙体阻挡。');
@@ -582,6 +583,7 @@ export function spendMovement(battle: Battle, actorId: string, feet: number, dep
   if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以移动。');
   const actor = actorOf(next, actorId);
   const state = combatantOf(actor);
+  if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法移动。');
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
   const speed = actorSpeed(actor);
@@ -920,6 +922,106 @@ export function offhandAttack(battle: Battle, options: AttackOptions, deps: Comb
   addLog(next, style
     ? `${actorLabel(next, attacker)} 用副手武器「${source.label}」进行附赠动作攻击，双武器战斗风格把属性调整值加入伤害。`
     : `${actorLabel(next, attacker)} 用副手武器「${source.label}」进行附赠动作攻击，伤害不使用属性调整值。`, deps);
+  return { battle: next, outcome };
+}
+
+export type ContestOptions = { attackerId: string; targetId: string };
+export type ContestOutcome = { attackerTotal: number; targetTotal: number; attackerNatural: number; targetNatural: number; success: boolean };
+export type ShoveEffect = 'prone' | 'push';
+
+function abilityCheckBonus(actor: Actor, ability: Ability, skill: string): number {
+  const sheet = actor.characterSnapshot?.sheet;
+  const abilities = sheet?.abilities ?? actor.template.abilities;
+  const score = abilities?.[ability] ?? 10;
+  const proficient = (sheet?.details?.skillProficiencies ?? []).includes(skill);
+  const level = sheet?.level ?? 1;
+  return abilityModifier(score) + (proficient ? proficiencyBonus(level) : 0);
+}
+
+function contestRoll(bonus: number, random: Random): { natural: number; total: number } {
+  const natural = 1 + Math.floor(random() * 20);
+  return { natural, total: natural + bonus };
+}
+
+function grappleContest(next: Battle, attacker: Actor, target: Actor, deps: CombatDeps): ContestOutcome {
+  const random = deps.random ?? Math.random;
+  const attackerBonus = abilityCheckBonus(attacker, 'str', '运动');
+  const targetStrength = abilityCheckBonus(target, 'str', '运动');
+  const targetDexterity = abilityCheckBonus(target, 'dex', '体操');
+  const targetBonus = Math.max(targetStrength, targetDexterity);
+  const attackerRoll = contestRoll(attackerBonus, random);
+  const targetRoll = contestRoll(targetBonus, random);
+  const success = attackerRoll.total > targetRoll.total;
+  addLog(next, success
+    ? `${actorLabel(next, attacker)} 擒抱或推撞 ${actorLabel(next, target)} 成功（${attackerRoll.natural}+${attackerBonus} 对 ${targetRoll.natural}+${targetBonus}）。`
+    : `${actorLabel(next, attacker)} 擒抱或推撞 ${actorLabel(next, target)} 失败（${attackerRoll.natural}+${attackerBonus} 对 ${targetRoll.natural}+${targetBonus}）。`, deps,
+    `力量（运动）对抗目标的力量（运动）或敏捷（体操）：${attackerRoll.total} 对 ${targetRoll.total}`);
+  return { attackerTotal: attackerRoll.total, targetTotal: targetRoll.total, attackerNatural: attackerRoll.natural, targetNatural: targetRoll.natural, success };
+}
+
+function contestSetup(battle: Battle, options: ContestOptions): { next: Battle; attacker: Actor; target: Actor } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const attacker = actorOf(next, options.attackerId);
+  const target = actorOf(next, options.targetId);
+  if (attacker.id === target.id) throw new Error('不能对自己进行擒抱或推撞。');
+  const blocker = actionBlocker(attacker);
+  if (blocker) throw new Error(blocker);
+  if (actionBlocker(target)) throw new Error('目标无法被擒抱或推撞。');
+  if (currentActorId(next) !== attacker.id) throw new Error('只有当前回合的单位可以擒抱或推撞。');
+  if (combatantOf(attacker).actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const distance = actorDistance(next, attacker.id, target.id);
+  const reach = Math.max(5, actorReach(attacker));
+  if (distance !== undefined && distance > reach) throw new Error(`目标距离 ${distance} 尺，超出擒抱范围（${reach} 尺）。`);
+  return { next, attacker, target };
+}
+
+export function grapple(battle: Battle, options: ContestOptions, deps: CombatDeps = {}): { battle: Battle; outcome: ContestOutcome } {
+  const { next, attacker, target } = contestSetup(battle, options);
+  if (target.combat?.conditions.includes('擒抱')) throw new Error('目标已经被擒抱。');
+  const outcome = grappleContest(next, attacker, target, deps);
+  const state = combatantOf(attacker);
+  state.actionUsed = true;
+  if (outcome.success) {
+    if (!target.combat) throw new Error('目标不在战斗中。');
+    if (!target.combat.conditions.includes('擒抱')) target.combat.conditions.push('擒抱');
+  }
+  return { battle: next, outcome };
+}
+
+export function shove(battle: Battle, options: ContestOptions & { effect: ShoveEffect }, deps: CombatDeps = {}): { battle: Battle; outcome: ContestOutcome } {
+  const { next, attacker, target } = contestSetup(battle, options);
+  if (options.effect !== 'prone' && options.effect !== 'push') throw new Error('推撞效果无效。');
+  const outcome = grappleContest(next, attacker, target, deps);
+  const state = combatantOf(attacker);
+  state.actionUsed = true;
+  if (!outcome.success) return { battle: next, outcome };
+  if (!target.combat) throw new Error('目标不在战斗中。');
+  if (options.effect === 'prone') {
+    if (!target.combat.conditions.includes('倒地')) target.combat.conditions.push('倒地');
+    addLog(next, `${actorLabel(next, target)} 被推倒在地。`, deps);
+    return { battle: next, outcome };
+  }
+  const grid = next.grid;
+  const attackerPosition = attacker.position;
+  const targetPosition = target.position;
+  if (!grid || !attackerPosition || !targetPosition) {
+    addLog(next, `${actorLabel(next, target)} 被推开 5 尺（未启用方格，需手动调整位置）。`, deps);
+    return { battle: next, outcome };
+  }
+  const dx = targetPosition.x - attackerPosition.x;
+  const dy = targetPosition.y - attackerPosition.y;
+  const stepX = dx === 0 ? 0 : Math.sign(dx);
+  const stepY = dy === 0 ? 0 : Math.sign(dy);
+  if (stepX === 0 && stepY === 0) throw new Error('无法判断推撞方向。');
+  const toX = targetPosition.x + stepX;
+  const toY = targetPosition.y + stepY;
+  if (toX < 0 || toY < 0 || toX >= grid.width || toY >= grid.height) throw new Error('推撞方向超出战场边界。');
+  const occupied = next.actors.find(actor => actor.id !== target.id && actor.position?.x === toX && actor.position?.y === toY);
+  if (occupied) throw new Error(`推撞方向已有单位：${actorLabel(next, occupied)}。`);
+  if (isWallCell(next, toX, toY)) throw new Error('推撞方向是墙体。');
+  target.position = { x: toX, y: toY };
+  addLog(next, `${actorLabel(next, target)} 被推开 5 尺到 (${toX}, ${toY})。`, deps);
   return { battle: next, outcome };
 }
 
@@ -1427,6 +1529,8 @@ export function standUp(battle: Battle, actorId: string, deps: CombatDeps = {}):
   addLog(next, `${actorLabel(next, actor)} 起身，消耗 ${cost} 尺移动力。`, deps);
   return next;
 }
+
+
 
 
 

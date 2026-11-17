@@ -22,6 +22,8 @@ export type CombatHandlers = {
   onAttack: (options: AttackOptions) => void;
   onAttackSequence: (options: AttackOptions) => void;
   onOffhand: (options: AttackOptions) => void;
+  onGrapple: (targetId: string) => void;
+  onShove: (targetId: string, effect: 'prone' | 'push') => void;
   onSave: (options: SaveOptions) => void;
   onAreaSave: (options: AreaSaveOptions) => void;
   onConcentration: (actorId: string, spell: string | null) => void;
@@ -150,6 +152,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <ReadyPanel key={`ready-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <AiPanel key={`ai-${actor.id}`} battle={battle} actor={actor} onApply={setSuggestion} />
     <AttackForm key={actor.id} battle={battle} attacker={actor} suggestion={suggestion} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} onOffhand={handlers.onOffhand} />
+        <GrapplePanel key={`grapple-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
     <OngoingPanel key={`ongoing-${actor.id}`} battle={battle} handlers={handlers} />
     <SummonPanel key={`summon-${actor.id}`} battle={battle} handlers={handlers} />
@@ -477,6 +480,26 @@ export function AreaEffectForm({ battle, onSave, onAreaSave }: { battle: Battle;
   </div>;
 }
 
+function GrapplePanel({ battle, actor, handlers }: { battle: Battle; actor: Actor; handlers: CombatHandlers }) {
+  const targets = availableTargets(battle, actor.id);
+  const [targetId, setTargetId] = useState(targets[0]?.id ?? '');
+  if (!targets.length) return null;
+  const target = targets.find(item => item.id === targetId) ?? targets[0];
+  const grappled = target?.combat?.conditions.includes('擒抱') === true;
+  return <div className="cmb-attack">
+    <div className="cmb-attack-head"><h4>擒抱与推撞</h4><small>消耗一个动作 · 力量（运动）对抗</small></div>
+    <div className="cmb-attack-grid">
+      <label>目标<select value={targetId} onChange={event => setTargetId(event.target.value)} aria-label="擒抱目标">{targets.map(item => <option key={item.id} value={item.id}>{actorLabel(battle, item)}（{item.side}，HP {item.currentHp}/{item.maxHp}）</option>)}</select></label>
+    </div>
+    <div className="cmb-attack-actions">
+      <span className="cmb-hint">{grappled ? '目标已被擒抱，可以在其回合开始前手动解除。' : '目标是力量（运动）或敏捷（体操）中较高的一项进行对抗；平局视为失败。'}</span>
+      <button className="button-primary" type="button" onClick={() => handlers.onGrapple(target.id)} aria-label="擒抱">擒抱</button>
+      <button className="button-secondary" type="button" onClick={() => handlers.onShove(target.id, 'prone')} aria-label="推倒">推倒</button>
+      <button className="button-secondary" type="button" onClick={() => handlers.onShove(target.id, 'push')} aria-label="推开五尺">推开 5 尺</button>
+    </div>
+  </div>;
+}
+
 function OngoingPanel({ battle, handlers }: { battle: Battle; handlers: CombatHandlers }) {
   const actor = currentActor(battle);
   const [spell, setSpell] = useState('');
@@ -693,6 +716,7 @@ export function ReinforcePanel({ battle, cards, onReinforce }: { battle: Battle;
     <div className="cmb-reinforce-actions"><button type="submit" className="button-secondary">加入增援</button>{message && <span className="cmb-muted">{message}</span>}</div>
   </form>;
 }
+
 
 
 
