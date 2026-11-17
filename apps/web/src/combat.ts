@@ -1095,6 +1095,48 @@ export function castAid(battle: Battle, casterId: string, targetIds: string[], d
   return next;
 }
 
+const BARKSKIN_AC = 17;
+const BARKSKIN_ROUNDS = 10;
+const BARKSKIN_RANGE_FT = 5;
+
+/** 树肤术的目标：同阵营（含自己）、在场、5 尺内的单位。 */
+export function barkskinTargets(battle: Battle, casterId: string): Actor[] {
+  const caster = battle.actors.find(item => item.id === casterId);
+  if (!caster) return [];
+  return battle.actors.filter(item => {
+    if (item.side !== caster.side || item.side === '中立') return false;
+    if ((item.combat?.status ?? 'active') !== 'active') return false;
+    if (actorDistance(battle, casterId, item.id) === undefined) return true;
+    return (actorDistance(battle, casterId, item.id) ?? 0) <= BARKSKIN_RANGE_FT;
+  });
+}
+
+/** 树肤术：动作 + 专注，把目标 AC 抬到不低于 17，持续 10 轮。 */
+export function castBarkskin(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  if ((caster.combat?.status ?? 'active') !== 'active') throw new Error('只有在场的单位可以施放树肤术。');
+  requireVoice(next, casterId);
+  if (!targetId) throw new Error('请选择树肤术的目标。');
+  const target = actorOf(next, targetId);
+  if ((target.combat?.status ?? 'active') !== 'active') throw new Error('只能对在场的单位施放树肤术。');
+  if (target.combat?.barkskin) throw new Error('目标已经受到树肤术的影响。');
+  const distance = actorDistance(next, casterId, targetId);
+  if (distance !== undefined && distance > BARKSKIN_RANGE_FT) throw new Error(`树肤术只能影响 ${BARKSKIN_RANGE_FT} 尺内的单位。`);
+  const state = combatantOf(caster);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const existing = state.concentration?.spell;
+  if (existing && existing !== '树肤术') throw new Error('施法者已经在维持其他专注。');
+  state.actionUsed = true;
+  state.concentration = { spell: '树肤术' };
+  const targetState = combatantOf(target);
+  targetState.barkskin = BARKSKIN_ROUNDS;
+  targetState.barkskinBy = casterId;
+  addLog(next, `${actorLabel(next, caster)} 施放树肤术：${actorLabel(next, target)} 的 AC 变为不低于 ${BARKSKIN_AC}，持续 ${BARKSKIN_ROUNDS} 轮。`, deps);
+  return next;
+}
+
 const MASS_HEAL_RANGE_FT = 60;
 const MASS_HEAL_MAX_TARGETS = 6;
 
@@ -1604,7 +1646,7 @@ export function drinkAntitoxin(battle: Battle, actorId: string, deps: CombatDeps
 
 /** 施法者失去专注（或改用别的专注法术）时，立即结束其施加的祝福。 */
 function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps: CombatDeps = {}): void {
-  for (const [field, byField, name] of [['blessed', 'blessedBy', '祝福术'], ['hasted', 'hastedBy', '加速术'], ['invisible', 'invisibleBy', '隐形术'], ['slowed', 'slowedBy', '缓慢术'], ['frightened', 'frightenedBy', '恐惧术']] as const) {
+  for (const [field, byField, name] of [['blessed', 'blessedBy', '祝福术'], ['hasted', 'hastedBy', '加速术'], ['invisible', 'invisibleBy', '隐形术'], ['slowed', 'slowedBy', '缓慢术'], ['frightened', 'frightenedBy', '恐惧术'], ['barkskin', 'barkskinBy', '树肤术']] as const) {
     const affected = battle.actors.filter(item => item.combat?.[byField] === casterId);
     if (!affected.length) continue;
     for (const item of affected) {
@@ -2549,7 +2591,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
       addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 身上的祝福术结束了。`, {});
     }
   }
-  for (const [key, name] of [['hasted', '加速术'], ['invisible', '隐形术'], ['slowed', '缓慢术'], ['polymorphed', '变形术']] as const) {
+  for (const [key, name] of [['hasted', '加速术'], ['invisible', '隐形术'], ['slowed', '缓慢术'], ['polymorphed', '变形术'], ['barkskin', '树肤术']] as const) {
     const left = combat[key];
     if (typeof left !== 'number') continue;
     if (left > 1) { combat[key] = left - 1; continue; }
@@ -3465,7 +3507,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const blessDie = combatantOf(attacker).blessed ? rollDie(4, random) : 0;
   if (blessDie) notes.push(`祝福：攻击检定 +${blessDie}`);
   const total = natural + options.attackBonus + archery + blessDie - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
-  const targetAc = (combatantOf(target).polymorphed ? 10 : target.template.armorClass) + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) - (combatantOf(target).slowed ? 2 : 0) + defenseBonus(target);
+  const baseAc = (combatantOf(target).polymorphed ? 10 : target.template.armorClass) + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) - (combatantOf(target).slowed ? 2 : 0) + defenseBonus(target);
+  const targetAc = combatantOf(target).barkskin ? Math.max(baseAc, BARKSKIN_AC) : baseAc;
   if (guard) delete combatantOf(guard).guarding;
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
@@ -4099,7 +4142,8 @@ export function throwFlask(battle: Battle, actorId: string, targetId: string, ki
   const natural = rollDie(20, random);
   const bonus = actorAttackProfile(actor).attackBonus;
   const total = natural + bonus;
-  const targetAc = target.template.armorClass + auraBonus(next, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) - (combatantOf(target).slowed ? 2 : 0) + defenseBonus(target);
+  const baseAc = target.template.armorClass + auraBonus(next, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) - (combatantOf(target).slowed ? 2 : 0) + defenseBonus(target);
+  const targetAc = combatantOf(target).barkskin ? Math.max(baseAc, BARKSKIN_AC) : baseAc;
   const hit = natural === 20 || (natural !== 1 && total >= targetAc);
   let damage = 0;
   if (hit) {
@@ -4146,6 +4190,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
   for (const actor of next.actors) {
     if (!actor.combat) continue;
     delete actor.combat.aided;
+    delete actor.combat.barkskin;
+    delete actor.combat.barkskinBy;
     actor.combat.nickUsed = false;
     actor.combat.sneakUsed = false;
     actor.combat.dodging = false;
