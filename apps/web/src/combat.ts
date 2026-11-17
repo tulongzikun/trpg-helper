@@ -1213,9 +1213,44 @@ export function markSurprised(battle: Battle, actorIds: string[], deps: CombatDe
   return next;
 }
 
+const SUPPRESS_DC = 15;
+const SUPPRESS_RANGE_FT = 60;
+
 const FEAR_DC = 13;
 const FEAR_RANGE_FT = 30;
 const FEAR_MAX_TARGETS = 3;
+/** 掩护射击：用一轮火力压制 60 尺内的敌人，压制期间对方攻击检定劣势。 */
+export function suppressingFire(battle: Battle, actorId: string, targetId: string, deps: CombatDeps = {}): { battle: Battle; outcome: CheckOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const target = actorOf(next, targetId);
+  if (actorId === targetId) throw new Error('不能压制自己。');
+  if (combatantOf(actor).status !== 'active') throw new Error('只有处于战斗中的单位可以进行掩护射击。');
+  if (target.side === actor.side || target.side === '中立') throw new Error('只能压制敌对单位。');
+  if (combatantOf(target).status !== 'active') throw new Error('目标已经无法行动。');
+  if (currentActorId(next) !== actor.id) throw new Error('只有当前回合的单位可以行动。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  const state = combatantOf(actor);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const distance = actorDistance(next, actorId, targetId);
+  if (distance !== undefined && distance > SUPPRESS_RANGE_FT) throw new Error(`掩护射击的射程是 ${SUPPRESS_RANGE_FT} 尺。`);
+  const rolled = abilityCheck(next, { actorId, ability: 'dex', dc: SUPPRESS_DC }, deps);
+  const result = rolled.battle;
+  const check = rolled.outcome;
+  const attacker = actorOf(result, actorId);
+  const victim = actorOf(result, targetId);
+  combatantOf(attacker).actionUsed = true;
+  if (check.success) {
+    combatantOf(victim).suppressed = true;
+    addLog(result, `${actorLabel(result, attacker)} 为 ${actorLabel(result, victim)} 提供掩护射击（敏捷 ${check.total} ≥ DC ${SUPPRESS_DC}）：对方攻击检定劣势，直到它的下回合开始。`, deps);
+  } else {
+    addLog(result, `${actorLabel(result, attacker)} 的掩护射击没有奏效（敏捷 ${check.total} < DC ${SUPPRESS_DC}）。`, deps);
+  }
+  return { battle: result, outcome: check };
+}
+
 /** 恐惧术：动作施放，30 尺内最多 3 个敌对单位各做一次感知豁免，失败者 10 轮内无法靠近施法者且对其攻击劣势。 */
 export function castFear(battle: Battle, casterId: string, targetIds: string[], deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -2563,6 +2598,11 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   const combat = requireCombat(next);
   const endingId = combat.order[combat.turnIndex];
   if (endingId) applyOngoingDamage(next, deps, 'end', endingId);
+  const ending = endingId ? next.actors.find(item => item.id === endingId) : undefined;
+  if (ending?.combat?.suppressed) {
+    delete ending.combat.suppressed;
+    addLog(next, `${actorLabel(next, ending)} 摆脱了掩护射击的压制。`, deps);
+  }
   const actor = nextTurnIndex(next);
   resetTurnResources(next, actor.id);
   addLog(next, `第 ${combat.round} 轮 · 轮到 ${actorLabel(next, actor)}（先攻 ${combatantOf(actor).initiative}）。`, deps);
@@ -3283,8 +3323,9 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const weatherAdjustment: ModeAdjustment | null = battle.weather && context.range === 'ranged' ? { mode: 'disadvantage', notes: [battle.weather === 'rain' ? '暴雨：远程攻击检定劣势' : '强风：远程攻击检定劣势'] } : null;
   const invisibleAdjustment: ModeAdjustment | null = invisibleAttacker ? { mode: 'advantage', notes: ['攻击者处于隐形：攻击检定优势'] } : invisibleTarget ? { mode: 'disadvantage', notes: ['目标处于隐形：攻击检定劣势'] } : null;
   const aimAdjustment: ModeAdjustment | null = combatantOf(attacker).aimed === true && context.range === 'ranged' ? { mode: 'advantage', notes: ['瞄准：远程攻击检定优势'] } : null;
+  const suppressedAdjustment: ModeAdjustment | null = combatantOf(attacker).suppressed === true ? { mode: 'disadvantage', notes: ['被压制：攻击检定劣势'] } : null;
   const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(darknessAdjustment ? [darknessAdjustment] : []), ...(weatherAdjustment ? [weatherAdjustment] : []), ...(frightenedAdjustment ? [frightenedAdjustment] : []),
-    ...(poisonAdjustment ? [poisonAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : []), ...(aimAdjustment ? [aimAdjustment] : [])]);
+    ...(poisonAdjustment ? [poisonAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : []), ...(aimAdjustment ? [aimAdjustment] : []), ...(suppressedAdjustment ? [suppressedAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
@@ -3974,6 +4015,7 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.sleeping;
   delete actor.combat.paralyzed;
   delete actor.combat.paralyzedBy;
+    delete actor.combat.suppressed;
     delete actor.combat.commanded;
     delete actor.combat.polymorphed;
     delete actor.combat.polymorphedBy;
