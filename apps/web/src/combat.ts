@@ -2938,6 +2938,41 @@ function resetTurnResources(battle: Battle, actorId: string) {
   }
   combat.dashMovement = 0;
 }
+/** 可被处决的俘虏：5 尺内已经投降、仍然活着的敌对单位。 */
+export function captiveTargets(battle: Battle, actorId: string): Actor[] {
+  const actor = battle.actors.find(item => item.id === actorId);
+  if (!actor) return [];
+  return battle.actors.filter(item => item.id !== actorId
+    && item.side !== actor.side && item.side !== '中立'
+    && item.combat?.surrendered === true
+    && item.combat?.status !== 'dead'
+    && (!actor.position || !item.position || cellDistance(actor.position, item.position) <= 1));
+}
+
+/** 处决俘虏：花一个动作杀死 5 尺内已经投降的单位。 */
+export function executeCaptive(battle: Battle, actorId: string, targetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (actorId === targetId) throw new Error('不能处决自己。');
+  const executioner = actorOf(next, actorId);
+  const executor = combatantOf(executioner);
+  const target = actorOf(next, targetId);
+  const state = combatantOf(target);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以处决俘虏。');
+  if (executor.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (state.surrendered !== true) throw new Error('只能处决已经投降的单位。');
+  if (state.status === 'dead') throw new Error('该单位已经死亡。');
+  if (executioner.position && target.position && cellDistance(executioner.position, target.position) > 1) {
+    throw new Error('只能处决 5 尺内的投降者。');
+  }
+  executor.actionUsed = true;
+  target.currentHp = 0;
+  state.status = 'dead';
+  settleDeath(next, target, deps);
+  addLog(next, `${actorLabel(next, executioner)} 处决了投降的 ${actorLabel(next, target)}。`, deps);
+  return next;
+}
+
 function nextTurnIndex(battle: Battle) {
   const combat = requireCombat(battle);
   combat.turnIndex += 1;
