@@ -630,6 +630,7 @@ export function castHoldPerson(battle: Battle, casterId: string, targetId: strin
   const state = combatantOf(caster);
   if (state.status !== 'active') throw new Error('只有在场的单位可以施放定身术。');
   const target = actorOf(next, targetId);
+  requireSight(next, casterId, targetId);
   const targetState = combatantOf(target);
   if (targetState.status !== 'active') throw new Error('只能对在场的单位施放定身术。');
   if (target.id === casterId) throw new Error('定身术不能对自己施放。');
@@ -673,6 +674,7 @@ export function castCommand(battle: Battle, casterId: string, targetId: string, 
   if (state.status !== 'active') throw new Error('只有在场的单位可以施放命令术。');
   if (command !== 'drop' && command !== 'halt') throw new Error('命令术的指令无效，只能是「落地」或「停止」。');
   const target = actorOf(next, targetId);
+  requireSight(next, casterId, targetId);
   const targetState = combatantOf(target);
   if (targetState.status !== 'active') throw new Error('只能对在场的单位施放命令术。');
   if (target.id === casterId) throw new Error('命令术不能对自己施放。');
@@ -718,6 +720,15 @@ export function silenceBlocks(battle: Battle, actorId: string): boolean {
 }
 
 /** 所有已实现的法术都含言语成分：站在沉默区域时必须先离开。 */
+/** 施法前确认能看见目标：墙体挡住连线时不能对目标施法。 */
+function requireSight(battle: Battle, casterId: string, targetId: string): void {
+  const caster = battle.actors.find(item => item.id === casterId);
+  const target = battle.actors.find(item => item.id === targetId);
+  if (!caster?.position || !target?.position) return;
+  if (hasLineOfSight(battle, caster.position, target.position)) return;
+  throw new Error('视线被墙体阻挡，无法对该目标施法。');
+}
+
 function requireVoice(battle: Battle, casterId: string): void {
   if (silenceBlocks(battle, casterId)) throw new Error('处于沉默区域，无法施放需要言语成分的法术。');
 }
@@ -1363,6 +1374,7 @@ export function castCharmPerson(battle: Battle, casterId: string, targetId: stri
   const casterState = combatantOf(caster);
   if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放魅惑术。');
   const target = actorOf(next, targetId);
+  requireSight(next, casterId, targetId);
   if (target.id === casterId) throw new Error('魅惑术不能对自己施放。');
   if (combatantOf(target).status !== 'active') throw new Error('只能对在场的单位施放魅惑术。');
   if (target.side === caster.side) throw new Error('魅惑术只能影响敌对单位。');
@@ -1648,6 +1660,7 @@ export function castPolymorph(battle: Battle, casterId: string, targetId: string
   if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放变形术。');
   if (targetId === casterId) throw new Error('无法对自己施放变形术。');
   const target = actorOf(next, targetId);
+  requireSight(next, casterId, targetId);
   const targetState = combatantOf(target);
   if (targetState.status === 'dead') throw new Error('无法以已经死亡的单位为目标。');
   if (targetState.polymorphed) throw new Error('目标已经处于变形术的影响下。');
@@ -1837,6 +1850,7 @@ export function castDeafness(battle: Battle, casterId: string, targetId: string,
   if (blocker) throw new Error(blocker);
   if (casterState.concentration) throw new Error('施法者已经在维持其他专注。');
   const target = actorOf(next, targetId);
+  requireSight(next, casterId, targetId);
   if (target.id === casterId) throw new Error('耳聋术不能对自己施放。');
   const targetState = combatantOf(target);
   if (targetState.status !== 'active') throw new Error('只能对在场的单位施放耳聋术。');
@@ -1869,6 +1883,7 @@ export function castBlindness(battle: Battle, casterId: string, targetId: string
   const casterState = combatantOf(caster);
   if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放致盲术。');
   const target = actorOf(next, targetId);
+  requireSight(next, casterId, targetId);
   if (target.id === casterId) throw new Error('致盲术不能对自己施放。');
   if (target.side === caster.side) throw new Error('致盲术只能影响敌对单位。');
   const targetState = combatantOf(target);
