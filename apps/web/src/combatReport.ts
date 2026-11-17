@@ -64,6 +64,21 @@ export function effectsOf(actor: Actor): string[] {
   return parts;
 }
 
+/** 先攻顺序：按出手次序排列，标出当前行动者与本轮已行动的单位。 */
+export function initiativeOrder(battle: Battle): { name: string; initiative: number; current: boolean; acted: boolean }[] {
+  const combat = battle.combat;
+  if (!combat) return [];
+  return combat.order.map((id, index) => {
+    const actor = battle.actors.find(item => item.id === id);
+    return {
+      name: actor?.name ?? id,
+      initiative: actor?.combat?.initiative ?? 0,
+      current: index === combat.turnIndex,
+      acted: index < combat.turnIndex,
+    };
+  });
+}
+
 /** 把一场战斗渲染成可直接贴进跑团记录的 Markdown。 */
 export function battleReport(battle: Battle): string {
   const reward = encounterReward(battle);
@@ -83,6 +98,16 @@ export function battleReport(battle: Battle): string {
     const conditions = (actor.combat?.conditions ?? []).join('、') || '—';
     const concentration = actor.combat?.concentration?.spell ?? '—';
     lines.push(`| ${actor.name} | ${actor.side} | ${actor.currentHp}/${actor.maxHp} | ${statusOf(actor)} | ${conditions} | ${concentration} |`);
+  }
+  const order = initiativeOrder(battle);
+  if (order.length) {
+    lines.push('');
+    lines.push('## 先攻顺序');
+    lines.push('');
+    order.forEach((item, index) => {
+      const marks = [item.current ? '← 当前行动者' : '', item.acted ? '（已行动）' : ''].filter(Boolean).join(' ');
+      lines.push(`${index + 1}. ${item.name}（先攻 ${item.initiative}）${marks ? ` ${marks}` : ''}`);
+    });
   }
   const prepared = battle.actors
     .map(actor => ({ actor, text: readyOf(actor) }))
