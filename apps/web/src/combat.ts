@@ -3607,6 +3607,8 @@ function defenseOf(actor: Actor, type: DamageType): { multiplier: number; label:
 }
 function terrainDefense(battle: Battle | undefined, type: DamageType): { multiplier: number; label: string } {
   if (battle?.terrain === 'underwater' && type === '火焰') return { multiplier: 0.5, label: '水下：火焰抗性' };
+  // 水中导电：闪电与雷鸣顺着水扩散，水下的单位更难躲开。
+  if (battle?.terrain === 'underwater' && (type === '闪电' || type === '雷鸣')) return { multiplier: 2, label: '水下导电：闪电与雷鸣易伤' };
   if (battle?.weather === 'rain' && type === '火焰') return { multiplier: 0.5, label: '暴雨：火焰抗性' };
   return { multiplier: 1, label: '' };
 }
