@@ -55,6 +55,7 @@ export type CombatHandlers = {
   onRemoveAura: (auraId: string) => void;
   onGrid: (grid: GridConfig | null) => void;
   onPlace: (actorId: string, x: number, y: number) => void;
+  onJump: (actorId: string, x: number, y: number) => void;
   onHazard: (x: number, y: number, damageExpression: string, damageType: DamageType) => void;
   onDifficult: (x: number, y: number) => void;
   onWall: (x: number, y: number) => void;
@@ -273,6 +274,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   const [message, setMessage] = useState('');
   const [hazardDice, setHazardDice] = useState('1d6');
   const [hazardType, setHazardType] = useState<DamageType>('火焰');
+  const [jumpMode, setJumpMode] = useState(false);
   const grid = battle.grid;
   const current = currentActorId(battle);
   if (!grid) {
@@ -318,7 +320,8 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     if (occupant) { setSelected(occupant.id); setMessage(''); return; }
     if (!selected) { setMessage('先选择一个单位，再点击目标格。'); return; }
     setMessage('');
-    handlers.onPlace(selected, x, y);
+    if (jumpMode) handlers.onJump(selected, x, y);
+    else handlers.onPlace(selected, x, y);
   };
   const rows = Array.from({ length: grid.height }, (_, y) => y);
   const columns = Array.from({ length: grid.width }, (_, x) => x);
@@ -351,6 +354,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className={mode === 'terrain' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'terrain'} onClick={() => setMode('terrain')}>标记困难地形</button>
       <button type="button" className={mode === 'wall' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'wall'} onClick={() => setMode('wall')}>标记墙体</button>
       <button type="button" className={mode === 'hazard' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'hazard'} onClick={() => setMode('hazard')}>标记危险地形</button>
+      <label className="cmb-check"><input type="checkbox" checked={jumpMode} onChange={event => setJumpMode(event.target.checked)} aria-label="跳跃移动" />跳跃移动（按直线距离消耗，忽略困难与危险地形）</label>
       {mode === 'hazard' ? <span className="cmb-inline-action">
         <input className="cmb-dice" value={hazardDice} onChange={event => setHazardDice(event.target.value)} aria-label="危险地形伤害骰" placeholder="1d6" />
         <select value={hazardType} onChange={event => setHazardType(event.target.value as DamageType)} aria-label="危险地形伤害类型">{damageTypes.map(type => <option key={type} value={type}>{type}</option>)}</select>

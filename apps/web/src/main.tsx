@@ -11,7 +11,7 @@ import { importBattle } from './battleTransfer';
 import { autoAct, autoSide, autoTurn } from './combatAuto';
 import { applyFallDamage } from './combatMovement';
 import { castSpell, setSpellSlots } from './combatSpells';
-import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setAutoDeathSaves, setEnterReachOpportunity, setObscured, setTerrain, setExhaustion, takeLongRest, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, setInitiative, abilityCheck, healActor, cunningAction, recklessAttack, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
+import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setAutoDeathSaves, setEnterReachOpportunity, setObscured, setTerrain, setExhaustion, takeLongRest, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, jumpToCell, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, setInitiative, abilityCheck, healActor, cunningAction, recklessAttack, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -65,6 +65,7 @@ function App() {
   onRemoveAura:auraId=>tryBattle(()=>changeBattle(battleId,battle=>removeAura(battle,auraId))),
   onGrid:grid=>tryBattle(()=>changeBattle(battleId,battle=>configureGrid(battle,grid))),
   onPlace:(actorId,x,y)=>tryBattle(()=>changeBattle(battleId,battle=>moveActorToCell(battle,actorId,x,y))),
+  onJump:(actorId,x,y)=>tryBattle(()=>changeBattle(battleId,battle=>jumpToCell(battle,actorId,x,y))),
   onDifficult:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleDifficultCell(battle,x,y))),
   onWall:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleWallCell(battle,x,y))),
   onHazard:(x,y,expression,type)=>tryBattle(()=>changeBattle(battleId,battle=>hazardAt(battle,x,y)?removeHazard(battle,x,y):addHazard(battle,{x,y,damageExpression:expression,damageType:type}))),

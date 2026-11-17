@@ -6,6 +6,7 @@ import type { Ability } from './characters';
 import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
+import { jumpDistance } from './combatMovement.ts';
 import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, criticalThreshold, hasCunningAction, hasEvasion, hasRecklessAttack, hasSecondWind, isAutomaticCritical, sneakAttackDice, targetAdjustment } from './combatModifiers.ts';
 import { attackSources, type AttackSource } from './attackSources.ts';
 import type { AttackRange, CoverType, ModeAdjustment } from './combatModifiers.ts';
@@ -985,6 +986,37 @@ export function spendResource(battle: Battle, actorId: string, kind: AttackCost,
   addLog(next, `${actorLabel(next, actor)} 使用了${kind === 'action' ? '动作' : kind === 'bonus' ? '附赠动作' : '反应'}。`, deps);
   return next;
 }
+/** 跳跃：以力量值尺为跳远上限，按直线距离消耗移动力，忽略困难地形与危险地形，也不引发借机攻击。 */
+export function jumpToCell(battle: Battle, actorId: string, x: number, y: number, deps: CombatDeps = {}): Battle {
+  if (!battle.grid) throw new Error('请先启用方格战场。');
+  if (!Number.isInteger(x) || !Number.isInteger(y)) throw new Error('格子坐标须为整数。');
+  if (x < 0 || y < 0 || x >= battle.grid.width || y >= battle.grid.height) throw new Error('目标格子超出战场范围。');
+  const from = positionOf(battle, actorId);
+  if (!from) throw new Error('请先把单位放到方格战场上。');
+  if (from.x === x && from.y === y) throw new Error('单位已经在该格。');
+  const occupied = battle.actors.find(actor => actor.id !== actorId && actor.position?.x === x && actor.position?.y === y);
+  if (occupied) throw new Error(`该格已有单位：${occupied.name}。`);
+  if (isWallCell(battle, x, y)) throw new Error('不能跳到墙体格子。');
+  const next = recordUndo(structuredClone(battle));
+  const actor = actorOf(next, actorId);
+  requireCombat(next);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以跳跃。');
+  const state = combatantOf(actor);
+  if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法跳跃。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (lineCells(from, { x, y }).some(cell => isWallCell(next, cell.x, cell.y))) throw new Error('跳跃路径被墙体阻挡。');
+  const distance = cellDistance(from, { x, y }) * next.grid!.cellFt;
+  const maxJump = jumpDistance(actor, 'long');
+  if (distance > maxJump) throw new Error(`跳跃距离超出上限（${maxJump} 尺）。`);
+  const speed = movementAllowance(actor);
+  if (state.movementUsed + distance > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
+  state.movementUsed += distance;
+  actor.position = { x, y };
+  addLog(next, `${actorLabel(next, actor)} 跳跃到 (${x}, ${y})，消耗 ${distance} 尺（共 ${state.movementUsed}/${speed} 尺）。`, deps);
+  return next;
+}
+
 export function spendMovement(battle: Battle, actorId: string, feet: number, deps: CombatDeps = {}): Battle {
   if (!Number.isInteger(feet) || feet < 0) throw new Error('移动距离须为非负整数。');
   const next = recordUndo(structuredClone(battle));
