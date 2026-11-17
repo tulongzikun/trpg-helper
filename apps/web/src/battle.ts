@@ -16,6 +16,8 @@ export type OngoingEffect = {
   saveEnds?: { ability: Ability; dc: number };
   /** 结算时机：回合开始（默认）或回合结束。 */
   timing?: 'start' | 'end';
+  /** 同一时机额外恢复的生命值骰（如再生）。 */
+  healExpression?: string;
 };
 /** 正在维持的专注法术。 */
 export type Concentration = { spell: string };
@@ -142,6 +144,7 @@ function isOngoingEffect(value: unknown): value is OngoingEffect {
   if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.damageExpression !== 'string') return false;
   if (!damageTypes.includes(value.damageType as DamageType)) return false;
   if (value.timing !== undefined && value.timing !== 'start' && value.timing !== 'end') return false;
+  if (value.healExpression !== undefined && (typeof value.healExpression !== 'string' || value.healExpression.length === 0 || value.healExpression.length > 20)) return false;
   if (value.saveEnds === undefined) return true;
   const saveEnds = value.saveEnds;
   return isObject(saveEnds) && abilityKeys.includes(saveEnds.ability as Ability) && isInteger(saveEnds.dc, 1, 40);

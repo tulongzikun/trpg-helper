@@ -2101,7 +2101,7 @@ export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatD
   return { battle: next, results };
 }
 
-export type OngoingInput = { name: string; damageExpression: string; damageType: DamageType; saveEnds?: { ability: Ability; dc: number }; timing?: 'start' | 'end' };
+export type OngoingInput = { name: string; damageExpression: string; damageType: DamageType; saveEnds?: { ability: Ability; dc: number }; timing?: 'start' | 'end'; healExpression?: string };
 export type ConcentrationCheck = { lost: boolean; dc: number; natural: number; total: number; text: string };
 
 export type SummonInput = { ownerId: string; spell?: string; rounds?: number };
@@ -2227,6 +2227,10 @@ function validateOngoing(input: OngoingInput): void {
   if (!damageTypes.includes(input.damageType)) throw new Error('请选择有效的伤害类型。');
   if (input.saveEnds && (!Number.isInteger(input.saveEnds.dc) || input.saveEnds.dc < 1 || input.saveEnds.dc > 40)) throw new Error('持续效果的豁免 DC 须为 1 至 40 的整数。');
   if (input.timing !== undefined && input.timing !== 'start' && input.timing !== 'end') throw new Error('持续效果的结算时机无效。');
+  if (input.healExpression !== undefined) {
+    if (!input.healExpression.trim()) throw new Error('请填写持续效果的治疗骰。');
+    parseDice(input.healExpression);
+  }
 }
 
 export function addOngoingEffect(battle: Battle, targetId: string, input: OngoingInput, deps: CombatDeps = {}): { battle: Battle; effectId: string } {
@@ -2237,10 +2241,10 @@ export function addOngoingEffect(battle: Battle, targetId: string, input: Ongoin
   const state = combatantOf(actor);
   if (state.ongoing && state.ongoing.length >= 8) throw new Error('单个单位最多记录 8 个持续效果。');
   const effectId = makeIdOf(deps)();
-  state.ongoing = [...(state.ongoing ?? []), { id: effectId, name: input.name.trim(), damageExpression: input.damageExpression, damageType: input.damageType, saveEnds: input.saveEnds, timing: input.timing ?? 'start' }];
+  state.ongoing = [...(state.ongoing ?? []), { id: effectId, name: input.name.trim(), damageExpression: input.damageExpression, damageType: input.damageType, saveEnds: input.saveEnds, timing: input.timing ?? 'start', ...(input.healExpression ? { healExpression: input.healExpression } : {}) }];
   const timingLabel = (input.timing ?? 'start') === 'start' ? '回合开始' : '回合结束';
   addLog(next, `${actorLabel(next, actor)} 受到持续效果「${input.name.trim()}」影响。`, deps,
-    `${timingLabel}承受 ${input.damageExpression} 点${input.damageType}伤害${input.saveEnds ? `；${timingLabel}进行${saveNames[input.saveEnds.ability]}豁免 DC ${input.saveEnds.dc}，成功则移除` : ''}`);
+    `${timingLabel}承受 ${input.damageExpression} 点${input.damageType}伤害${input.saveEnds ? `；${timingLabel}进行${saveNames[input.saveEnds.ability]}豁免 DC ${input.saveEnds.dc}，成功则移除` : ''}${input.healExpression ? `；同一时机恢复 ${input.healExpression} 点生命值` : ''}`);
   return { battle: next, effectId };
 }
 
@@ -2311,6 +2315,14 @@ function applyOngoingDamage(battle: Battle, deps: CombatDeps, timing: 'start' | 
         [`${effect.damageExpression} → ${rolled.total}`, concentration?.text, statusNow() === 'down' ? '倒地，需要死亡豁免' : statusNow() === 'dead' ? '死亡' : ''].filter(Boolean).join('；'));
       survivors.push(effect);
     }
+      if (effect.healExpression && statusNow() !== 'dead') {
+        const heal = rollDamage(effect.healExpression, random, false);
+        const recovered = Math.min(actor.maxHp - actor.currentHp, heal.total);
+        if (recovered > 0) {
+          actor.currentHp += recovered;
+          addLog(battle, `${timing === 'start' ? '回合开始' : '回合结束'}：「${effect.name}」为 ${actorLabel(battle, actor)} 恢复 ${recovered} 点生命值，当前 ${actor.currentHp}/${actor.maxHp}。`, deps, `${effect.healExpression} → ${heal.total}`);
+        }
+      }
     if (statusNow() === 'dead') { addLog(battle, `${actorLabel(battle, actor)} 已死亡，其余持续效果清除。`, deps); return; }
   }
   state.ongoing = survivors;
