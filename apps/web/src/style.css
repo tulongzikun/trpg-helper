@@ -192,3 +192,17 @@
 .cmb-log-filter input { flex: 1 1 12rem; }
 
 .cmb-outcome { margin: 0.4rem 0; padding: 0.35rem 0.6rem; border-left: 3px solid #b45309; background: #fef3c7; font-weight: 600; }
+
+.cmb-replay {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.cmb-replay button {
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.75rem;
+}

@@ -2,7 +2,7 @@
 import type { Card } from './catalog';
 import type { BattleStore, Position, Side } from './battle';
 import type { CombatHandlers } from './CombatViews';
-import { BattleIo, CombatLog, CombatSetup, CombatToolbar, GridPanel, InitiativeRail, ReinforcePanel, SettlementPanel, TurnPanel } from './CombatViews';
+import { BattleIo, CombatLog, CombatSetup, CombatToolbar, GridPanel, InitiativeRail, ReinforcePanel, SettlementPanel, TurnPanel, ReplayPanel } from './CombatViews';
 import { rewardSummary } from './encounterReward';
 import { battleOutcome, outcomeLabel } from './combatOutcome';
 import { currentActorId } from './combat';
@@ -22,7 +22,7 @@ export function AddMonsterDialog({ card, store, onClose, onAdd }: { card: Card; 
 
 const sideClass = (side: Side) => side === '敌方' ? 'enemy' : side === '友方' ? 'ally' : 'neutral';
 
-export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRemove, bindCombat, onImportBattle, onReinforce, cards, error }: {
+export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRemove, bindCombat, onImportBattle, onReplayJump, onReinforce, cards, error }: {
   store: BattleStore;
   selectedId: string;
   onSelect: (id: string) => void;
@@ -31,6 +31,7 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
   onRemove: (battleId: string, actorId: string) => void;
   bindCombat: (battleId: string) => CombatHandlers;
   onImportBattle: (text: string) => void;
+  onReplayJump: (steps: number) => void;
   onReinforce: (battleId: string, card: Card, input: { side: Side; initiative?: number; position?: Position; name?: string }) => void;
   cards: Card[];
   error: string;
@@ -79,6 +80,7 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
           <p className="cmb-outcome">{outcomeLabel(battleOutcome(battle))}</p>
           {battle.combat && <CombatLog battle={battle} />}
           <SettlementPanel battle={battle} />
+          <ReplayPanel battle={battle} onJump={onReplayJump} />
           <BattleIo battle={battle} onImport={onImportBattle} />
         </> : <div className="battle-empty"><span>✧</span><h3>准备第一场战斗</h3><p>在怪物详情页选择“加入战斗”，即可创建战斗并安排阵营。</p><button className="button-primary" onClick={onCatalog}>浏览怪物图鉴</button></div>}
       </section>

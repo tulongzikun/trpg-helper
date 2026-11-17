@@ -2667,6 +2667,16 @@ export function undoCombat(battle: Battle): Battle {
   if (restored.combat) restored.combat.undo = combat.undo.slice(0, -1).map(entry => structuredClone(entry));
   return restored;
 }
+/** 连续撤销若干步（供回放面板跳转）。 */
+export function jumpBack(battle: Battle, steps: number): Battle {
+  const combat = requireCombat(battle);
+  if (!Number.isInteger(steps) || steps < 1) throw new Error('撤销步数须为正整数。');
+  if (steps > combat.undo.length) throw new Error('撤销步数超出可回退范围。');
+  let next = battle;
+  for (let index = 0; index < steps; index += 1) next = undoCombat(next);
+  return next;
+}
+
 export function resetCombat(battle: Battle): Battle {
   if (!battle.combat) throw new Error('战斗尚未开始。');
   const next = structuredClone(battle);

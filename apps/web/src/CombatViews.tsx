@@ -15,6 +15,7 @@ import type { Card } from './catalog';
 import { fallAverageDamage, jumpDistance } from './combatMovement';
 import type { SpellCastOptions } from './combatSpells';
 import { filterLog, logRounds } from './combatLog';
+import { replayFrames } from './combatReplay';
 import { spellAreaTargets } from './combatSpells';
 import { settlementText } from './combatSettlement';
 
@@ -1110,6 +1111,29 @@ export function CounterspellPanel({ battle, actor, handlers }: { battle: Battle;
         <button type="button" className="button-secondary" onClick={() => handlers.onResolveCast()} aria-label="让法术生效">让法术生效</button>
       </> : <span className="cmb-muted">当前没有待结算的法术。</span>}
     </div>
+  );
+}
+
+export function ReplayPanel({ battle, onJump }: { battle: Battle; onJump: (steps: number) => void }) {
+  const frames = replayFrames(battle);
+  if (frames.length <= 1) return null;
+  return (
+    <details className="cmb-io">
+      <summary>回放（{frames.length - 1} 步可回退）</summary>
+      <div className="cmb-io-body">
+        <ul className="cmb-replay">
+          {frames.map(frame => (
+            <li key={frame.index}>
+              <span className="cmb-muted">第 {frame.index} 步（第 {frame.round} 轮{frame.actor ? ` · ${frame.actor}` : ''}）</span>
+              {frame.added.length ? `：${frame.added.join('；')}` : '：（无新增记录）'}
+              {frame.index < frames.length
+                ? <button type="button" className="button-secondary" onClick={() => onJump(frames.length - frame.index)} aria-label={`回到第 ${frame.index} 步`}>回到此处</button>
+                : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </details>
   );
 }
 
