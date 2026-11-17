@@ -1,8 +1,8 @@
-const { test } = require('node:test');
+﻿const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { emptyStore, addMonsters, addCharacter } = require('../apps/web/src/battle.ts');
 const { configureGrid, currentActorId, moveActorToCell, startCombat, toggleWallCell } = require('../apps/web/src/combat.ts');
-const { autoAct } = require('../apps/web/src/combatAuto.ts');
+const { autoAct, autoTurn } = require('../apps/web/src/combatAuto.ts');
 const entry = require('../packages/contracts/examples/monster-entry.json');
 const card = { entry, block: entry.statBlocks[0] };
 let counter = 0;
@@ -86,4 +86,42 @@ test('多目标时优先攻击血量比例更低者', () => {
   assert.equal(after.combat.status, 'dead');
 });
 
+
+
+test('自动回合：射程外先靠近再攻击', () => {
+  const { battle, hero, monsters } = setup(1, '长剑：+5 命中，1d8+3 挥砍伤害，触及 5 尺', '长剑');
+  let placed = configureGrid(battle, { width: 24, height: 24, cellFt: 5 });
+  placed = moveActorToCell(moveActorToCell(placed, hero.id, 0, 0), monsters[0].id, 0, 4);
+  const result = autoTurn(placed, hero.id, { random: sequence(0.5, 0.5, 0.5, 0.5) }, { endTurn: false });
+  assert.equal(result.kind, 'attack');
+  assert.ok(result.steps.length >= 2);
+  const actor = result.battle.actors.find(item => item.id === hero.id);
+  assert.equal(actor.combat.actionUsed, true);
+  assert.ok(result.battle.combat.log.some(item => /命中/.test(item.text) || /未命中/.test(item.text)));
+});
+
+test('自动回合：endTurn 为 false 时保持当前行动者', () => {
+  const { battle, hero } = setup();
+  const result = autoTurn(battle, hero.id, { random: sequence(0.5, 0.5) }, { endTurn: false });
+  assert.equal(currentActorId(result.battle), hero.id);
+});
+
+test('自动回合：默认在行动后结束回合', () => {
+  const { battle, hero } = setup();
+  const result = autoTurn(battle, hero.id, { random: sequence(0.5, 0.5) });
+  assert.notEqual(currentActorId(result.battle), hero.id);
+  assert.ok(result.steps.includes('自动行动：结束回合。'));
+});
+
+test('自动回合：无法行动时待命并结束回合', () => {
+  const { battle, hero, monsters } = setup();
+  let placed = configureGrid(battle, { width: 12, height: 12, cellFt: 5 });
+  placed = moveActorToCell(moveActorToCell(placed, hero.id, 0, 0), monsters[0].id, 5, 5);
+  for (const [x, y] of [[1, 0], [0, 1], [1, 1]]) placed = toggleWallCell(placed, x, y);
+  const result = autoTurn(placed, hero.id, { random: sequence(0.5) });
+  assert.equal(result.kind, 'wait');
+  assert.ok(result.steps.some(text => text.includes('原地待命')));
+  assert.ok(result.steps.includes('自动行动：结束回合。'));
+  assert.notEqual(currentActorId(result.battle), hero.id);
+});
 

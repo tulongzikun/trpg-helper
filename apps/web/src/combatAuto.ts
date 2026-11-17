@@ -1,10 +1,11 @@
-import { actorDistance, attack, currentActorId, moveActorToCell } from './combat.ts';
+﻿import { actorDistance, attack, currentActorId, endTurn, moveActorToCell } from './combat.ts';
 import type { CombatDeps } from './combat.ts';
 import { suggestAttacks } from './combatAi.ts';
 import type { Battle, Position } from './battle';
 
 export type AutoActionKind = 'attack' | 'move' | 'wait';
 export type AutoAction = { battle: Battle; kind: AutoActionKind; text: string };
+export type AutoTurn = AutoAction & { steps: string[] };
 
 function neighbors(position: Position): Position[] {
   const list: Position[] = [];
@@ -59,4 +60,31 @@ export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}):
     }
   }
   return { battle, kind: 'wait', text: `自动行动：移动力不足，无法靠近 ${best.targetName}。` };
+}
+
+export type AutoTurnOptions = { endTurn?: boolean; maxSteps?: number };
+
+/** 自动完成一整轮：先靠近再攻击，必要时结束回合。 */
+export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {}, options: AutoTurnOptions = {}): AutoTurn {
+  if (currentActorId(battle) !== actorId) throw new Error('只有当前回合的单位可以自动行动。');
+  const steps: string[] = [];
+  let current = battle;
+  let kind: AutoActionKind = 'wait';
+  const maxSteps = Math.max(1, Math.min(6, options.maxSteps ?? 4));
+  for (let index = 0; index < maxSteps; index++) {
+    const actor = current.actors.find(item => item.id === actorId);
+    if (!actor || actor.combat?.actionUsed) break;
+    if (currentActorId(current) !== actorId) break;
+    const step = autoAct(current, actorId, deps);
+    steps.push(step.text);
+    current = step.battle;
+    kind = step.kind;
+    if (step.kind !== 'move') break;
+  }
+  if (!steps.length) steps.push('自动行动：没有可执行的动作，原地待命。');
+  if (options.endTurn !== false && currentActorId(current) === actorId) {
+    current = endTurn(current, deps);
+    steps.push('自动行动：结束回合。');
+  }
+  return { battle: current, kind, text: steps.join(' '), steps };
 }
