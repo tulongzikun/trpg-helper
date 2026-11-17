@@ -54,6 +54,8 @@ export type CombatantState = {
   /** 是否在使用闪避：直到自己下个回合开始前，针对它的攻击检定具有劣势。 */
   dodging?: boolean;
   nickUsed?: boolean;
+  /** 已记录的法术位（剩余个数，索引 0 为 1 环）；未设置时不追踪法术位。 */
+  spellSlots?: number[];
   /** 本回合是否已经用掉偷袭（每回合只能偷袭一次）。 */
   sneakUsed?: boolean;
   /** 鲁莽攻击：本回合自己的攻击具有优势，直到下个回合开始前针对它的攻击也具有优势。 */
@@ -146,6 +148,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.dodging !== undefined && typeof value.dodging !== 'boolean') return false;
   if (value.nickUsed !== undefined && typeof value.nickUsed !== 'boolean') return false;
   if (value.sneakUsed !== undefined && typeof value.sneakUsed !== 'boolean') return false;
+  if (value.spellSlots !== undefined && (!Array.isArray(value.spellSlots) || value.spellSlots.length > 9 || value.spellSlots.some(item => !isInteger(item, 0, 20)))) return false;
   if (value.reckless !== undefined && typeof value.reckless !== 'boolean') return false;
   if (value.speedPenaltyFt !== undefined && !isInteger(value.speedPenaltyFt, 0, 50)) return false;
   if (value.sapped !== undefined && typeof value.sapped !== 'boolean') return false;

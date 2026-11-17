@@ -10,7 +10,7 @@ import { addCharacter, addMonsters, emptyStore, readBattles, removeActor, writeB
 import { importBattle } from './battleTransfer';
 import { autoAct, autoSide, autoTurn } from './combatAuto';
 import { applyFallDamage } from './combatMovement';
-import { castSpell } from './combatSpells';
+import { castSpell, setSpellSlots } from './combatSpells';
 import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setAutoDeathSaves, setEnterReachOpportunity, setTerrain, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, setInitiative, abilityCheck, healActor, cunningAction, recklessAttack, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
@@ -49,6 +49,7 @@ function App() {
   onAutoSide:side=>tryBattle(()=>changeBattle(battleId,battle=>autoSide(battle,side).battle)),
   onFall:(actorId,feet)=>tryBattle(()=>changeBattle(battleId,battle=>applyFallDamage(battle,actorId,feet).battle)),
   onCast:options=>tryBattle(()=>changeBattle(battleId,battle=>castSpell(battle,options).battle)),
+  onSetSlots:(actorId,slots)=>tryBattle(()=>changeBattle(battleId,battle=>setSpellSlots(battle,actorId,slots))),
   onSave:options=>tryBattle(()=>changeBattle(battleId,battle=>savingThrow(battle,options).battle)),
   onAreaSave:options=>tryBattle(()=>changeBattle(battleId,battle=>areaSave(battle,options).battle)),
   onConcentration:(actorId,spell)=>tryBattle(()=>changeBattle(battleId,battle=>spell?startConcentration(battle,actorId,spell):endConcentration(battle,actorId))),

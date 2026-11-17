@@ -39,6 +39,7 @@ export type CombatHandlers = {
   onAutoSide: (side: Side) => void;
   onFall: (actorId: string, feet: number) => void;
   onCast: (options: SpellCastOptions) => void;
+  onSetSlots: (actorId: string, slots: number[]) => void;
   onSave: (options: SaveOptions) => void;
   onAreaSave: (options: AreaSaveOptions) => void;
   onConcentration: (actorId: string, spell: string | null) => void;
@@ -196,7 +197,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoTurn(actor.id)}>自动回合（行动后结束）</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoSide(actor.side)}>本阵营整轮自动</button>
     </div>
-    <SpellPanel key={`spell-${actor.id}`} battle={battle} actor={actor} onCast={handlers.onCast} />
+    <SpellPanel key={`spell-${actor.id}`} battle={battle} actor={actor} onCast={handlers.onCast} onSetSlots={handlers.onSetSlots} />
     <FallPanel actor={actor} onFall={handlers.onFall} />
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
     <ReadyPanel key={`ready-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
@@ -926,7 +927,7 @@ function FallPanel({ actor, onFall }: { actor: Actor; onFall: (actorId: string, 
   );
 }
 
-function SpellPanel({ battle, actor, onCast }: { battle: Battle; actor: Actor; onCast: (options: SpellCastOptions) => void }) {
+function SpellPanel({ battle, actor, onCast, onSetSlots }: { battle: Battle; actor: Actor; onCast: (options: SpellCastOptions) => void; onSetSlots: (actorId: string, slots: number[]) => void }) {
   const [spell, setSpell] = useState('');
   const [level, setLevel] = useState(1);
   const [mode, setMode] = useState<'save' | 'attack'>('save');
@@ -938,11 +939,15 @@ function SpellPanel({ battle, actor, onCast }: { battle: Battle; actor: Actor; o
   const [ability, setAbility] = useState<Ability>('dex');
   const [bonusAction, setBonusAction] = useState(false);
   const [concentration, setConcentration] = useState(false);
+  const [slotText, setSlotText] = useState('');
+  const slotSummary = (actor.combat?.spellSlots ?? []).map((count, index) => count > 0 ? `${index + 1} 环 ${count}` : '').filter(Boolean).join(' · ') || '未记录';
   const targets = battle.actors.filter(item => item.id !== actor.id && item.combat?.status === 'active');
   const target = targetId || targets[0]?.id || '';
   return (
     <div className="cmb-spell">
       <span className="cmb-muted">施放法术</span>
+      <label>法术位<input value={slotText} onChange={event => setSlotText(event.target.value)} placeholder="如 4,3,2" aria-label="法术位" title={`当前：${slotSummary}`} /></label>
+      <button type="button" className="button-secondary" aria-label="记录法术位" onClick={() => { const slots = slotText.split(/[^0-9]+/).filter(Boolean).map(item => Number(item)); if (!slots.length) { onSetSlots(actor.id, []); return; } onSetSlots(actor.id, slots); }}>记录法术位（{slotSummary}）</button>
       <label>名称<input value={spell} onChange={event => setSpell(event.target.value)} aria-label="法术名称" /></label>
       <label>环阶<input type="number" min={0} max={9} value={level} onChange={event => setLevel(Number(event.target.value))} aria-label="法术环阶" /></label>
       <label>结算<select value={mode} onChange={event => setMode(event.target.value as 'save' | 'attack')} aria-label="结算方式">
