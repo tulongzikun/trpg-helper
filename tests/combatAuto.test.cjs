@@ -149,3 +149,37 @@ test('整轮自动：遵守 maxTurns 上限', () => {
   assert.equal(result.turns.length, 1);
 });
 
+
+test('自动回合：从 30 尺外连续移动后仍能攻击', () => {
+  const { battle, hero, monsters } = setup(1, '长剑：+5 命中，1d8+3 挥砍伤害，触及 5 尺', '长剑');
+  let placed = configureGrid(battle, { width: 12, height: 12, cellFt: 5 });
+  placed = moveActorToCell(moveActorToCell(placed, hero.id, 0, 0), monsters[0].id, 0, 6);
+  const result = autoTurn(placed, hero.id, { random: sequence(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5) }, { endTurn: false });
+  assert.equal(result.kind, 'attack');
+  assert.ok(result.steps.length >= 6);
+  const actor = result.battle.actors.find(item => item.id === hero.id);
+  assert.equal(actor.combat.actionUsed, true);
+  assert.ok(actor.combat.movementUsed >= 25);
+  assert.ok(result.battle.combat.log.some(item => /命中/.test(item.text) || /未命中/.test(item.text)));
+});
+
+test('自动行动：轻型武器命中后追加副手攻击', () => {
+  const { battle, hero, monsters } = setup(1, '匕首：+5 命中，1d4+3 穿刺伤害，触及 5 尺', '匕首');
+  let placed = configureGrid(battle, { width: 8, height: 8, cellFt: 5 });
+  placed = moveActorToCell(moveActorToCell(placed, hero.id, 0, 0), monsters[0].id, 0, 1);
+  const result = autoAct(placed, hero.id, { random: sequence(0.5, 0.5, 0.5, 0.5) });
+  assert.equal(result.kind, 'attack');
+  assert.match(result.text, /副手武器追加/);
+  const actor = result.battle.actors.find(item => item.id === hero.id);
+  assert.equal(actor.combat.bonusUsed, true);
+});
+
+test('自动行动：非轻型武器不追加副手攻击', () => {
+  const { battle, hero, monsters } = setup(1, '长剑：+5 命中，1d8+3 挥砍伤害，触及 5 尺', '长剑');
+  let placed = configureGrid(battle, { width: 8, height: 8, cellFt: 5 });
+  placed = moveActorToCell(moveActorToCell(placed, hero.id, 0, 0), monsters[0].id, 0, 1);
+  const result = autoAct(placed, hero.id, { random: sequence(0.5, 0.5, 0.5, 0.5) });
+  assert.equal(result.kind, 'attack');
+  const actor = result.battle.actors.find(item => item.id === hero.id);
+  assert.equal(actor.combat.bonusUsed, false);
+});

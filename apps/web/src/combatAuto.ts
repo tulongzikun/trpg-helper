@@ -1,4 +1,5 @@
-﻿import { actorDistance, attack, currentActorId, endTurn, moveActorToCell } from './combat.ts';
+﻿import { actorDistance, attack, currentActorId, endTurn, moveActorToCell, offhandAttack } from './combat.ts';
+import { attackSources } from './attackSources.ts';
 import type { CombatDeps } from './combat.ts';
 import { suggestAttacks } from './combatAi.ts';
 import type { Battle, Position, Side } from './battle';
@@ -18,6 +19,32 @@ function neighbors(position: Position): Position[] {
   return list;
 }
 
+/** 动作攻击结束后，如果附赠动作还在且有「轻型」武器，追加一次副手攻击。 */
+function offhandFollowUp(battle: Battle, actorId: string, targetId: string, deps: CombatDeps): { battle: Battle } | null {
+  const attacker = battle.actors.find(item => item.id === actorId);
+  const target = battle.actors.find(item => item.id === targetId);
+  if (!attacker || !target) return null;
+  const state = attacker.combat;
+  if (!state || !state.actionUsed || state.bonusUsed) return null;
+  if (target.combat?.status !== 'active') return null;
+  const source = attackSources(attacker).find(item => item.properties?.includes('轻型'));
+  if (!source) return null;
+  try {
+    const result = offhandAttack(battle, {
+      attackerId: actorId,
+      targetId,
+      attackBonus: source.attackBonus,
+      damageExpression: source.damageExpression,
+      damageType: source.damageType,
+      range: 'melee',
+      weaponId: source.id,
+    }, deps);
+    return { battle: result.battle };
+  } catch {
+    return null;
+  }
+}
+
 export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): AutoAction {
   if (currentActorId(battle) !== actorId) throw new Error('只有当前回合的单位可以自动行动。');
   const suggestions = suggestAttacks(battle, actorId, 6);
@@ -34,7 +61,14 @@ export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}):
       distanceFt: ready.distanceFt ?? ready.source.distanceFt,
       weaponId: ready.source.id,
     }, deps);
-    return { battle: result.battle, kind: 'attack', text: `自动行动：攻击 ${ready.targetName}（${ready.source.label}）。` };
+    const followUp = offhandFollowUp(result.battle, actorId, ready.targetId, deps);
+    return {
+      battle: followUp?.battle ?? result.battle,
+      kind: 'attack',
+      text: followUp
+        ? `自动行动：攻击 ${ready.targetName}（${ready.source.label}），并用副手武器追加一次攻击。`
+        : `自动行动：攻击 ${ready.targetName}（${ready.source.label}）。`,
+    };
   }
   const best = suggestions[0];
   const actor = battle.actors.find(item => item.id === actorId);
@@ -70,7 +104,7 @@ export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {},
   const steps: string[] = [];
   let current = battle;
   let kind: AutoActionKind = 'wait';
-  const maxSteps = Math.max(1, Math.min(6, options.maxSteps ?? 4));
+  const maxSteps = Math.max(1, Math.min(12, options.maxSteps ?? 8));
   for (let index = 0; index < maxSteps; index++) {
     const actor = current.actors.find(item => item.id === actorId);
     if (!actor || actor.combat?.actionUsed) break;
@@ -79,7 +113,7 @@ export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {},
     steps.push(step.text);
     current = step.battle;
     kind = step.kind;
-    if (step.kind !== 'move') break;
+    if (step.kind === 'wait') break;
   }
   if (!steps.length) steps.push('自动行动：没有可执行的动作，原地待命。');
   if (options.endTurn !== false && currentActorId(current) === actorId) {
