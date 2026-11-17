@@ -63,6 +63,7 @@ export type CombatHandlers = {
   onDispel: (actorId: string, targetId: string) => void;
   onSurprise: (actorId: string) => void; onPolymorph: (actorId: string, targetId: string) => void;
   onMassHeal: (actorId: string) => void;
+  onAim: (actorId: string) => void;
   onSilence: (actorId: string, cells: { x: number; y: number }[]) => void;
   onSleep: (actorId: string) => void;
   onWake: (actorId: string, targetId: string) => void;
@@ -322,6 +323,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       {state.status === 'active' && !state.actionUsed && !state.concentration && hostileTargets(battle, actor.id, 60).length ? <button type="button" className="button-secondary" onClick={() => handlers.onPolymorph(actor.id, hostileTargets(battle, actor.id, 60)[0]?.id ?? '')} aria-label="变形术">变形术（动作，DC 13 感知，60 尺内敌人）</button> : null}
       {state.polymorphed ? <span className="cmb-hint">变形术：剩余 {state.polymorphed} 轮（失能，AC 10，速度 25 尺）</span> : null}
       {healTargets(battle, actor.id).length ? <button type="button" className="button-secondary" onClick={() => handlers.onMassHeal(actor.id)} aria-label="群体治疗术">群体治疗术（附赠动作，60 尺内至多 6 个友方，1d4+施法属性）</button> : null}
+      {state.aimed ? <span className="cmb-hint">瞄准：下一次远程攻击检定优势</span> : <button type="button" className="button-secondary" onClick={() => handlers.onAim(actor.id)} disabled={state.bonusUsed === true} aria-label="瞄准">瞄准（附赠动作，下次远程攻击优势）</button>}
       {state.charmed ? <span className="cmb-hint">魅惑术：剩余 {state.charmed} 轮（无法攻击施法者）</span> : null}
 {state.frightened ? <span className="cmb-hint">恐惧术：剩余 {state.frightened} 轮（无法靠近恐惧源，对其攻击劣势）</span> : null}
       {state.conditions.includes('中毒') ? <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onAntitoxin(actor.id)} aria-label="解毒剂">解毒剂（动作，解除中毒）</button> : null}

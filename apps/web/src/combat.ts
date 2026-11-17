@@ -1882,6 +1882,24 @@ function applyLavaAt(battle: Battle, actor: Actor, deps: CombatDeps, phase: '踏
   addLog(battle, `${actorLabel(battle, actor)} ${phase === '踏入' ? '踏入' : '在'}岩浆，受到 ${result.damage} 点火焰伤害。`, deps);
 }
 
+/** 瞄准：附赠动作，让下一次远程攻击检定获得优势。 */
+export function takeAim(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以瞄准。');
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以瞄准。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.aimed) throw new Error('该单位已经在瞄准。');
+  if (state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
+  state.bonusUsed = true;
+  state.aimed = true;
+  addLog(next, `${actorLabel(next, actor)} 稳住呼吸瞄准，下一次远程攻击检定具有优势。`, deps);
+  return next;
+}
+
 /** 泥沼：移动后需通过敏捷豁免，失败倒地。 */
 function mudSlip(battle: Battle, actor: Actor, deps: CombatDeps): void {
   if (battle.terrain !== 'mud') return;
@@ -2225,6 +2243,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.nickUsed = false;
   delete combat.parryBonus;
   delete combat.shield;
+  delete combat.aimed;
   delete combat.guarding;
   if (typeof combat.blessed === 'number') {
     combat.blessed -= 1;
@@ -3093,12 +3112,14 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const darknessAdjustment: ModeAdjustment | null = inDarkness(battle, attacker.id) !== inDarkness(battle, target.id) ? { mode: 'disadvantage', notes: ['魔法黑暗：看不清目标'] } : null;
   const weatherAdjustment: ModeAdjustment | null = battle.weather && context.range === 'ranged' ? { mode: 'disadvantage', notes: [battle.weather === 'rain' ? '暴雨：远程攻击检定劣势' : '强风：远程攻击检定劣势'] } : null;
   const invisibleAdjustment: ModeAdjustment | null = invisibleAttacker ? { mode: 'advantage', notes: ['攻击者处于隐形：攻击检定优势'] } : invisibleTarget ? { mode: 'disadvantage', notes: ['目标处于隐形：攻击检定劣势'] } : null;
+  const aimAdjustment: ModeAdjustment | null = combatantOf(attacker).aimed === true && context.range === 'ranged' ? { mode: 'advantage', notes: ['瞄准：远程攻击检定优势'] } : null;
   const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(darknessAdjustment ? [darknessAdjustment] : []), ...(weatherAdjustment ? [weatherAdjustment] : []), ...(frightenedAdjustment ? [frightenedAdjustment] : []),
-    ...(poisonAdjustment ? [poisonAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
+    ...(poisonAdjustment ? [poisonAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : []), ...(aimAdjustment ? [aimAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
   if (hiddenAttacker) combatantOf(attacker).hidden = false;
+  if (aimAdjustment) delete combatantOf(attacker).aimed;
   if (hiddenTarget) combatantOf(target).hidden = false;
   const mode = combined.mode;
   const notes = [...combined.notes];
