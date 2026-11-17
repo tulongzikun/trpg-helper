@@ -48,6 +48,8 @@ export type CombatHandlers = {
   onDifficult: (x: number, y: number) => void;
   onWall: (x: number, y: number) => void;
   onDisengage: (actorId: string) => void;
+  onDodge: (actorId: string) => void;
+  onHelp: (helperId: string, targetId: string) => void;
   onStand: (actorId: string) => void;
   onReady: (actorId: string, input: { action: string; trigger: string }) => void;
   onTriggerReady: (actorId: string) => void;
@@ -159,6 +161,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     </div>
     <div className="cmb-area-actions">
       <button type="button" className="button-secondary" disabled={state.actionUsed || state.disengaged} onClick={() => handlers.onDisengage(actor.id)}>{state.disengaged ? '本回合已撤离' : '撤离（消耗动作，本回合移动不引发借机攻击）'}</button>
+      <button type="button" className="button-secondary" disabled={state.actionUsed || state.dodging === true} onClick={() => handlers.onDodge(actor.id)}>{state.dodging ? '正在闪避' : '闪避（消耗动作，下回合前针对它的攻击劣势）'}</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAuto(actor.id)}>自动行动（攻击或靠近）</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoTurn(actor.id)}>自动回合（行动后结束）</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoSide(actor.side)}>本阵营整轮自动</button>
@@ -175,6 +178,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <OngoingPanel key={`ongoing-${actor.id}`} battle={battle} handlers={handlers} />
     <SummonPanel key={`summon-${actor.id}`} battle={battle} handlers={handlers} />
     <AuraPanel key={`aura-${actor.id}`} battle={battle} handlers={handlers} />
+    <HelpPanel key={`help-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <OpportunityPanel key={`opportunity-${actor.id}`} battle={battle} handlers={handlers} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
@@ -632,6 +636,20 @@ function SummonPanel({ battle, handlers }: { battle: Battle; handlers: CombatHan
         <label className="cmb-inline-action"><button className="button-secondary" type="submit" disabled={!candidates.length}>标记为「{concentration.spell}」的召唤物</button></label>
       </form>
       : <p className="cmb-hint">先开始专注，才能把单位标记为召唤物。</p>}
+  </div>;
+}
+
+export function HelpPanel({ battle, actor, handlers }: { battle: Battle; actor: Actor; handlers: CombatHandlers }) {
+  const allies = battle.actors.filter(item => item.id !== actor.id && item.side === actor.side && item.side !== '中立' && item.combat?.status === 'active');
+  if (!allies.length) return null;
+  const ready = actor.combat?.helpedAttack === true;
+  return <div className="cmb-help">
+    <div className="cmb-ai-head">协助</div>
+    {ready ? <p className="cmb-hint">{actor.name} 已获得协助：下一次攻击检定具有优势。</p> : null}
+    <div className="cmb-ai-actions">
+      {allies.map(ally => <button key={ally.id} type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onHelp(actor.id, ally.id)}>协助 {ally.name}</button>)}
+    </div>
+    <p className="cmb-hint">协助消耗动作；受协助的单位下一次攻击检定具有优势，用掉即消失。</p>
   </div>;
 }
 

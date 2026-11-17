@@ -162,3 +162,6 @@
 .cmb-spell { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; padding: 0.5rem 0; border-top: 1px dashed #d8d0c2; }
 .cmb-spell label { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; }
 .cmb-spell input, .cmb-spell select { width: auto; min-width: 4rem; }
+
+.cmb-help { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; background: #fbfcfe; }
+.cmb-ai-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }

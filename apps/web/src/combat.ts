@@ -499,6 +499,44 @@ export function disengage(battle: Battle, actorId: string, deps: CombatDeps = {}
   return next;
 }
 
+/** 闪避：消耗动作，直到自己下个回合开始前，针对自己的攻击检定具有劣势。 */
+export function dodge(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以闪避。');
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以闪避。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  state.actionUsed = true;
+  state.dodging = true;
+  addLog(next, `${actorLabel(next, actor)} 使用闪避，直到下个回合开始前针对它的攻击检定具有劣势。`, deps);
+  return next;
+}
+
+/** 协助：消耗动作，让同阵营的另一个单位下一次攻击检定具有优势。 */
+export function help(battle: Battle, helperId: string, targetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (helperId === targetId) throw new Error('不能协助自己。');
+  if (currentActorId(next) !== helperId) throw new Error('只有当前回合的单位可以协助。');
+  const helper = actorOf(next, helperId);
+  const target = actorOf(next, targetId);
+  const state = combatantOf(helper);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以协助。');
+  const blocker = actionBlocker(helper);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (combatantOf(target).status !== 'active') throw new Error('只能协助在场的单位。');
+  if (helper.side !== target.side || helper.side === '中立') throw new Error('只能协助同阵营的单位。');
+  state.actionUsed = true;
+  combatantOf(target).helpedAttack = true;
+  addLog(next, `${actorLabel(next, helper)} 协助 ${actorLabel(next, target)}，${actorLabel(next, target)} 的下一次攻击检定具有优势。`, deps);
+  return next;
+}
+
 function resetTurnResources(battle: Battle, actorId: string) {
   const combat = battle.actors.find(a => a.id === actorId)?.combat;
   if (!combat) return;
@@ -507,6 +545,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.reactionUsed = false;
   combat.movementUsed = 0;
   combat.disengaged = false;
+  combat.dodging = false;
 }
 function nextTurnIndex(battle: Battle) {
   const combat = requireCombat(battle);
@@ -869,7 +908,12 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const random = randomOf(deps);
   const heavy = heavyWeaponAdjustment(attacker, options.weaponId);
   const far = longRangeAdjustment(attacker, options, context.distanceFt);
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : [])]);
+  const dodging = combatantOf(target).dodging === true;
+  const helped = combatantOf(attacker).helpedAttack === true;
+  const dodgeAdjustment: ModeAdjustment | null = dodging ? { mode: 'disadvantage', notes: ['目标在使用闪避：攻击检定劣势'] } : null;
+  const helpAdjustment: ModeAdjustment | null = helped ? { mode: 'advantage', notes: ['得到协助：攻击检定优势'] } : null;
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : [])]);
+  if (helped) combatantOf(attacker).helpedAttack = false;
   const mode = combined.mode;
   const notes = [...combined.notes];
   const first = rollDie(20, random);
