@@ -3240,6 +3240,53 @@ export function fleeBattle(battle: Battle, actorId: string, deps: CombatDeps = {
   return next;
 }
 
+/** 把一个单位从战斗中移除（召唤物消散、DM 清理离场生物等）。 */
+export function removeCombatant(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const combat = requireCombat(next);
+  const index = next.actors.findIndex(item => item.id === actorId);
+  if (index < 0) throw new Error('未找到战斗单位。');
+  const actor = next.actors[index];
+  const wasCurrent = combat.order[combat.turnIndex] === actorId;
+  for (const item of next.actors) {
+    if (item.combat?.grappledBy === actorId) {
+      delete item.combat.grappledBy;
+      item.combat.conditions = item.combat.conditions.filter(condition => condition !== '擒抱');
+    }
+    if (item.combat?.riderId === actorId) delete item.combat.riderId;
+    if (item.combat?.mountedOn === actorId) {
+      delete item.combat.mountedOn;
+      delete item.combat.mountSpeedFt;
+    }
+  }
+  const orderIndex = combat.order.indexOf(actorId);
+  next.actors.splice(index, 1);
+  if (orderIndex >= 0) {
+    combat.order.splice(orderIndex, 1);
+    if (orderIndex < combat.turnIndex) combat.turnIndex -= 1;
+    if (combat.order.length && combat.turnIndex >= combat.order.length) combat.turnIndex = 0;
+  }
+  const prompts = (combat.pendingOpportunity ?? []).filter(item => item.reactorId !== actorId && item.targetId !== actorId);
+  if (prompts.length) combat.pendingOpportunity = prompts;
+  else delete combat.pendingOpportunity;
+  addLog(next, `${actor.name} 从战斗中移除。`, deps);
+  if (wasCurrent && combat.order.length) {
+    const current = nextTurnActorAt(next);
+    if (current) {
+      resetTurnResources(next, current.id);
+      addLog(next, `第 ${combat.round} 轮 · 轮到 ${actorLabel(next, current)}（先攻 ${combatantOf(current).initiative}）。`, deps);
+    }
+  }
+  return next;
+}
+
+/** 取当前应行动的单位（回合索引可能因移除单位而调整）。 */
+function nextTurnActorAt(battle: Battle): Actor | undefined {
+  const combat = battle.combat;
+  if (!combat) return undefined;
+  const id = combat.order[combat.turnIndex];
+  return id ? battle.actors.find(item => item.id === id) : undefined;
+}
 export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   requireCombat(battle);
   const next = recordUndo(structuredClone(battle));
