@@ -1,3 +1,0 @@
-mber.isInteger(value) && value >= 0 && value <= 6) handlers.onExhaustion(actor.id, value); }} /></label>
-      <label className="cmb-temp">高度<input key={`el-${actor.elevation ?? 0}`} type="number" min={0} max={500} step={5} defaultValue={actor.elevation ?? 0} aria-label="高度（尺）" title="高空射击 10 尺以上有优势，仰射高空目标有劣势" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0 && value <= 500) handlers.onElevation(actor.id, value); }} /></label>
-      <label className="cmb-temp">临时生命<input key={state.tempHp} type="numbe
