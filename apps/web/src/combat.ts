@@ -3371,6 +3371,10 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
   const defense = defenseOf(actor, type);
   const terrain = terrainDefense(battle, type);
   const adjusted = Math.floor(amount * defense.multiplier * terrain.multiplier);
+  if (battle && adjusted > 0 && state.surrendered === true) {
+    delete state.surrendered;
+    addLog(battle, `${actorLabel(battle, actor)} 遭到攻击，重新投入战斗。`, deps);
+  }
   const takenStats = statsOf(state);
   takenStats.damageTaken += adjusted;
   if (adjusted > 0) takenStats.damageByType = { ...(takenStats.damageByType ?? {}), [type]: (takenStats.damageByType?.[type] ?? 0) + adjusted };
