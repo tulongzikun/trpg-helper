@@ -211,7 +211,7 @@ export type AttackPreset = {
   powerAttack?: boolean;
   twoHanded?: boolean;
 };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; weather?: Weather; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; grease?: Position[]; fog?: Position[]; fogBy?: string; darkness?: Position[]; darknessBy?: string; silence?: Position[]; silenceBy?: string; sleepCloud?: Position[]; sleepCloudBy?: string; webs?: Position[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; weather?: Weather; difficult?: Position[]; walls?: Position[]; cover?: Position[]; hazards?: Hazard[]; grease?: Position[]; fog?: Position[]; fogBy?: string; darkness?: Position[]; darknessBy?: string; silence?: Position[]; silenceBy?: string; sleepCloud?: Position[]; sleepCloudBy?: string; webs?: Position[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -421,6 +421,7 @@ function isBattle(value: unknown): boolean {
     && (value.weather === undefined || value.weather === 'rain' || value.weather === 'wind')
     && (value.difficult === undefined || (Array.isArray(value.difficult) && value.difficult.length <= 400 && value.difficult.every(isPosition)))
     && (value.walls === undefined || (Array.isArray(value.walls) && value.walls.length <= 400 && value.walls.every(isPosition)))
+    && (value.cover === undefined || (Array.isArray(value.cover) && value.cover.length <= 400 && value.cover.every(isPosition)))
     && (value.hazards === undefined || (Array.isArray(value.hazards) && value.hazards.length <= 200 && value.hazards.every(isHazard)))
     && (value.grease === undefined || (Array.isArray(value.grease) && value.grease.length <= 400 && value.grease.every(isPosition)))
     && (value.fog === undefined || (Array.isArray(value.fog) && value.fog.length <= 400 && value.fog.every(isPosition)))

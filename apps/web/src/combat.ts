@@ -1724,17 +1724,51 @@ export function hasLineOfSight(battle: Battle, from: Position, to: Position): bo
   if (!battle.grid) return true;
   return !lineCells(from, to).some(cell => isWallCell(battle, cell.x, cell.y));
 }
+/** 战场上由工事形成的掩体格。 */
+export function coverAt(battle: Battle, x: number, y: number): boolean {
+  return (battle.cover ?? []).some(cell => cell.x === x && cell.y === y);
+}
+
+/** 架设掩体：动作，在方格战场放置最多 4 格工事，占据其中可获得半掩体。 */
+export function buildCover(battle: Battle, actorId: string, cells: Position[], deps: CombatDeps = {}): Battle {
+  if (!battle.grid) throw new Error('请先启用方格战场。');
+  const unique = new Map<string, Position>();
+  for (const cell of cells) {
+    if (!Number.isInteger(cell.x) || !Number.isInteger(cell.y)) throw new Error('掩体的格子坐标须为整数。');
+    if (cell.x < 0 || cell.y < 0 || cell.x >= battle.grid.width || cell.y >= battle.grid.height) throw new Error('掩体的格子超出战场范围。');
+    unique.set(`${cell.x},${cell.y}`, { x: cell.x, y: cell.y });
+  }
+  if (!unique.size) throw new Error('请选择要架设掩体的格子。');
+  if (unique.size > 4) throw new Error('一次最多架设 4 格掩体。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以架设掩体。');
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以架设掩体。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  state.actionUsed = true;
+  const list = [...unique.values()];
+  const keys = new Set(list.map(cell => `${cell.x},${cell.y}`));
+  next.cover = [...(next.cover ?? []).filter(cell => !keys.has(`${cell.x},${cell.y}`)), ...list];
+  addLog(next, `${actorLabel(next, actor)} 架设掩体：${list.length} 格（占据其中可获得半掩体）。`, deps);
+  return next;
+}
 /** 由墙体与射击线上相邻的遮挡推算掩体等级：贴着一道墙为半掩体，被两处以上夹住为四分之三掩体。 */
 export function coverFromWalls(battle: Battle, from: Position, to: Position): CoverType {
   if (!battle.grid) return '无';
   const walls = battle.walls ?? [];
-  if (!walls.length) return '无';
+  const sheltered = coverAt(battle, to.x, to.y);
+  if (!walls.length) return sheltered ? '半掩体' : '无';
   const path = lineCells(from, to);
   const neighbours: Position[] = [...path, from, to];
   const touching = walls.filter(wall => neighbours.some(cell => Math.max(Math.abs(cell.x - wall.x), Math.abs(cell.y - wall.y)) <= 1));
   if (touching.length >= 3) return '全掩体';
   if (touching.length === 2) return '四分之三掩体';
   if (touching.length === 1) return '半掩体';
+  if (coverAt(battle, to.x, to.y)) return '半掩体';
   return '无';
 }
 /** 在方格战场上切换某格的墙体标记（阻挡移动与远程视线）。 */
@@ -3918,6 +3952,7 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
   delete next.fogBy;
   delete next.darkness;
   delete next.darknessBy;
+  delete next.cover;
   delete next.silence;
   delete next.silenceBy;
   delete next.sleepCloud;
