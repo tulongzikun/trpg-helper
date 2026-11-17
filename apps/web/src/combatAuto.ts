@@ -3,6 +3,7 @@ import { hasSecondWind } from './combatModifiers.ts';
 import { attackSources } from './attackSources.ts';
 import type { CombatDeps } from './combat.ts';
 import { suggestAttacks } from './combatAi.ts';
+import { battleOutcome } from './combatOutcome.ts';
 import type { Battle, Position, Side } from './battle';
 
 export type AutoActionKind = 'attack' | 'move' | 'retreat' | 'wait';
@@ -131,6 +132,7 @@ export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}):
   if (!self || self.combat?.status !== 'active') {
     return { battle, kind: 'wait', text: '自动行动：该单位已无法行动，原地待命。' };
   }
+  if (battleOutcome(battle) !== 'ongoing') return { battle, kind: 'wait', text: '自动行动：战斗已经结束。' };
   const flee = retreat(battle, actorId, deps);
   if (flee) return flee;
   const care = selfCare(battle, actorId, deps);
@@ -192,6 +194,9 @@ export type AutoTurnOptions = { endTurn?: boolean; maxSteps?: number };
 /** 自动完成一整轮：先靠近再攻击，必要时结束回合。 */
 export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {}, options: AutoTurnOptions = {}): AutoTurn {
   if (currentActorId(battle) !== actorId) throw new Error('只有当前回合的单位可以自动行动。');
+  if (battleOutcome(battle) !== 'ongoing') {
+    return { battle, kind: 'wait', text: '自动行动：战斗已经结束。', steps: ['自动行动：战斗已经结束。'] };
+  }
   const steps: string[] = [];
   let current = battle;
   let kind: AutoActionKind = 'wait';
@@ -225,6 +230,10 @@ export function autoSide(battle: Battle, side: Side, deps: CombatDeps = {}, opti
   for (let index = 0; index < maxTurns; index++) {
     const actorId = currentActorId(current);
     if (!actorId) break;
+    if (battleOutcome(current) !== 'ongoing') {
+      turns.push('战斗已经结束，停止自动推进。');
+      break;
+    }
     const actor = current.actors.find(item => item.id === actorId);
     if (!actor || actor.side !== side || actor.combat?.status !== 'active') break;
     const result = autoTurn(current, actorId, deps);
