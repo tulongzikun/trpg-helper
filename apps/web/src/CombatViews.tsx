@@ -448,6 +448,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
   const [extraType, setExtraType] = useState<DamageType | '无'>('无');
   const [extraCritical, setExtraCritical] = useState(true);
   const [attacks, setAttacks] = useState('1');
+  const [extraTargets, setExtraTargets] = useState<string[]>([]);
   const [message, setMessage] = useState('');
   useEffect(() => {
     if (!suggestion) return;
@@ -492,7 +493,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
     setMessage('');
     const reachFt = range === 'melee' ? sources.find(item => item.id === sourceId)?.distanceFt : undefined;
     const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count, ...(reachFt === undefined ? {} : { reachFt }), ...(cover === '无' ? {} : { cover }), ...(autoCover ? { autoCover: true } : {}), ...(extra ? { extraDamageExpression: extra, extraDamageType: extraType === '无' ? undefined : extraType, extraDamageCritical: extraCritical } : {}), ...(sourceId ? { weaponId: sourceId } : {}), ...(twoHanded ? { twoHanded: true } : {}), ...(powerAttack ? { powerAttack: true } : {}), ...(sharpshooter ? { sharpshooter: true } : {}), ...(criticalRange.trim() && Number.isInteger(Number(criticalRange)) ? { criticalRange: Number(criticalRange) } : {}) };
-    if (count > 1) onAttackSequence(options); else onAttack(options);
+    if (count > 1) onAttackSequence({ ...options, ...(extraTargets.length ? { targets: [target?.id ?? targetId, ...extraTargets] } : {}) }); else onAttack(options);
   };
   const submitDive = () => {
     const attackBonus = Number(bonus);
@@ -542,6 +543,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
       <label>额外伤害类型<select value={extraType} onChange={event => setExtraType(event.target.value as DamageType | '无')} aria-label="额外伤害类型"><option value="无">无</option>{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
       <label className="cmb-check"><input type="checkbox" checked={extraCritical} onChange={event => setExtraCritical(event.target.checked)} aria-label="额外伤害随重击翻倍" />额外伤害随重击翻倍</label>
       <label>攻击次数<input type="number" min={1} max={maxAttacks} step={1} value={attacks} onChange={event => setAttacks(event.target.value)} aria-label="攻击次数" title={loading ? '装填武器每次动作只能射击一次' : `额外攻击：本回合最多 ${maxAttacks} 次`} />{loading ? <small>装填：每次动作只能射击一次</small> : null}</label>
+      {Number(attacks) > 1 && targets.length > 1 ? <fieldset className="cmb-targets"><legend>分散攻击（可选，按顺序轮流分配）</legend>{targets.filter(item => item.id !== targetId).map(item => <label key={item.id} className="cmb-check"><input type="checkbox" checked={extraTargets.includes(item.id)} onChange={event => setExtraTargets(prev => event.target.checked ? [...prev, item.id] : prev.filter(id => id !== item.id))} aria-label={`分散目标 ${actorLabel(battle, item)}`} />{actorLabel(battle, item)}</label>)}</fieldset> : null}
       {sources.find(item => item.id === sourceId)?.properties?.includes('弹药') ? <label className="cmb-inline-action">弹药：{attacker.combat?.ammo ?? 20} 发<button type="button" className="button-secondary" onClick={() => onReloadAmmo(attacker.id)} aria-label="补充弹药">补充弹药</button></label> : null}
       <label>检定<select value={mode} onChange={event => setMode(event.target.value as AttackMode)} aria-label="检定方式"><option value="normal">正常</option><option value="advantage">优势</option><option value="disadvantage">劣势</option></select></label>
       <label>消耗<select value={cost} onChange={event => setCost(event.target.value as AttackCost)} aria-label="消耗动作"><option value="action">动作</option><option value="bonus">附赠动作</option><option value="reaction">反应</option></select></label>

@@ -52,6 +52,8 @@ export type AttackOptions = {
   extraDamageCritical?: boolean;
   /** 一次攻击动作内的攻击次数，默认 1，不能超过该单位的额外攻击次数。 */
   attacks?: number;
+  /** 连续攻击时可以分散到多个目标（按顺序轮流分配），未提供时只用 targetId。 */
+  targets?: string[];
 };
 export type AttackOutcome = {
   natural: number;
@@ -1640,20 +1642,25 @@ export function attack(battle: Battle, options: AttackOptions, deps: CombatDeps 
 
 export function attackSequence(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcomes: AttackOutcome[] } {
   const next = recordUndo(structuredClone(battle));
-  const context = validateAttackOptions(next, options);
   const requested = options.attacks ?? 1;
   if (!Number.isInteger(requested) || requested < 1) throw new Error('攻击次数须为正整数。');
-  const limit = attacksPerAction(context.attacker);
+  const targetIds = options.targets && options.targets.length > 0 ? options.targets : [options.targetId];
+  if (new Set(targetIds).size !== targetIds.length) throw new Error('连续攻击的目标不能重复。');
+  if (targetIds.some(item => item === options.attackerId)) throw new Error('不能攻击自己。');
+  const contexts = targetIds.map(targetId => ({ targetId, context: validateAttackOptions(next, { ...options, targetId }) }));
+  const limit = attacksPerAction(contexts[0].context.attacker);
   if (requested > limit) throw new Error(`该单位一次攻击动作最多攻击 ${limit} 次。`);
-  if (requested > 1 && context.cost !== 'action') throw new Error('只有使用动作的攻击才能连续攻击多次。');
+  if (requested > 1 && contexts[0].context.cost !== 'action') throw new Error('只有使用动作的攻击才能连续攻击多个目标。');
   const outcomes: AttackOutcome[] = [];
   for (let index = 0; index < requested; index++) {
-    if (actorOf(next, options.targetId).combat?.status === 'dead') break;
-    outcomes.push(resolveOneAttack(next, options, context, deps, index === 0));
+    const alive = contexts.filter(item => actorOf(next, item.targetId).combat?.status !== 'dead');
+    if (alive.length === 0) break;
+    const pick = alive[index % alive.length];
+    outcomes.push(resolveOneAttack(next, { ...options, targetId: pick.targetId }, pick.context, deps, index === 0));
   }
   const attacker = actorOf(next, options.attackerId);
-  const target = actorOf(next, options.targetId);
-  addLog(next, `${actorLabel(next, attacker)} 对 ${actorLabel(next, target)} 完成攻击动作：${outcomes.length} 次攻击，命中 ${outcomes.filter(item => item.hit).length} 次。`, deps,
+  const names = targetIds.map(id => actorLabel(next, actorOf(next, id))).join('、');
+  addLog(next, `${actorLabel(next, attacker)} 对 ${names} 完成攻击动作：${outcomes.length} 次攻击，命中 ${outcomes.filter(item => item.hit).length} 次。`, deps,
     outcomes.map((item, index) => `第 ${index + 1} 击：${item.hit ? `${item.critical ? '重击' : '命中'} ${item.damage} 点` : '未命中'}（d20 ${item.natural} vs AC ${item.targetAc}）`).join(' · '));
   return { battle: next, outcomes };
 }
