@@ -2040,6 +2040,12 @@ export function setExhaustion(battle: Battle, actorId: string, level: number, de
   if (level === 0) delete state.exhaustion;
   else state.exhaustion = level;
   addLog(next, level === 0 ? `${actorLabel(next, actor)} 的力竭解除。` : `${actorLabel(next, actor)} 的力竭等级为 ${level}：攻击、豁免与属性检定 -${2 * level}，速度 -${5 * level} 尺。`, deps);
+  if (level >= 6 && state.status !== 'dead') {
+    state.status = 'dead';
+    state.deathSaves = { successes: 0, failures: 3 };
+    addLog(next, `${actorLabel(next, actor)} 的力竭达到 6 级，生命终结。`, deps);
+    settleDeath(next, actor, deps);
+  }
   return next;
 }
 export function actorAttackProfile(actor: Actor): { attackBonus: number; damage: string; damageType: DamageType } {
