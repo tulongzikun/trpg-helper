@@ -820,9 +820,22 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   if (actor.position) {
     applyHazardAt(next, actor, actor.position.x, actor.position.y, deps, '回合开始');
   }
+  if (next.autoDeathSaves && actor.combat?.status === 'down' && actor.characterSnapshot) {
+    resolveDeathSave(next, actor, deps);
+  }
   syncSummonsInPlace(next, deps);
   tickSummonDurations(next, deps);
   delete combat.pendingOpportunity;
+  return next;
+}
+
+/** 开关：回合开始时是否为倒地的角色自动掷死亡豁免。 */
+export function setAutoDeathSaves(battle: Battle, enabled: boolean, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (enabled) next.autoDeathSaves = true;
+  else delete next.autoDeathSaves;
+  addLog(next, enabled ? '已开启：倒地的角色在回合开始时自动掷死亡豁免。' : '已关闭：死亡豁免改为手动掷。', deps);
   return next;
 }
 /** 准备动作：用本回合的动作换一个「满足触发条件时用反应执行」的承诺。 */
@@ -2007,6 +2020,24 @@ export function tickTurnStart(battle: Battle, deps: CombatDeps = {}): Battle {
   return next;
 }
 
+function resolveDeathSave(next: Battle, actor: Actor, deps: CombatDeps): DeathSaveOutcome {
+  const state = combatantOf(actor);
+  const natural = rollDie(20, randomOf(deps));
+  if (natural === 20) {
+    actor.currentHp = 1;
+    state.status = 'active';
+    state.deathSaves = { successes: 0, failures: 0 };
+    addLog(next, `${actorLabel(next, actor)} 死亡豁免掷出 20，恢复 1 点生命值。`, deps);
+    return { natural, successes: 0, failures: 0, status: 'active', revived: true };
+  }
+  if (natural === 1) state.deathSaves.failures = Math.min(3, state.deathSaves.failures + 2);
+  else if (natural >= 10) state.deathSaves.successes = Math.min(3, state.deathSaves.successes + 1);
+  else state.deathSaves.failures = Math.min(3, state.deathSaves.failures + 1);
+  if (state.deathSaves.failures >= 3) state.status = 'dead';
+  addLog(next, `${actorLabel(next, actor)} 死亡豁免 d20(${natural})：${state.deathSaves.successes} 成功 / ${state.deathSaves.failures} 失败${state.status === 'dead' ? '，死亡' : state.deathSaves.successes >= 3 ? '，稳定' : ''}。`, deps);
+  return { natural, successes: state.deathSaves.successes, failures: state.deathSaves.failures, status: state.status, revived: false };
+}
+
 export function rollDeathSave(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; outcome: DeathSaveOutcome } {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
@@ -2014,21 +2045,9 @@ export function rollDeathSave(battle: Battle, actorId: string, deps: CombatDeps 
   const state = combatantOf(actor);
   if (state.status !== 'down') throw new Error('只有在 0 点生命值倒地的角色才需要死亡豁免。');
   if (!actor.characterSnapshot) throw new Error('怪物在 0 点生命值时直接死亡，不需要死亡豁免。');
-  const natural = rollDie(20, randomOf(deps));
-  if (natural === 20) {
-    actor.currentHp = 1;
-    state.status = 'active';
-    state.deathSaves = { successes: 0, failures: 0 };
-    addLog(next, `${actorLabel(next, actor)} 死亡豁免掷出 20，恢复 1 点生命值。`, deps);
-    return { battle: next, outcome: { natural, successes: 0, failures: 0, status: 'active', revived: true } };
-  }
-  if (natural === 1) state.deathSaves.failures = Math.min(3, state.deathSaves.failures + 2);
-  else if (natural >= 10) state.deathSaves.successes = Math.min(3, state.deathSaves.successes + 1);
-  else state.deathSaves.failures = Math.min(3, state.deathSaves.failures + 1);
-  if (state.deathSaves.failures >= 3) state.status = 'dead';
-  addLog(next, `${actorLabel(next, actor)} 死亡豁免 d20(${natural})：${state.deathSaves.successes} 成功 / ${state.deathSaves.failures} 失败${state.status === 'dead' ? '，死亡' : state.deathSaves.successes >= 3 ? '，稳定' : ''}。`, deps);
-  return { battle: next, outcome: { natural, successes: state.deathSaves.successes, failures: state.deathSaves.failures, status: state.status, revived: false } };
+  return { battle: next, outcome: resolveDeathSave(next, actor, deps) };
 }
+
 export function undoCombat(battle: Battle): Battle {
   const combat = requireCombat(battle);
   const previous = combat.undo.at(-1);
