@@ -18,6 +18,7 @@ import type { SpellCastOptions } from './combatSpells';
 import { filterLog, logRounds } from './combatLog';
 import { replayFrames } from './combatReplay';
 import { spellAreaTargets } from './combatSpells';
+import { mountCandidates } from './combat';
 import { difficultyText } from './encounterDifficulty';
 import { settlementText } from './combatSettlement';
 
@@ -62,6 +63,8 @@ export type CombatHandlers = {
   onCharm: (actorId: string, targetId: string) => void;
   onFear: (actorId: string, targetIds: string[]) => void;
   onSuppress: (actorId: string, targetId: string) => void;
+  onMount: (actorId: string, mountId: string) => void;
+  onDismount: (actorId: string) => void;
   onDispel: (actorId: string, targetId: string) => void;
   onSurprise: (actorId: string) => void; onPolymorph: (actorId: string, targetId: string) => void;
   onMassHeal: (actorId: string) => void;
@@ -334,6 +337,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       {state.charmed ? <span className="cmb-hint">魅惑术：剩余 {state.charmed} 轮（无法攻击施法者）</span> : null}
 {state.frightened ? <span className="cmb-hint">恐惧术：剩余 {state.frightened} 轮（无法靠近恐惧源，对其攻击劣势）</span> : null}
       {state.suppressed ? <span className="cmb-hint">掩护射击：攻击检定劣势，直到它的下回合开始</span> : null}
+      {state.mountedOn ? <button type="button" className="button-secondary" disabled={state.status !== 'active'} onClick={() => handlers.onDismount(actor.id)} aria-label="下马">下马</button> : mountCandidates(battle, actor.id).length ? <button type="button" className="button-secondary" disabled={state.status !== 'active'} onClick={() => handlers.onMount(actor.id, mountCandidates(battle, actor.id)[0].id)} aria-label="骑乘">骑乘 {actorLabel(battle, mountCandidates(battle, actor.id)[0])}（速度取自坐骑）</button> : null}
+      {state.mountedOn ? <span className="cmb-hint">骑乘中：速度 {state.mountSpeedFt} 尺，坐骑倒下时会落马</span> : null}
       {state.conditions.includes('中毒') ? <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onAntitoxin(actor.id)} aria-label="解毒剂">解毒剂（动作，解除中毒）</button> : null}
       {state.conditions.includes('中毒') ? <span className="cmb-hint">中毒：攻击检定劣势{state.poisoned ? `，剩余 ${state.poisoned} 轮` : ''}</span> : null}
       {state.sleeping ? <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onWake(actor.id, actor.id)} aria-label="唤醒">唤醒（动作，移除沉睡）</button> : null}

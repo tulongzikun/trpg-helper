@@ -348,11 +348,63 @@ function exhaustionSpeedPenalty(actor: Actor): number {
 }
 /** 本回合可用的移动力：基础速度加上疾跑带来的额外移动力，并扣除减速与力竭。 */
 function movementAllowance(actor: Actor): number {
-  const base = actor.combat?.hasted ? actorSpeed(actor) * 2 : actorSpeed(actor);
+  const mountSpeed = actor.combat?.mountSpeedFt ?? 0;
+  const mountBase = mountSpeed > actorSpeed(actor) ? mountSpeed : actorSpeed(actor);
+  const base = actor.combat?.hasted ? mountBase * 2 : mountBase;
   const paced = actor.combat?.slowed ? Math.floor(base / 2) : base;
   const shaped = actor.combat?.polymorphed ? Math.min(base, 25) : base;
   return Math.max(0, Math.min(paced, shaped) - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
 }
+/** 骑手可以骑上 5 尺内的同阵营坐骑，并继承它的速度。 */
+export function mountUp(battle: Battle, riderId: string, mountId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (riderId === mountId) throw new Error('单位不能骑乘自己。');
+  const rider = actorOf(next, riderId);
+  const mount = actorOf(next, mountId);
+  if (combatantOf(rider).status !== 'active') throw new Error('只有处于战斗中的单位可以骑乘。');
+  if (combatantOf(mount).status !== 'active') throw new Error('只能骑乘在场的坐骑。');
+  if (rider.combat?.mountedOn) throw new Error('该单位已经骑乘在坐骑上。');
+  if (mount.combat?.riderId) throw new Error('这匹坐骑上已经有骑手了。');
+  if (rider.side !== mount.side) throw new Error('只能骑乘同阵营的坐骑。');
+  const distance = actorDistance(next, riderId, mountId);
+  if (distance !== undefined && distance > 5) throw new Error('骑乘需要与坐骑相邻（5 尺内）。');
+  const riderState = combatantOf(rider);
+  const mountState = combatantOf(mount);
+  riderState.mountedOn = mount.id;
+  riderState.mountSpeedFt = actorSpeed(mount);
+  mountState.riderId = rider.id;
+  addLog(next, `${actorLabel(next, rider)} 骑上了 ${actorLabel(next, mount)}（速度 ${actorSpeed(mount)} 尺）。`, deps);
+  return next;
+}
+
+/** 主动下马：清除骑乘关系，速度恢复为自身速度。 */
+export function dismount(battle: Battle, riderId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const rider = actorOf(next, riderId);
+  const mountedOn = rider.combat?.mountedOn;
+  if (!mountedOn) throw new Error('该单位没有骑乘坐骑。');
+  const mount = next.actors.find(item => item.id === mountedOn);
+  delete rider.combat?.mountedOn;
+  delete rider.combat?.mountSpeedFt;
+  if (mount?.combat) delete mount.combat.riderId;
+  addLog(next, `${actorLabel(next, rider)} 从 ${mount ? actorLabel(next, mount) : '坐骑'} 上下来。`, deps);
+  return next;
+}
+
+/** 与骑手相邻、可以骑乘的同阵营单位。 */
+export function mountCandidates(battle: Battle, riderId: string): Actor[] {
+  const rider = battle.actors.find(item => item.id === riderId);
+  if (!rider) return [];
+  return battle.actors.filter(item =>
+    item.id !== riderId
+    && item.side === rider.side
+    && item.combat?.status === 'active'
+    && !item.combat?.riderId
+    && (actorDistance(battle, riderId, item.id) ?? 0) <= 5);
+}
+
 /** 缓慢术：受影响期间无法使用反应。 */
 function requireReactionAllowed(actor: Actor): void {
   if (actor.combat?.slowed) throw new Error('缓慢术的影响下无法使用反应。');
@@ -2837,6 +2889,16 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
 function settleDeath(battle: Battle, actor: Actor, deps: CombatDeps = {}): void {
   const state = actor.combat;
   if (!state || state.status !== 'dead') return;
+  if (state.riderId) {
+    const rider = battle.actors.find(item => item.id === state.riderId);
+    if (rider?.combat) {
+      delete rider.combat.mountedOn;
+      delete rider.combat.mountSpeedFt;
+      if (!rider.combat.conditions.includes('倒地')) rider.combat.conditions.push('倒地');
+      addLog(battle, `${actorLabel(battle, rider)} 的坐骑倒下了，骑手落马倒地。`, deps);
+    }
+    delete state.riderId;
+  }
   if (state.concentration) {
     const spell = state.concentration.spell;
     delete state.concentration;
