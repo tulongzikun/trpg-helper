@@ -4,7 +4,7 @@ import type { Actor, DamageType } from './battle';
 import type { AttackRange } from './combatModifiers.ts';
 
 /** 攻击来源：怪物动作文本、角色装备中的武器，或按属性估算的兜底值。 */
-export type WeaponMastery = '迟滞' | '推撞' | '削韧';
+export type WeaponMastery = '迟滞' | '推撞' | '削韧' | '破绽' | '倾覆';
 
 export type AttackOrigin = 'monster-action' | 'character-action' | 'weapon' | 'estimate';
 export type AttackSource = {
@@ -110,13 +110,13 @@ type Weapon = { mastery?: WeaponMastery; name: string; aliases: string[]; damage
 /** 2024 常用武器表；命中加值 = 属性调整值 + 熟练加值，武器熟练未建模时按已熟练处理。 */
 export const weapons: Weapon[] = [
   { name: '长剑', mastery: '削韧', aliases: ['longsword'], damage: '1d8', damageType: '挥砍', ability: 'best', range: 'melee', distanceFt: 5, versatile: '1d10' },
-  { name: '短剑', aliases: ['shortsword'], damage: '1d6', damageType: '穿刺', ability: 'best', range: 'melee', distanceFt: 5, properties: ['轻型'] },
+  { name: '短剑', mastery: '破绽', aliases: ['shortsword'], damage: '1d6', damageType: '穿刺', ability: 'best', range: 'melee', distanceFt: 5, properties: ['轻型'] },
   { name: '匕首', aliases: ['dagger'], damage: '1d4', damageType: '穿刺', ability: 'best', range: 'melee', distanceFt: 5, properties: ['轻型'] },
-  { name: '刺剑', aliases: ['rapier'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'melee', distanceFt: 5 },
+  { name: '刺剑', mastery: '破绽', aliases: ['rapier'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'melee', distanceFt: 5 },
   { name: '巨剑', aliases: ['greatsword'], damage: '2d6', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5, properties: ['重型', '双手'] },
   { name: '巨斧', aliases: ['greataxe'], damage: '1d12', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5, properties: ['重型', '双手'] },
   { name: '战锤', mastery: '推撞', aliases: ['warhammer'], damage: '1d8', damageType: '钝击', ability: 'str', range: 'melee', distanceFt: 5, properties: ['重型'], versatile: '1d10' },
-  { name: '长棍', mastery: '推撞', aliases: ['quarterstaff'], damage: '1d6', damageType: '钝击', ability: 'best', range: 'melee', distanceFt: 5, properties: ['重型'], versatile: '1d8' },
+  { name: '长棍', mastery: '倾覆', aliases: ['quarterstaff'], damage: '1d6', damageType: '钝击', ability: 'best', range: 'melee', distanceFt: 5, properties: ['重型'], versatile: '1d8' },
   { name: '长矛', mastery: '削韧', aliases: ['spear'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'melee', distanceFt: 5, versatile: '1d8', properties: ['投掷'], thrownRangeFt: 20, thrownMaxRangeFt: 60 },
   { name: '手斧', aliases: ['handaxe'], damage: '1d6', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5, properties: ['轻型', '投掷'], thrownRangeFt: 20, thrownMaxRangeFt: 60 },
   { name: '轻锤', aliases: ['light hammer'], damage: '1d4', damageType: '钝击', ability: 'str', range: 'melee', distanceFt: 5, properties: ['轻型', '投掷'], thrownRangeFt: 20, thrownMaxRangeFt: 60 },

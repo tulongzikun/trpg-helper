@@ -965,16 +965,19 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const dodging = combatantOf(target).dodging === true;
   const helped = combatantOf(attacker).helpedAttack === true;
   const sapped = combatantOf(attacker).sapped === true;
+  const vexed = combatantOf(attacker).vexTargetId === target.id;
   const hiddenAttacker = combatantOf(attacker).hidden === true;
   const hiddenTarget = combatantOf(target).hidden === true;
   const dodgeAdjustment: ModeAdjustment | null = dodging ? { mode: 'disadvantage', notes: ['目标在使用闪避：攻击检定劣势'] } : null;
   const helpAdjustment: ModeAdjustment | null = helped ? { mode: 'advantage', notes: ['得到协助：攻击检定优势'] } : null;
   const sapAdjustment: ModeAdjustment | null = sapped ? { mode: 'disadvantage', notes: ['被削韧：攻击检定劣势'] } : null;
+  const vexAdjustment: ModeAdjustment | null = vexed ? { mode: 'advantage', notes: ['精通·破绽：攻击检定优势'] } : null;
   const hideAdjustment: ModeAdjustment | null = hiddenAttacker ? { mode: 'advantage', notes: ['攻击者处于躲藏：攻击检定优势'] } : null;
   const unseenAdjustment: ModeAdjustment | null = hiddenTarget ? { mode: 'disadvantage', notes: ['目标处于躲藏：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
+  if (vexed) delete combatantOf(attacker).vexTargetId;
   if (hiddenAttacker) combatantOf(attacker).hidden = false;
   if (hiddenTarget) combatantOf(target).hidden = false;
   const mode = combined.mode;
@@ -1027,6 +1030,21 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
       } else if (mastery === '削韧') {
         targetState.sapped = true;
         masteryNote = '精通·削韧：目标下一次攻击检定劣势';
+      } else if (mastery === '破绽') {
+        state.vexTargetId = target.id;
+        masteryNote = '精通·破绽：攻击者对目标的下一次攻击检定优势';
+      } else if (mastery === '倾覆') {
+        const abilities = attacker.characterSnapshot?.sheet.abilities ?? attacker.template.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+        const level = attacker.characterSnapshot?.sheet.level;
+        const proficiency = level === undefined ? (attacker.template.proficiencyBonus ?? 2) : proficiencyBonus(level);
+        const dc = 8 + proficiency + abilityModifier(abilities.str ?? 10);
+        const save = resolveSave(target, { actorId: target.id, ability: 'con', dc, bonus: defaultSaveBonus(target, 'con') }, random);
+        if (save.success) {
+          masteryNote = `精通·倾覆：目标体质豁免成功（DC ${dc}）`;
+        } else {
+          targetState.conditions.push('倒地');
+          masteryNote = `精通·倾覆：目标体质豁免失败（DC ${dc}），倒地`;
+        }
       } else if (mastery === '推撞' && battle.grid && attacker.position && target.position) {
         const dx = Math.sign(target.position.x - attacker.position.x);
         const dy = Math.sign(target.position.y - attacker.position.y);

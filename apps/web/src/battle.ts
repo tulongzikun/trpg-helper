@@ -59,6 +59,8 @@ export type CombatantState = {
   sapped?: boolean;
   /** 施加减速的来源 id：该来源的回合开始时清除速度削减。 */
   slowSourceId?: string;
+  /** 精通「破绽」：对指定目标的下一次攻击检定优势，用掉后清除。 */
+  vexTargetId?: string;
   /** 是否获得了协助：下一次攻击检定具有优势，用掉后清除。 */
   helpedAttack?: boolean;
   /** 使用疾跑后本回合额外获得的移动力（尺），回合开始时清零。 */
@@ -136,6 +138,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.speedPenaltyFt !== undefined && !isInteger(value.speedPenaltyFt, 0, 50)) return false;
   if (value.sapped !== undefined && typeof value.sapped !== 'boolean') return false;
   if (value.slowSourceId !== undefined && (typeof value.slowSourceId !== 'string' || !value.slowSourceId || value.slowSourceId.length > 64)) return false;
+  if (value.vexTargetId !== undefined && (typeof value.vexTargetId !== 'string' || !value.vexTargetId || value.vexTargetId.length > 64)) return false;
   if (value.helpedAttack !== undefined && typeof value.helpedAttack !== 'boolean') return false;
   if (value.dashMovement !== undefined && !isInteger(value.dashMovement, 0, 300)) return false;
   if (value.hidden !== undefined && typeof value.hidden !== 'boolean') return false;
