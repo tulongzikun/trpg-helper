@@ -14,6 +14,17 @@ export function statusOf(actor: Actor): string {
   return statusLabels[status] ?? status;
 }
 
+/** 单位的伤害防御摘要，例如「抗火焰、免毒素、弱寒冷」；没有时返回空串。 */
+export function defenseOf(actor: Actor): string {
+  const state = actor.combat;
+  const parts = [
+    ...(state?.damageResistances ?? []).map(item => `抗${item}`),
+    ...(state?.damageImmunities ?? []).map(item => `免${item}`),
+    ...(state?.damageVulnerabilities ?? []).map(item => `弱${item}`),
+  ];
+  return parts.join('、');
+}
+
 /** 把一场战斗渲染成可直接贴进跑团记录的 Markdown。 */
 export function battleReport(battle: Battle): string {
   const reward = encounterReward(battle);
@@ -33,6 +44,15 @@ export function battleReport(battle: Battle): string {
     const conditions = (actor.combat?.conditions ?? []).join('、') || '—';
     const concentration = actor.combat?.concentration?.spell ?? '—';
     lines.push(`| ${actor.name} | ${actor.side} | ${actor.currentHp}/${actor.maxHp} | ${statusOf(actor)} | ${conditions} | ${concentration} |`);
+  }
+  const guarded = battle.actors
+    .map(actor => ({ actor, text: defenseOf(actor) }))
+    .filter(item => item.text.length > 0);
+  if (guarded.length) {
+    lines.push('');
+    lines.push('## 防御');
+    lines.push('');
+    for (const item of guarded) lines.push(`- ${item.actor.name}：${item.text}`);
   }
   const stats = battleStatistics(battle);
   const active = stats.rows.filter(row => row.attacks > 0 || row.damageDealt > 0 || row.damageTaken > 0 || row.healing > 0);
