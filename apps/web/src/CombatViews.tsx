@@ -49,6 +49,8 @@ export type CombatHandlers = {
   onBless: (actorId: string) => void;
   onShield: (actorId: string) => void;
   onGrease: (actorId: string, cells: { x: number; y: number }[]) => void;
+  onWeb: (actorId: string, cells: { x: number; y: number }[]) => void;
+  onEscapeWeb: (actorId: string) => void;
   onHaste: (actorId: string) => void;
   onInvisible: (actorId: string) => void;
   onInitiative: (actorId: string, initiative: number) => void;
@@ -391,6 +393,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   const walls = new Set((battle.walls ?? []).map(cell => `${cell.x},${cell.y}`));
   const hazards = new Set((battle.hazards ?? []).map(cell => `${cell.x},${cell.y}`));
   const grease = new Set((battle.grease ?? []).map(cell => `${cell.x},${cell.y}`));
+  const webs = new Set((battle.webs ?? []).map(cell => `${cell.x},${cell.y}`));
   const distances = current
     ? battle.actors.filter(actor => actor.position && actor.id !== current).map(actor => {
       const feet = actorDistance(battle, current, actor.id);
@@ -408,7 +411,8 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
         const wall = walls.has(`${x},${y}`);
         const hazard = hazards.has(`${x},${y}`);
         const greased = grease.has(`${x},${y}`);
-        return <button key={`${x}-${y}`} type="button" className={`cmb-cell${occupant ? ` occupied ${occupant.side === '敌方' ? 'enemy' : occupant.side === '友方' ? 'ally' : 'neutral'}` : ''}${selected === occupant?.id ? ' selected' : ''}${difficult ? ' difficult' : ''}${wall ? ' wall' : ''}${hazard ? ' hazard' : ''}${greased ? ' grease' : ''}${mode !== 'move' ? ' terrain-edit' : ''}`} title={`(${x}, ${y})${occupant ? ` ${occupant.name}` : ''}${difficult ? ' 困难地形' : ''}${wall ? ' 墙体' : ''}${hazard ? ' 危险地形' : ''}${greased ? ' 油污' : ''}`} aria-label={`格子 ${x},${y}${occupant ? `，${occupant.name}` : ''}${difficult ? '，困难地形' : ''}${wall ? '，墙体' : ''}${hazard ? '，危险地形' : ''}${greased ? '，油污' : ''}`} onClick={() => click(x, y)}>{wall ? '' : occupant ? occupant.name.slice(0, 1) : ''}</button>;
+        const webbed = webs.has(`${x},${y}`);
+        return <button key={`${x}-${y}`} type="button" className={`cmb-cell${occupant ? ` occupied ${occupant.side === '敌方' ? 'enemy' : occupant.side === '友方' ? 'ally' : 'neutral'}` : ''}${selected === occupant?.id ? ' selected' : ''}${difficult ? ' difficult' : ''}${wall ? ' wall' : ''}${hazard ? ' hazard' : ''}${greased ? ' grease' : ''}${webbed ? ' web' : ''}${mode !== 'move' ? ' terrain-edit' : ''}`} title={`(${x}, ${y})${occupant ? ` ${occupant.name}` : ''}${difficult ? ' 困难地形' : ''}${wall ? ' 墙体' : ''}${hazard ? ' 危险地形' : ''}${greased ? ' 油污' : ''}${webbed ? ' 蛛网' : ''}`} aria-label={`格子 ${x},${y}${occupant ? `，${occupant.name}` : ''}${difficult ? '，困难地形' : ''}${wall ? '，墙体' : ''}${hazard ? '，危险地形' : ''}${greased ? '，油污' : ''}${webbed ? '，蛛网' : ''}`} onClick={() => click(x, y)}>{wall ? '' : occupant ? occupant.name.slice(0, 1) : ''}</button>;
       }))}
     </div>
     {distances.length ? <p className="cmb-hint">当前行动者距离：{distances.map(item => <span key={item.id} className="cmb-muted">{item.label}　</span>)}</p> : null}
@@ -419,6 +423,8 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className={mode === 'wall' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'wall'} onClick={() => setMode('wall')}>标记墙体</button>
       <button type="button" className={mode === 'hazard' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'hazard'} onClick={() => setMode('hazard')}>标记危险地形</button>
       <button type="button" className="button-secondary" disabled={!selectedActor?.position} onClick={() => { const position = selectedActor?.position; if (!position) return; const cells = [-1, 0, 1].flatMap(dx => [-1, 0, 1].map(dy => ({ x: position.x + dx, y: position.y + dy }))).filter(cell => cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height); setMessage(''); handlers.onGrease(selectedActor.id, cells); }} aria-label="油腻术">油腻术（3×3，DC 13 敏捷）</button>
+      <button type="button" className="button-secondary" disabled={!selectedActor?.position} onClick={() => { const position = selectedActor?.position; if (!position) return; const cells = [-1, 0, 1].flatMap(dx => [-1, 0, 1].map(dy => ({ x: position.x + dx, y: position.y + dy }))).filter(cell => cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height); setMessage(''); handlers.onWeb(selectedActor.id, cells); }} aria-label="蛛网术">蛛网术（3×3，DC 12 敏捷）</button>
+      {selectedActor?.combat?.conditions.includes('束缚') ? <button type="button" className="button-secondary" onClick={() => { setMessage(''); handlers.onEscapeWeb(selectedActor.id); }} aria-label="挣脱蛛网">挣脱蛛网（动作，DC 12 力量）</button> : null}
       <label className="cmb-check"><input type="checkbox" checked={jumpMode} onChange={event => setJumpMode(event.target.checked)} aria-label="跳跃移动" />跳跃移动（按直线距离消耗，忽略困难与危险地形）</label>
       {mode === 'hazard' ? <span className="cmb-inline-action">
         <input className="cmb-dice" value={hazardDice} onChange={event => setHazardDice(event.target.value)} aria-label="危险地形伤害骰" placeholder="1d6" />

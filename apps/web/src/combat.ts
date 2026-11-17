@@ -540,6 +540,73 @@ export function castGrease(battle: Battle, casterId: string, cells: Position[], 
   return next;
 }
 
+const WEB_DC = 12;
+
+/** 该格是否被蛛网覆盖。 */
+export function webAt(battle: Battle, x: number, y: number): boolean {
+  return (battle.webs ?? []).some(cell => cell.x === x && cell.y === y);
+}
+
+/** 进入或停留在蛛网上的单位做 DC 12 敏捷豁免，失败被「束缚」；飞行单位不受影响。 */
+function webStuck(battle: Battle, actor: Actor, deps: CombatDeps): boolean {
+  const state = combatantOf(actor);
+  if (state.flying === true) return false;
+  const position = actor.position;
+  if (!position || !webAt(battle, position.x, position.y)) return false;
+  if (state.conditions.includes('束缚')) return false;
+  const save = resolveSave(actor, { actorId: actor.id, ability: 'dex', dc: WEB_DC, bonus: defaultSaveBonus(actor, 'dex') + auraBonus(battle, actor.id, 'saves') }, randomOf(deps));
+  if (save.success) {
+    addLog(battle, `${actorLabel(battle, actor)} 在蛛网上稳住身形（敏捷豁免 DC ${WEB_DC} 成功）。`, deps);
+    return false;
+  }
+  state.conditions.push('束缚');
+  addLog(battle, `${actorLabel(battle, actor)} 被蛛网缠住，束缚（移动速度归零，需用动作挣脱）。`, deps);
+  return true;
+}
+
+/** 蛛网术：动作施放，指定若干格（最多 12 格）；这些格子移动消耗翻倍，进入或回合开始时需通过 DC 12 敏捷豁免，失败被束缚。 */
+export function castWeb(battle: Battle, casterId: string, cells: Position[], deps: CombatDeps = {}): Battle {
+  if (!battle.grid) throw new Error('请先启用方格战场。');
+  const unique = new Map<string, Position>();
+  for (const cell of cells) {
+    if (!Number.isInteger(cell.x) || !Number.isInteger(cell.y)) throw new Error('蛛网术的格子坐标须为整数。');
+    if (cell.x < 0 || cell.y < 0 || cell.x >= battle.grid.width || cell.y >= battle.grid.height) throw new Error('蛛网术的格子超出战场范围。');
+    unique.set(`${cell.x},${cell.y}`, { x: cell.x, y: cell.y });
+  }
+  if (!unique.size) throw new Error('请选择蛛网覆盖的格子。');
+  if (unique.size > 12) throw new Error('蛛网术最多覆盖 12 格。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const state = combatantOf(caster);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放蛛网术。');
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  state.actionUsed = true;
+  const list = [...unique.values()];
+  const keys = new Set(list.map(cell => `${cell.x},${cell.y}`));
+  next.webs = [...(next.webs ?? []).filter(cell => !keys.has(`${cell.x},${cell.y}`)), ...list];
+  addLog(next, `${actorLabel(next, caster)} 施放蛛网术：蛛网覆盖 ${list.length} 格，移动消耗翻倍，进入需通过 DC ${WEB_DC} 敏捷豁免。`, deps);
+  return next;
+}
+
+/** 挣脱蛛网：用动作对 DC 12 做力量豁免，成功移除「束缚」。 */
+export function escapeWeb(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; outcome: SaveOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以挣脱蛛网。');
+  const state = combatantOf(actor);
+  if (!state.conditions.includes('束缚')) throw new Error('该单位没有被蛛网束缚。');
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const save = resolveSave(actor, { actorId, ability: 'str', dc: WEB_DC, bonus: defaultSaveBonus(actor, 'str') }, randomOf(deps));
+  state.actionUsed = true;
+  if (save.success) state.conditions = state.conditions.filter(condition => condition !== '束缚');
+  addLog(next, save.success
+    ? `${actorLabel(next, actor)} 挣脱了蛛网（d20 ${save.natural} → ${save.total} 对 DC ${WEB_DC}）。`
+    : `${actorLabel(next, actor)} 没能挣脱蛛网（d20 ${save.natural} → ${save.total} 对 DC ${WEB_DC}）。`, deps);
+  return { battle: next, outcome: save };
+}
+
 /** 施法者可选的法术目标：同阵营、非自身、在场、默认 30 尺内。 */
 export function spellTargets(battle: Battle, casterId: string, rangeFt = 30): Actor[] {
   const caster = battle.actors.find(item => item.id === casterId);
@@ -988,6 +1055,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以移动。');
   const state = combatantOf(actor);
   if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法移动。');
+  if (actor.combat?.conditions.includes('束缚')) throw new Error('被蛛网束缚的单位无法移动，需先用动作挣脱。');
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
   if (lineCells(from, { x, y }).some(cell => isWallCell(next, cell.x, cell.y))) throw new Error('移动路径被墙体阻挡。');
@@ -997,14 +1065,16 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const icy = next.terrain === 'ice';
   const lava = next.terrain === 'lava';
   const brambles = next.terrain === 'brambles';
+  const webbed = webAt(next, x, y);
   const flying = state.flying === true;
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava || brambles ? 2 : 1);
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava || brambles || webbed ? 2 : 1);
   const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}。`, deps);
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}。`, deps);
   if (greaseAt(next, x, y) && !flying) greaseFall(next, actor, deps);
+  if (webbed && !flying) webStuck(next, actor, deps);
   if (icy && !flying) {
     const stumble = resolveSave(actor, { actorId: actor.id, ability: 'dex', dc: 10, bonus: defaultSaveBonus(actor, 'dex') + auraBonus(next, actor.id, 'saves') }, randomOf(deps));
     if (!stumble.success) {
@@ -3089,7 +3159,7 @@ export function tickTurnStart(battle: Battle, deps: CombatDeps = {}): Battle {
   const current = currentActorId(next);
   if (current) {
     const actor = next.actors.find(item => item.id === current);
-    if (actor && (actor.combat?.status ?? 'active') === 'active') greaseFall(next, actor, deps);
+    if (actor && (actor.combat?.status ?? 'active') === 'active') { greaseFall(next, actor, deps); webStuck(next, actor, deps); }
   }
   return next;
 }
