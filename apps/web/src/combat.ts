@@ -347,7 +347,8 @@ function exhaustionSpeedPenalty(actor: Actor): number {
 }
 /** 本回合可用的移动力：基础速度加上疾跑带来的额外移动力，并扣除减速与力竭。 */
 function movementAllowance(actor: Actor): number {
-  return Math.max(0, actorSpeed(actor) - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
+  const base = actor.combat?.hasted ? actorSpeed(actor) * 2 : actorSpeed(actor);
+  return Math.max(0, base - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
 }
 /** 长武器大师：用长武器的柄端作附赠动作攻击，造成 1d4 + 力量调整值的钝击伤害。 */
 export function buttEndAttack(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
@@ -491,15 +492,69 @@ export function blessTargets(battle: Battle, casterId: string): Actor[] {
     && (!battle.grid || !caster.position || !item.position || (actorDistance(battle, casterId, item.id) ?? 0) <= 30));
 }
 
+/** 施法者可选的法术目标：同阵营、非自身、在场、默认 30 尺内。 */
+export function spellTargets(battle: Battle, casterId: string, rangeFt = 30): Actor[] {
+  const caster = battle.actors.find(item => item.id === casterId);
+  if (!caster) return [];
+  return battle.actors.filter(item => {
+    if (item.id === casterId || item.side !== caster.side || item.side === '中立') return false;
+    if ((item.combat?.status ?? 'active') !== 'active') return false;
+    if (actorDistance(battle, casterId, item.id) === undefined) return true;
+    return (actorDistance(battle, casterId, item.id) ?? 0) <= rangeFt;
+  });
+}
+
+/** 加速术：动作施放，单体，10 轮内速度翻倍、AC +2、敏捷豁免优势，需维持专注。 */
+export function castHaste(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const casterState = combatantOf(caster);
+  if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放加速术。');
+  if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (casterState.concentration) throw new Error('施法者已经在维持其他专注。');
+  const target = actorOf(next, targetId);
+  if (combatantOf(target).status !== 'active') throw new Error('目标必须处于在场状态。');
+  casterState.actionUsed = true;
+  casterState.concentration = { spell: '加速术' };
+  const targetState = combatantOf(target);
+  targetState.hasted = 10;
+  targetState.hastedBy = casterId;
+  addLog(next, `${actorLabel(next, target)} 受到加速术影响：速度翻倍、AC +2、敏捷豁免优势，持续 10 轮。`, deps);
+  return next;
+}
+
+/** 隐形术：动作施放，单体，10 轮内攻击者对其攻击检定劣势、它自己的攻击检定优势。 */
+export function castInvisible(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const casterState = combatantOf(caster);
+  if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放隐形术。');
+  if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (casterState.concentration) throw new Error('施法者已经在维持其他专注。');
+  const target = actorOf(next, targetId);
+  if (combatantOf(target).status !== 'active') throw new Error('目标必须处于在场状态。');
+  casterState.actionUsed = true;
+  casterState.concentration = { spell: '隐形术' };
+  const targetState = combatantOf(target);
+  targetState.invisible = 10;
+  targetState.invisibleBy = casterId;
+  addLog(next, `${actorLabel(next, target)} 隐形了：针对它的攻击检定劣势，持续 10 轮。`, deps);
+  return next;
+}
+
 /** 施法者失去专注（或改用别的专注法术）时，立即结束其施加的祝福。 */
-function clearBlessOf(battle: Battle, casterId: string, reason: string, deps: CombatDeps = {}): void {
-  const affected = battle.actors.filter(item => item.combat?.blessedBy === casterId);
-  if (!affected.length) return;
-  for (const item of affected) {
-    delete item.combat!.blessed;
-    delete item.combat!.blessedBy;
+function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps: CombatDeps = {}): void {
+  for (const [field, byField, name] of [['blessed', 'blessedBy', '祝福术'], ['hasted', 'hastedBy', '加速术'], ['invisible', 'invisibleBy', '隐形术']] as const) {
+    const affected = battle.actors.filter(item => item.combat?.[byField] === casterId);
+    if (!affected.length) continue;
+    for (const item of affected) {
+      delete item.combat![field];
+      delete item.combat![byField];
+    }
+    addLog(battle, `${reason}，${affected.map(item => actorLabel(battle, item)).join('、')} 的${name}结束了。`, deps);
   }
-  addLog(battle, `${reason}，${affected.map(item => actorLabel(battle, item)).join('、')} 的祝福术结束了。`, deps);
 }
 
 /** 祝福术：动作施放，最多 3 名友方在 10 轮内攻击检定与豁免 +1d4，施法者需维持专注。 */
@@ -1178,6 +1233,13 @@ function resetTurnResources(battle: Battle, actorId: string) {
       addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 身上的祝福术结束了。`, {});
     }
   }
+  for (const [key, name] of [['hasted', '加速术'], ['invisible', '隐形术']] as const) {
+    const left = combat[key];
+    if (typeof left !== 'number') continue;
+    if (left > 1) { combat[key] = left - 1; continue; }
+    delete combat[key];
+    addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 身上的${name}结束了。`, {});
+  }
   combat.sneakUsed = false;
   combat.reckless = false;
   for (const other of battle.actors) {
@@ -1505,7 +1567,7 @@ function settleDeath(battle: Battle, actor: Actor, deps: CombatDeps = {}): void 
     delete state.concentration;
     dismissSummonsOf(battle, actor.id, `施法者死亡，无法维持「${spell}」`, deps);
     addLog(battle, `${actorLabel(battle, actor)} 死亡，中断了对「${spell}」的专注。`, deps);
-    clearBlessOf(battle, actor.id, `${actorLabel(battle, actor)} 死亡`, deps);
+    clearFocusBuffs(battle, actor.id, `${actorLabel(battle, actor)} 死亡`, deps);
   }
   if (state.ongoing?.length) {
     delete state.ongoing;
@@ -1960,6 +2022,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const engagedInMelee = context.range === 'ranged' && !!attacker.position && battle.actors.some(item => item.id !== attacker.id && item.side !== attacker.side && item.side !== '中立' && item.combat?.status === 'active' && !!item.position && cellDistance(item.position, attacker.position!) <= 1);
   const engagedAdjustment: ModeAdjustment | null = engagedInMelee ? { mode: 'disadvantage', notes: ['远程攻击时敌人贴身：攻击检定劣势'] } : null;
   const hiddenTarget = combatantOf(target).hidden === true;
+  const invisibleAttacker = (combatantOf(attacker).invisible ?? 0) > 0;
+  const invisibleTarget = (combatantOf(target).invisible ?? 0) > 0;
   const guard = guardingProtector(battle, target);
   const guardAdjustment: ModeAdjustment | null = guard ? { mode: 'disadvantage', notes: [`${actorLabel(battle, guard)} 用保护风格挡下攻击：攻击检定劣势`] } : null;
   const dodgeAdjustment: ModeAdjustment | null = dodging ? { mode: 'disadvantage', notes: ['目标在使用闪避：攻击检定劣势'] } : null;
@@ -1971,7 +2035,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const obscuredAdjustment: ModeAdjustment | null = battle.obscured === 'heavy' ? { mode: 'disadvantage', notes: ['重度遮蔽：攻击检定劣势'] } : null;
   const hideAdjustment: ModeAdjustment | null = hiddenAttacker ? { mode: 'advantage', notes: ['攻击者处于躲藏：攻击检定优势'] } : null;
   const unseenAdjustment: ModeAdjustment | null = hiddenTarget ? { mode: 'disadvantage', notes: ['目标处于躲藏：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
+  const invisibleAdjustment: ModeAdjustment | null = invisibleAttacker ? { mode: 'advantage', notes: ['攻击者处于隐形：攻击检定优势'] } : invisibleTarget ? { mode: 'disadvantage', notes: ['目标处于隐形：攻击检定劣势'] } : null;
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
@@ -1987,7 +2052,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const blessDie = combatantOf(attacker).blessed ? rollDie(4, random) : 0;
   if (blessDie) notes.push(`祝福：攻击检定 +${blessDie}`);
   const total = natural + options.attackBonus + archery + blessDie - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
-  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + defenseBonus(target);
+  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) + defenseBonus(target);
   if (guard) delete combatantOf(guard).guarding;
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
@@ -2584,6 +2649,10 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.concentration;
     delete actor.combat.blessed;
     delete actor.combat.blessedBy;
+    delete actor.combat.hasted;
+    delete actor.combat.hastedBy;
+    delete actor.combat.invisible;
+    delete actor.combat.invisibleBy;
     delete actor.combat.shield;
     delete actor.combat.speedPenaltyFt;
     delete actor.combat.slowSourceId;
@@ -2647,6 +2716,7 @@ function resolveSave(actor: Actor, options: SaveOptions, random: Random): SaveOu
   const automaticFailure = (options.ability === 'str' || options.ability === 'dex') && ['麻痹', '昏迷', '石化'].some(condition => conditions.includes(condition));
   const adjustments: ModeAdjustment[] = [];
   if (options.ability === 'dex' && conditions.includes('束缚')) adjustments.push({ mode: 'disadvantage', notes: ['目标束缚：敏捷豁免劣势'] });
+  if (options.ability === 'dex' && (actor.combat?.hasted ?? 0) > 0) adjustments.push({ mode: 'advantage', notes: ['加速术：敏捷豁免优势'] });
   const combined = combineAttackModes(options.mode ?? 'normal', adjustments);
   if (automaticFailure) {
     return { natural: 0, total: 0, dc: options.dc, success: false, mode: 'normal', automaticFailure: true, notes: [...combined.notes, '麻痹、昏迷或石化：力量／敏捷豁免自动失败'] };
@@ -2840,7 +2910,7 @@ function concentrationCheck(battle: Battle, actor: Actor, damage: number, random
   if (actor.combat?.status !== 'active' || damage <= 0) {
     delete actor.combat!.concentration;
     dismissSummonsOf(battle, actor.id, `施法者失去专注「${concentration.spell}」`, deps);
-    clearBlessOf(battle, actor.id, `${actorLabel(battle, actor)} 失去专注「${concentration.spell}」`, deps);
+    clearFocusBuffs(battle, actor.id, `${actorLabel(battle, actor)} 失去专注「${concentration.spell}」`, deps);
     return { lost: true, dc, natural: 0, total: 0, text: `失去对「${concentration.spell}」的专注` };
   }
   const warcaster = actor.combat?.warCaster === true;
@@ -2848,7 +2918,7 @@ function concentrationCheck(battle: Battle, actor: Actor, damage: number, random
   if (outcome.success) return { lost: false, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，维持「${concentration.spell}」${warcaster ? '（战地施法者：优势）' : ''}` };
   delete actor.combat!.concentration;
   dismissSummonsOf(battle, actor.id, `施法者失去专注「${concentration.spell}」`, deps);
-  clearBlessOf(battle, actor.id, `${actorLabel(battle, actor)} 失去专注「${concentration.spell}」`, deps);
+  clearFocusBuffs(battle, actor.id, `${actorLabel(battle, actor)} 失去专注「${concentration.spell}」`, deps);
   return { lost: true, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，失去对「${concentration.spell}」的专注` };
 }
 
@@ -2902,7 +2972,7 @@ export function startConcentration(battle: Battle, actorId: string, spell: strin
   state.concentration = { spell: spell.trim() };
   if (replaced && replaced !== spell.trim()) {
     dismissSummonsOf(next, actor.id, `施法者改用「${spell.trim()}」专注`, deps);
-    clearBlessOf(next, actor.id, `${actorLabel(next, actor)} 改用「${spell.trim()}」专注`, deps);
+    clearFocusBuffs(next, actor.id, `${actorLabel(next, actor)} 改用「${spell.trim()}」专注`, deps);
   }
   addLog(next, `${actorLabel(next, actor)} 开始专注「${spell.trim()}」。`, deps, replaced ? `替换了原先的「${replaced}」` : undefined);
   return next;
@@ -2917,7 +2987,7 @@ export function endConcentration(battle: Battle, actorId: string, deps: CombatDe
   const spell = state.concentration.spell;
   delete state.concentration;
   dismissSummonsOf(next, actor.id, `施法者结束专注「${spell}」`, deps);
-  clearBlessOf(next, actor.id, `${actorLabel(next, actor)} 结束了专注「${spell}」`, deps);
+  clearFocusBuffs(next, actor.id, `${actorLabel(next, actor)} 结束了专注「${spell}」`, deps);
   addLog(next, `${actorLabel(next, actor)} 结束了对「${spell}」的专注。`, deps);
   return next;
 }

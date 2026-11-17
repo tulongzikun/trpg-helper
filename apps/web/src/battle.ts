@@ -119,6 +119,14 @@ export type CombatantState = {
   blessed?: number;
   /** 施加祝福术的施法者 id：施法者失去专注时祝福立刻结束。 */
   blessedBy?: string;
+  /** 加速术：剩余轮数（速度翻倍、AC +2、敏捷豁免优势）。 */
+  hasted?: number;
+  /** 施加加速术的施法者 id。 */
+  hastedBy?: string;
+  /** 隐形术：剩余轮数（针对它的攻击检定劣势，它自己的攻击检定优势）。 */
+  invisible?: number;
+  /** 施加隐形术的施法者 id。 */
+  invisibleBy?: string;
   /** 护盾术：AC 加值，直到自己下个回合开始。 */
   shield?: number;
 };
