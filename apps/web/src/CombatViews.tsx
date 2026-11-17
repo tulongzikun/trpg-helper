@@ -37,6 +37,7 @@ export type CombatHandlers = {
   onAttack: (options: AttackOptions) => void;
   onAttackSequence: (options: AttackOptions) => void;
   onOffhand: (options: AttackOptions) => void;
+  onButtEnd: (options: AttackOptions) => void;
   onGrapple: (targetId: string) => void;
   onShove: (targetId: string, effect: 'prone' | 'push') => void;
   onEscapeGrapple: (actorId: string) => void;
@@ -211,7 +212,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
     <ReadyPanel key={`ready-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <AiPanel key={`ai-${actor.id}`} battle={battle} actor={actor} onApply={setSuggestion} />
-    <AttackForm key={actor.id} battle={battle} attacker={actor} suggestion={suggestion} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} onOffhand={handlers.onOffhand} onReloadAmmo={handlers.onReloadAmmo} />
+    <AttackForm key={actor.id} battle={battle} attacker={actor} suggestion={suggestion} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} onOffhand={handlers.onOffhand} onButtEnd={handlers.onButtEnd} onReloadAmmo={handlers.onReloadAmmo} />
         <GrapplePanel key={`grapple-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     {actor.combat?.conditions.includes('擒抱') ? <div className="cmb-attack-actions"><span className="cmb-hint">被擒抱：可用一个动作挣脱（力量／敏捷对抗擒抱者的豁免 DC）。</span><button className="button-secondary" type="button" onClick={() => handlers.onEscapeGrapple(actor.id)} aria-label="挣脱擒抱">挣脱擒抱</button></div> : null}
     <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
@@ -408,7 +409,7 @@ function AiPanel({ battle, actor, onApply }: { battle: Battle; actor: Actor; onA
   </div>;
 }
 
-function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, onOffhand, onReloadAmmo }: { battle: Battle; attacker: Actor; suggestion?: AttackSuggestion | null; onAttack: (options: AttackOptions) => void; onAttackSequence: (options: AttackOptions) => void; onOffhand: (options: AttackOptions) => void; onReloadAmmo: (actorId: string) => void }) {
+function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, onOffhand, onButtEnd, onReloadAmmo }: { battle: Battle; attacker: Actor; suggestion?: AttackSuggestion | null; onAttack: (options: AttackOptions) => void; onAttackSequence: (options: AttackOptions) => void; onOffhand: (options: AttackOptions) => void; onButtEnd: (options: AttackOptions) => void; onReloadAmmo: (actorId: string) => void }) {
   const sources = attackSources(attacker);
   const first = sources[0];
   const targets = availableTargets(battle, attacker.id);
@@ -481,6 +482,14 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
     const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count, ...(reachFt === undefined ? {} : { reachFt }), ...(cover === '无' ? {} : { cover }), ...(autoCover ? { autoCover: true } : {}), ...(extra ? { extraDamageExpression: extra, extraDamageType: extraType === '无' ? undefined : extraType, extraDamageCritical: extraCritical } : {}), ...(sourceId ? { weaponId: sourceId } : {}), ...(twoHanded ? { twoHanded: true } : {}), ...(powerAttack ? { powerAttack: true } : {}), ...(sharpshooter ? { sharpshooter: true } : {}), ...(criticalRange.trim() && Number.isInteger(Number(criticalRange)) ? { criticalRange: Number(criticalRange) } : {}) };
     if (count > 1) onAttackSequence(options); else onAttack(options);
   };
+  const submitButtEnd = () => {
+    const attackBonus = Number(bonus);
+    if (!Number.isInteger(attackBonus)) { setMessage('攻击加值须为整数。'); return; }
+    if (!target) { setMessage('请选择攻击目标。'); return; }
+    if (!sourceId) { setMessage('请选择长武器。'); return; }
+    setMessage('');
+    onButtEnd({ attackerId: attacker.id, targetId: target.id, attackBonus, damageExpression: '1d4', damageType: '钝击', range: 'melee', weaponId: sourceId });
+  };
   const submitOffhand = () => {
     const attackBonus = Number(bonus);
     if (!Number.isInteger(attackBonus)) { setMessage('攻击加值须为整数。'); return; }
@@ -517,7 +526,8 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
       <label>消耗<select value={cost} onChange={event => setCost(event.target.value as AttackCost)} aria-label="消耗动作"><option value="action">动作</option><option value="bonus">附赠动作</option><option value="reaction">反应</option></select></label>
     </div>
     {message && <p role="alert" className="battle-error">{message}</p>}
-    <div className="cmb-attack-actions"><span className="cmb-hint">伤害由本地掷骰；状态（目盲、倒地、麻痹等）会自动修正检定并结算重击，抗性、易伤、免疫与临时生命照常处理。</span><button className="button-primary" type="submit">{Number(attacks) > 1 ? `投掷 ${attacks} 次攻击` : '投掷攻击'}</button><button className="button-secondary" type="button" onClick={submitOffhand} aria-label="副手攻击">副手攻击（附赠动作）</button></div>
+    <div className="cmb-attack-actions"><span className="cmb-hint">伤害由本地掷骰；状态（目盲、倒地、麻痹等）会自动修正检定并结算重击，抗性、易伤、免疫与临时生命照常处理。</span><button className="button-primary" type="submit">{Number(attacks) > 1 ? `投掷 ${attacks} 次攻击` : '投掷攻击'}</button><button className="button-secondary" type="button" onClick={submitOffhand} aria-label="副手攻击">副手攻击（附赠动作）</button>
+      {(() => { const picked = sources.find(item => item.id === sourceId); const polearm = picked ? picked.properties?.includes('长武器') || ['戟', '长棍', '长矛'].some(name => picked.label.includes(name)) : false; return polearm ? <button className="button-secondary" type="button" onClick={submitButtEnd} aria-label="柄端攻击">柄端攻击（附赠动作，1d4+力量钝击）</button> : null; })()}</div>
   </form>;
 }
 

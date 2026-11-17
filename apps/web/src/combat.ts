@@ -247,6 +247,27 @@ function exhaustionSpeedPenalty(actor: Actor): number {
 function movementAllowance(actor: Actor): number {
   return Math.max(0, actorSpeed(actor) - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
 }
+/** 长武器大师：用长武器的柄端作附赠动作攻击，造成 1d4 + 力量调整值的钝击伤害。 */
+export function buttEndAttack(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
+  const next = structuredClone(battle);
+  const attacker = actorOf(next, options.attackerId);
+  const source = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
+  if (!source) throw new Error('请选择长武器。');
+  const polearm = source.properties?.includes('长武器') || ['戟', '长棍', '长矛'].some(name => source.label.includes(name));
+  if (!polearm) throw new Error('只有长武器可以用柄端攻击。');
+  const strength = attacker.characterSnapshot?.sheet.abilities.str ?? attacker.template.abilities?.str ?? 10;
+  const modifier = abilityModifier(strength);
+  const buttOptions: AttackOptions = {
+    ...options,
+    cost: 'bonus',
+    weaponId: undefined,
+    range: 'melee',
+    damageType: '钝击',
+    damageExpression: `1d4${modifier === 0 ? '' : modifier > 0 ? `+${modifier}` : modifier}`,
+  };
+  return attack(next, buttOptions, deps);
+}
+
 /** 切换「防守决斗」专长标记。 */
 export function setDefensiveDuelist(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));

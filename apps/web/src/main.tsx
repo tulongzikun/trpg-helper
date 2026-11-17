@@ -11,7 +11,7 @@ import { importBattle } from './battleTransfer';
 import { autoAct, autoSide, autoTurn } from './combatAuto';
 import { applyFallDamage } from './combatMovement';
 import { castSpell, setSpellSlots } from './combatSpells';
-import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setAutoDeathSaves, setEnterReachOpportunity, setObscured, setTerrain, parry, setDefensiveDuelist, setDualWielder, setExhaustion, takeLongRest, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, jumpToCell, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, setInitiative, abilityCheck, healActor, cunningAction, recklessAttack, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
+import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setAutoDeathSaves, setEnterReachOpportunity, setObscured, setTerrain, parry, setDefensiveDuelist, setDualWielder, setExhaustion, takeLongRest, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, jumpToCell, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, setInitiative, abilityCheck, healActor, cunningAction, recklessAttack, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge, buttEndAttack } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -41,6 +41,7 @@ function App() {
   onAttack:options=>tryBattle(()=>changeBattle(battleId,battle=>attack(battle,options).battle)),
   onAttackSequence:options=>tryBattle(()=>changeBattle(battleId,battle=>attackSequence(battle,options).battle)),
   onOffhand:options=>tryBattle(()=>changeBattle(battleId,battle=>offhandAttack(battle,options).battle)),
+  onButtEnd:options=>tryBattle(()=>changeBattle(battleId,battle=>buttEndAttack(battle,options).battle)),
   onGrapple:targetId=>tryBattle(()=>changeBattle(battleId,battle=>grapple(battle,{attackerId:currentActorId(battle)??'',targetId}).battle)),
   onShove:(targetId,effect)=>tryBattle(()=>changeBattle(battleId,battle=>shove(battle,{attackerId:currentActorId(battle)??'',targetId,effect}).battle)),
   onEscapeGrapple:actorId=>tryBattle(()=>changeBattle(battleId,battle=>escapeGrapple(battle,actorId).battle)),
