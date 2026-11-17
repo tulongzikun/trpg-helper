@@ -649,6 +649,7 @@ export function castHoldPerson(battle: Battle, casterId: string, targetId: strin
     return next;
   }
   targetState.conditions = [...targetState.conditions, '麻痹'];
+  dropConcentration(next, target, '被定身麻痹', deps);
   targetState.paralyzed = 10;
   targetState.paralyzedBy = casterId;
   addLog(next, `${actorLabel(next, caster)} 施放定身术，${actorLabel(next, target)} 被定住：麻痹 10 轮（感知 ${save.natural} → ${save.total}，DC ${HOLD_DC}）。`, deps);
@@ -771,6 +772,7 @@ function sleepDust(battle: Battle, actor: Actor, deps: CombatDeps): boolean {
   state.sleeping = true;
   if (!state.conditions.includes('失能')) state.conditions.push('失能');
   if (!state.conditions.includes('倒地')) state.conditions.push('倒地');
+  dropConcentration(battle, actor, '陷入沉睡', deps);
   addLog(battle, `${actorLabel(battle, actor)} 吸入睡眠粉尘，陷入沉睡（感知 ${save.natural} → ${save.total}，DC ${SLEEP_CLOUD_DC}）。`, deps);
   return true;
 }
@@ -845,6 +847,7 @@ export function castSleep(battle: Battle, casterId: string, targetIds: string[],
     targetState.sleeping = true;
     if (!targetState.conditions.includes('失能')) targetState.conditions.push('失能');
     if (!targetState.conditions.includes('倒地')) targetState.conditions.push('倒地');
+    dropConcentration(next, target, '陷入沉睡', deps);
     slept.push(id);
   }
   const names = slept.map(id => actorLabel(next, actorOf(next, id))).join('、');
@@ -1649,6 +1652,7 @@ export function castPolymorph(battle: Battle, casterId: string, targetId: string
   targetState.polymorphed = 10;
   targetState.polymorphedBy = casterId;
   if (!targetState.conditions.includes('失能')) targetState.conditions.push('失能');
+  dropConcentration(next, target, '被变成小兽而失能', deps);
   addLog(next, `${actorLabel(next, caster)} 对 ${actorLabel(next, target)} 施放变形术：感知豁免 ${save.natural} → ${save.total}，DC ${POLYMORPH_DC}，目标变成小兽——失能、AC 10、速度 25 尺，持续 10 轮。`, deps);
   return { battle: next, outcome: save };
 }
@@ -1872,6 +1876,15 @@ export function castBlindness(battle: Battle, casterId: string, targetId: string
     addLog(next, `${actorLabel(next, target)} 抵抗了致盲术（体质 ${save.natural} → ${save.total}，DC ${BLIND_DC}）。`, deps);
   }
   return { battle: next, outcome: save };
+}
+
+/** 单位失去行动能力（失能、麻痹、倒下、沉睡）时，立即中断它维持的专注。 */
+function dropConcentration(battle: Battle, actor: Actor, reason: string, deps: CombatDeps = {}): void {
+  const state = actor.combat;
+  if (!state?.concentration) return;
+  const spell = state.concentration.spell;
+  delete state.concentration;
+  clearFocusBuffs(battle, actor.id, `${actorLabel(battle, actor)} ${reason}，专注的${spell}中断`, deps);
 }
 
 /** 施法者失去专注（或改用别的专注法术）时，立即结束其施加的祝福。 */
@@ -3435,6 +3448,7 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
     }
   }
   if (battle && state.status === 'dead') settleDeath(battle, actor, deps);
+  if (battle && state.status === 'down') dropConcentration(battle, actor, '失去意识', deps);
   if (battle && adjusted > 0 && state.sleeping === true) {
     delete state.sleeping;
     state.conditions = state.conditions.filter(condition => condition !== '失能' && condition !== '倒地');
