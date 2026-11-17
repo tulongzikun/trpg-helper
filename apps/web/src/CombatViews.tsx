@@ -13,6 +13,7 @@ import type { Ability } from './characters';
 import type { Card } from './catalog';
 import { fallAverageDamage, jumpDistance } from './combatMovement';
 import type { SpellCastOptions } from './combatSpells';
+import { filterLog, logRounds } from './combatLog';
 import { spellAreaTargets } from './combatSpells';
 import { settlementText } from './combatSettlement';
 
@@ -837,9 +838,24 @@ export function AuraPanel({ battle, handlers }: { battle: Battle; handlers: Comb
 
 export function CombatLog({ battle }: { battle: Battle }) {
   const log = battle.combat?.log ?? [];
+  const [keyword, setKeyword] = useState('');
+  const [round, setRound] = useState<'all' | number>('all');
+  const rounds = logRounds(log);
+  const visible = filterLog(log, { keyword, round: round === 'all' ? undefined : round, limit: 60 });
   return <section className="cmb-log">
-    <div className="cmb-panel-head"><div><div className="section-label">COMBAT LOG</div><h3>战斗日志</h3></div><span>{log.length} 条</span></div>
-    {log.length ? <ol>{[...log].reverse().slice(0, 30).map(entry => <li key={entry.id}><div><strong>R{entry.round}</strong> {entry.text}</div>{entry.detail && <p>{entry.detail}</p>}</li>)}</ol> : <p className="cmb-hint">开始战斗后，攻击、伤害与回合变化会记录在这里。</p>}
+    <div className="cmb-panel-head"><div><div className="section-label">COMBAT LOG</div><h3>战斗日志</h3></div><span>{visible.length} / {log.length} 条</span></div>
+    {log.length ? <>
+      <div className="cmb-log-filter">
+        <label>筛选<input value={keyword} onChange={event => setKeyword(event.target.value)} placeholder="关键字或单位名" aria-label="日志筛选" /></label>
+        <label>轮次<select value={String(round)} onChange={event => setRound(event.target.value === 'all' ? 'all' : Number(event.target.value))} aria-label="日志轮次">
+          <option value="all">全部</option>
+          {rounds.map(item => <option key={item} value={item}>第 {item} 轮</option>)}
+        </select></label>
+      </div>
+      {visible.length
+        ? <ol>{[...visible].reverse().map(entry => <li key={entry.id}><div><strong>R{entry.round}</strong> {entry.text}</div>{entry.detail && <p>{entry.detail}</p>}</li>)}</ol>
+        : <p className="cmb-hint">没有符合筛选条件的记录。</p>}
+    </> : <p className="cmb-hint">开始战斗后，攻击、伤害与回合变化会记录在这里。</p>}
   </section>;
 }
 

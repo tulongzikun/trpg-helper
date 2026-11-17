@@ -186,3 +186,7 @@
   font-family: monospace;
   text-align: center;
 }
+
+.cmb-log-filter { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: .5rem; }
+.cmb-log-filter label { display: flex; align-items: center; gap: .35rem; font-size: .85rem; }
+.cmb-log-filter input { flex: 1 1 12rem; }
