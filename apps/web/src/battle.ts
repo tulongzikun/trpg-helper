@@ -89,6 +89,8 @@ export type ActorTemplate = Partial<Block> & Pick<Block, 'armorClass'>;
 /** 方格战场：宽高以格为单位，cellFt 是每格代表的尺数。 */
 export type GridConfig = { width: number; height: number; cellFt: number };
 /** 战场环境：水下会让远程攻击变得困难。 */
+export type Obscured = 'light' | 'heavy';
+
 export type Terrain = 'normal' | 'underwater' | 'climbing' | 'ice' | 'lava';
 /** 危险地形格：单位进入该格时立即受到伤害。 */
 export type Hazard = { x: number; y: number; damageExpression: string; damageType: DamageType };
@@ -110,7 +112,7 @@ export type Actor = {
   position?: Position;
 };
 export type Aura = { id: string; name: string; ownerId: string; radiusFt: number; bonus: number; kind: 'ac' | 'saves' };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; auras?: Aura[] };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; auras?: Aura[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -225,6 +227,7 @@ function isBattle(value: unknown): boolean {
     && (value.grid === undefined || isGrid(value.grid))
     && (value.autoDeathSaves === undefined || typeof value.autoDeathSaves === 'boolean')
     && (value.enterReachOpportunity === undefined || typeof value.enterReachOpportunity === 'boolean')
+    && (value.obscured === undefined || value.obscured === 'light' || value.obscured === 'heavy')
     && (value.terrain === undefined || isTerrain(value.terrain))
     && (value.difficult === undefined || (Array.isArray(value.difficult) && value.difficult.length <= 400 && value.difficult.every(isPosition)))
     && (value.walls === undefined || (Array.isArray(value.walls) && value.walls.length <= 400 && value.walls.every(isPosition)))

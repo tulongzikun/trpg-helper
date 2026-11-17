@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Actor, Battle, DamageType, GridConfig, Position, Side, Terrain } from './battle';
+import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput } from './combat';
 import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
@@ -23,6 +23,7 @@ export type CombatHandlers = {
   onTerrain: (terrain: Terrain) => void;
   onAutoDeathSaves: (enabled: boolean) => void;
   onEnterReachOpportunity: (enabled: boolean) => void;
+  onObscured: (level: 'none' | 'light' | 'heavy') => void;
   onInitiative: (actorId: string, initiative: number) => void;
   onCheck: (options: CheckOptions) => void;
   onHeal: (targetId: string, amount: number) => void;
@@ -109,7 +110,7 @@ export function CombatSetup({ battle, onStart }: { battle: Battle; onStart: (ini
   </section>;
 }
 
-export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain, onAutoDeathSaves, onEnterReachOpportunity }: { battle: Battle; onEndTurn: () => void; onUndo: () => void; onReset: () => void; onTerrain?: (terrain: Terrain) => void; onAutoDeathSaves?: (enabled: boolean) => void; onEnterReachOpportunity?: (enabled: boolean) => void }) {
+export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain, onAutoDeathSaves, onEnterReachOpportunity, onObscured }: { battle: Battle; onEndTurn: () => void; onUndo: () => void; onReset: () => void; onTerrain?: (terrain: Terrain) => void; onAutoDeathSaves?: (enabled: boolean) => void; onEnterReachOpportunity?: (enabled: boolean) => void; onObscured?: (level: 'none' | 'light' | 'heavy') => void }) {
   const combat = battle.combat;
   if (!combat) return null;
   const current = currentActor(battle);
@@ -121,6 +122,7 @@ export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain, o
       <button className="button-secondary" type="button" onClick={onReset} title="清除先攻与回合记录；生命值不会恢复">重置战斗</button>
       {onEnterReachOpportunity ? <label className="cmb-check"><input type="checkbox" checked={battle.enterReachOpportunity === true} onChange={event => onEnterReachOpportunity(event.target.checked)} aria-label="长武器进入触及时借机" />长武器进入触及时借机</label> : null}
       {onAutoDeathSaves ? <label className="cmb-check"><input type="checkbox" checked={battle.autoDeathSaves === true} onChange={event => onAutoDeathSaves(event.target.checked)} aria-label="回合开始自动掷死亡豁免" />回合开始自动掷死亡豁免</label> : null}
+      {onObscured ? <label className="cmb-inline-action">遮蔽<select value={battle.obscured ?? 'none'} onChange={event => onObscured(event.target.value as 'none' | 'light' | 'heavy')} aria-label="战场遮蔽"><option value="none">明亮</option><option value="light">轻度</option><option value="heavy">重度</option></select></label> : null}
       {onTerrain ? <label className="cmb-inline-action">地形<select value={battle.terrain ?? 'normal'} onChange={event => onTerrain(event.target.value as Terrain)} aria-label="战场地形"><option value="normal">普通</option><option value="underwater">水下</option><option value="climbing">攀爬</option><option value="ice">冰面</option><option value="lava">岩浆</option></select></label> : null}
     </div>
   </div>;
