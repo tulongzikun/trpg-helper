@@ -2066,6 +2066,20 @@ function lineCells(from: Position, to: Position): Position[] {
   }
   return cells;
 }
+/** 远程连线中间是否站着其他在场单位：提供半掩体（AC +2）。 */
+export function creatureCover(battle: Battle, attackerId: string, targetId: string): Actor | null {
+  const attacker = battle.actors.find(item => item.id === attackerId);
+  const target = battle.actors.find(item => item.id === targetId);
+  if (!attacker?.position || !target?.position) return null;
+  const cells = lineCells(attacker.position, target.position);
+  if (!cells.length) return null;
+  return battle.actors.find(item => item.id !== attackerId
+    && item.id !== targetId
+    && (item.combat?.status ?? 'active') === 'active'
+    && !!item.position
+    && cells.some(cell => cell.x === item.position!.x && cell.y === item.position!.y)) ?? null;
+}
+
 /** 两格之间是否没有被墙体阻挡的直线视线。 */
 export function hasLineOfSight(battle: Battle, from: Position, to: Position): boolean {
   if (!battle.grid) return true;
@@ -3689,7 +3703,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const blessDie = combatantOf(attacker).blessed ? rollDie(4, random) : 0;
   if (blessDie) notes.push(`祝福：攻击检定 +${blessDie}`);
   const total = natural + options.attackBonus + archery + blessDie - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
-  const baseAc = (combatantOf(target).polymorphed ? 10 : target.template.armorClass) + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) - (combatantOf(target).slowed ? 2 : 0) + defenseBonus(target);
+  const blocker = context.range === 'ranged' && options.sharpshooter !== true ? creatureCover(battle, attacker.id, target.id) : null;
+const baseAc = (combatantOf(target).polymorphed ? 10 : target.template.armorClass) + (context.cover ? coverAcBonus(context.cover) : 0) + (blocker ? 2 : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) - (combatantOf(target).slowed ? 2 : 0) + defenseBonus(target);
   const targetAc = combatantOf(target).barkskin ? Math.max(baseAc, BARKSKIN_AC) : baseAc;
   if (guard) delete combatantOf(guard).guarding;
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
@@ -3833,6 +3848,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     `攻击检定 ${rollText}${options.attackBonus >= 0 ? '+' : ''}${options.attackBonus} = ${total} vs AC ${targetAc}`,
     context.measured ? `方格距离 ${context.distanceFt} 尺` : '',
     context.cover ? coverNote(context.cover) : '',
+    blocker ? `生物掩体：${actorLabel(battle, blocker)} 挡在中间（AC +2）` : '',
     auraBonus(battle, target.id, 'ac') ? `灵光 AC +${auraBonus(battle, target.id, 'ac')}` : '',
     hit ? (critical ? '重击' : '命中') : (natural === 1 ? '大失败' : '未命中'),
     damageText,
