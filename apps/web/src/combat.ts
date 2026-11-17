@@ -972,7 +972,7 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
     applyHazardAt(next, actor, actor.position.x, actor.position.y, deps, '回合开始');
     applyLavaAt(next, actor, deps, '回合开始');
   }
-  if (next.autoDeathSaves && actor.combat?.status === 'down' && actor.characterSnapshot) {
+  if (next.autoDeathSaves && actor.combat?.status === 'down' && actor.combat?.stable !== true && actor.characterSnapshot) {
     resolveDeathSave(next, actor, deps);
   }
   syncSummonsInPlace(next, deps);
@@ -1149,6 +1149,7 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
   state.tempHp -= absorbed;
   const remaining = adjusted - absorbed;
   if (actor.currentHp === 0 && state.status === 'down') {
+    if (remaining > 0 && state.stable === true) delete state.stable;
     if (remaining > 0) state.deathSaves.failures = Math.min(3, state.deathSaves.failures + 1);
     if (state.deathSaves.failures >= 3) state.status = 'dead';
     if (battle && state.status === 'dead') settleDeath(battle, actor, deps);
@@ -1223,6 +1224,7 @@ export function healActor(battle: Battle, actorId: string, amount: number, deps:
   if (wasDown && actor.currentHp > 0) {
     state.status = 'active';
     state.deathSaves = { successes: 0, failures: 0 };
+    delete state.stable;
   }
   addLog(next, wasDown && actor.currentHp > 0
     ? `${actorLabel(next, actor)} 被治疗，恢复 ${healed} 点生命值并重新站起，当前 ${actor.currentHp}/${actor.maxHp}。`
@@ -2287,12 +2289,39 @@ function resolveDeathSave(next: Battle, actor: Actor, deps: CombatDeps): DeathSa
   return { natural, successes: state.deathSaves.successes, failures: state.deathSaves.failures, status: state.status, revived: false };
 }
 
+/** 稳定伤势：用动作对 5 尺内倒地的同伴做 DC 10 医药检定，成功则该单位停止掷死亡豁免。 */
+export function stabilize(battle: Battle, actorId: string, targetId: string, deps: CombatDeps = {}): { battle: Battle; outcome: SaveOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const healer = actorOf(next, actorId);
+  const target = actorOf(next, targetId);
+  const healerState = combatantOf(healer);
+  const targetState = combatantOf(target);
+  if (healerState.status !== 'active') throw new Error('只有在场的单位可以稳定伤势。');
+  if (healer.id !== targetId && currentActorId(next) !== healer.id) throw new Error('只有当前回合的单位可以稳定伤势。');
+  if (healerState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (targetState.status !== 'down') throw new Error('只有 0 点生命值倒地的单位需要稳定伤势。');
+  if (healer.position && target.position && cellDistance(healer.position, target.position) > 1) throw new Error('稳定伤势需要目标在 5 尺内。');
+  const bonus = abilityCheckBonus(healer, 'wis', '医术');
+  const options: SaveOptions = { actorId: healer.id, ability: 'wis', dc: 10, bonus };
+  const outcome = resolveSave(healer, options, randomOf(deps));
+  healerState.actionUsed = true;
+  if (outcome.success) {
+    targetState.stable = true;
+    addLog(next, `${actorLabel(next, healer)} 稳定了 ${actorLabel(next, target)} 的伤势（DC 10）。`, deps);
+  } else {
+    addLog(next, `${actorLabel(next, healer)} 稳定 ${actorLabel(next, target)} 的伤势失败（DC 10）。`, deps);
+  }
+  return { battle: next, outcome };
+}
+
 export function rollDeathSave(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; outcome: DeathSaveOutcome } {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
   const actor = actorOf(next, actorId);
   const state = combatantOf(actor);
   if (state.status !== 'down') throw new Error('只有在 0 点生命值倒地的角色才需要死亡豁免。');
+  if (state.stable === true) throw new Error('该单位已经稳定，不需要掷死亡豁免。');
   if (!actor.characterSnapshot) throw new Error('怪物在 0 点生命值时直接死亡，不需要死亡豁免。');
   return { battle: next, outcome: resolveDeathSave(next, actor, deps) };
 }

@@ -11,7 +11,7 @@ import { importBattle } from './battleTransfer';
 import { autoAct, autoSide, autoTurn } from './combatAuto';
 import { applyFallDamage } from './combatMovement';
 import { castSpell, setSpellSlots } from './combatSpells';
-import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setAutoDeathSaves, setEnterReachOpportunity, setObscured, setTerrain, parry, setDefensiveDuelist, setDualWielder, setExhaustion, takeLongRest, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, jumpToCell, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, setInitiative, abilityCheck, healActor, cunningAction, recklessAttack, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge, buttEndAttack, setSentinel } from './combat';
+import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setAutoDeathSaves, setEnterReachOpportunity, setObscured, setTerrain, parry, setDefensiveDuelist, setDualWielder, setExhaustion, takeLongRest, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, jumpToCell, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, setInitiative, abilityCheck, healActor, cunningAction, recklessAttack, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge, buttEndAttack, setSentinel, stabilize } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -80,7 +80,8 @@ function App() {
       onEnterReachOpportunity:(enabled:boolean)=>tryBattle(()=>changeBattle(battleId,battle=>setEnterReachOpportunity(battle,enabled))),
       onInitiative:(actorId:string,initiative:number)=>tryBattle(()=>changeBattle(battleId,battle=>setInitiative(battle,actorId,initiative))),
       onCheck:(options)=>tryBattle(()=>changeBattle(battleId,battle=>abilityCheck(battle,options).battle)),
-      onHeal:(targetId,amount)=>tryBattle(()=>changeBattle(battleId,battle=>healActor(spendResource(battle,currentActorId(battle) ?? '', 'action'),targetId,amount))),
+      onStabilize:targetId=>tryBattle(()=>changeBattle(battleId,battle=>stabilize(battle,currentActorId(battle) ?? '',targetId).battle)),
+  onHeal:(targetId,amount)=>tryBattle(()=>changeBattle(battleId,battle=>healActor(spendResource(battle,currentActorId(battle) ?? '', 'action'),targetId,amount))),
   onDodge:actorId=>tryBattle(()=>changeBattle(battleId,battle=>dodge(battle,actorId))),
   onDash:actorId=>tryBattle(()=>changeBattle(battleId,battle=>dash(battle,actorId))),
   onHide:actorId=>tryBattle(()=>changeBattle(battleId,battle=>hide(battle,actorId))),

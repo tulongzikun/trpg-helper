@@ -33,6 +33,7 @@ export type CombatHandlers = {
   onInitiative: (actorId: string, initiative: number) => void;
   onCheck: (options: CheckOptions) => void;
   onHeal: (targetId: string, amount: number) => void;
+  onStabilize: (targetId: string) => void;
   onUndo: () => void;
   onReset: () => void;
   onAttack: (options: AttackOptions) => void;
@@ -772,7 +773,8 @@ export function HealPanel({ battle, actor, handlers }: { battle: Battle; actor: 
       <input type="number" min={1} max={999} value={amount} onChange={event => setAmount(Number(event.target.value))} aria-label="治疗量" />
     </label>
     <button type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => { if (Number.isInteger(amount) && amount > 0) handlers.onHeal(targetId, amount); }}>治疗（消耗动作）</button>
-    <small className="cmb-muted">治疗倒地单位会让其重新站起并清空死亡豁免。</small>
+    <button type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onStabilize(targetId)} aria-label="稳定伤势">稳定伤势（动作，医药 DC 10）</button>
+    <small className="cmb-muted">治疗倒地单位会让其重新站起并清空死亡豁免；稳定伤势则让它停止掷死亡豁免。</small>
   </section>;
 }
 
