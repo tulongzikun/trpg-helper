@@ -3243,6 +3243,9 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   const range: AttackRange = options.range ?? 'melee';
   if (range !== 'melee' && range !== 'ranged') throw new Error('请选择近战或远程攻击。');
   if (options.nonLethal && range !== 'melee') throw new Error('只有近战攻击可以选择非致命。');
+  if (range === 'ranged' && attacker.position && target.position && !hasLineOfSight(battle, attacker.position, target.position)) {
+    throw new Error('视线被墙体阻挡，无法进行远程攻击。');
+  }
   const reachFt = options.reachFt ?? 5;
   if (!Number.isInteger(reachFt) || reachFt < 5 || reachFt > 30) throw new Error('近战触及范围须为 5 至 30 尺的整数。');
   if (options.cover !== undefined && !coverTypes.includes(options.cover)) throw new Error('掩体取值无效。');
