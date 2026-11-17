@@ -153,7 +153,8 @@ export type Actor = {
   elevation?: number;
 };
 export type Aura = { id: string; name: string; ownerId: string; radiusFt: number; bonus: number; kind: 'ac' | 'saves' };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; auras?: Aura[]; pendingCast?: PendingCastPlan };
+export type AttackPreset = { id: string; name: string; attackerId: string; targetId: string; attackBonus: number; damageExpression: string; damageType: DamageType; range: 'melee' | 'ranged' };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -317,6 +318,17 @@ function isAura(value: unknown): boolean {
   if (!isInteger(value.bonus, 1, 5)) return false;
   return value.kind === 'ac' || value.kind === 'saves';
 }
+function isAttackPreset(value: unknown): value is AttackPreset {
+  if (!isObject(value)) return false;
+  if (typeof value.id !== 'string' || !value.id.length) return false;
+  if (typeof value.name !== 'string' || !value.name.length || value.name.length > 30) return false;
+  if (typeof value.attackerId !== 'string' || !value.attackerId.length) return false;
+  if (typeof value.targetId !== 'string' || !value.targetId.length) return false;
+  if (!isInteger(value.attackBonus, -10, 30)) return false;
+  if (typeof value.damageExpression !== 'string' || !value.damageExpression.length) return false;
+  if (!damageTypes.includes(value.damageType as DamageType)) return false;
+  return value.range === 'melee' || value.range === 'ranged';
+}
 function isBattle(value: unknown): boolean {
   return isObject(value) && typeof value.id === 'string' && typeof value.name === 'string' && typeof value.createdAt === 'string'
     && Array.isArray(value.actors) && value.actors.every(isActor)
@@ -329,6 +341,7 @@ function isBattle(value: unknown): boolean {
     && (value.difficult === undefined || (Array.isArray(value.difficult) && value.difficult.length <= 400 && value.difficult.every(isPosition)))
     && (value.walls === undefined || (Array.isArray(value.walls) && value.walls.length <= 400 && value.walls.every(isPosition)))
     && (value.hazards === undefined || (Array.isArray(value.hazards) && value.hazards.length <= 200 && value.hazards.every(isHazard)))
+    && (value.attackPresets === undefined || (Array.isArray(value.attackPresets) && value.attackPresets.length <= 10 && value.attackPresets.every(isAttackPreset)))
   && (value.pendingCast === undefined || isPendingCastPlan(value.pendingCast)) && (value.auras === undefined || (Array.isArray(value.auras) && value.auras.length <= 8 && value.auras.every(isAura)));
 }
 

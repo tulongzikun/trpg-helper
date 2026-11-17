@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
-import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput } from './combat';
+import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
 import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
@@ -40,6 +40,9 @@ export type CombatHandlers = {
   onSetCounterspell: (actorId: string, enabled: boolean) => void;
   onCounterspell: (reactorId: string) => void;
   onResolveCast: () => void;
+  onSavePreset: (input: AttackPresetInput) => void;
+  onUsePreset: (presetId: string) => void;
+  onRemovePreset: (presetId: string) => void;
   onParry: (actorId: string) => void;
   onInitiative: (actorId: string, initiative: number) => void;
   onRerollInitiative: () => void;
@@ -248,6 +251,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <CheckPanel key={`check-${actor.id}`} actor={actor} handlers={handlers} />
     <HealPanel key={`heal-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <StudyPanel key={`study-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
+    <AttackPresetPanel key={`preset-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <OpportunityPanel key={`opportunity-${actor.id}`} battle={battle} handlers={handlers} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
@@ -1134,6 +1138,35 @@ export function ReplayPanel({ battle, onJump }: { battle: Battle; onJump: (steps
         </ul>
       </div>
     </details>
+  );
+}
+
+function AttackPresetPanel({ battle, actor, handlers }: { battle: Battle; actor: Actor; handlers: CombatHandlers }) {
+  const presets = (battle.attackPresets ?? []).filter(item => item.attackerId === actor.id);
+  const [name, setName] = useState('');
+  const [message, setMessage] = useState('');
+  const sources = attackSources(actor);
+  const targets = availableTargets(battle, actor.id);
+  if (!targets.length) return null;
+  const first = sources[0];
+  const save = () => {
+    if (!name.trim()) { setMessage('请填写常用攻击的名称。'); return; }
+    if (!first) { setMessage('该单位没有可用的攻击来源。'); return; }
+    handlers.onSavePreset({ name: name.trim(), attackerId: actor.id, targetId: targets[0].id, attackBonus: first.attackBonus, damageExpression: first.damageExpression, damageType: first.damageType, range: first.range });
+    setName('');
+    setMessage('');
+  };
+  return (
+    <div className="cmb-aura">
+      <span className="cmb-muted">常用攻击</span>
+      {presets.length ? presets.map(preset => <span key={preset.id} className="cmb-chip">{preset.name}
+        <button type="button" className="cmb-chip-remove" onClick={() => handlers.onUsePreset(preset.id)} aria-label={`使用常用攻击 ${preset.name}`}>⚔</button>
+        <button type="button" className="cmb-chip-remove" onClick={() => handlers.onRemovePreset(preset.id)} aria-label={`删除常用攻击 ${preset.name}`}>×</button>
+      </span>) : <span className="cmb-muted">还没有保存的常用攻击。</span>}
+      <label>名称<input value={name} onChange={event => setName(event.target.value)} placeholder="如：巨剑猛砍" aria-label="常用攻击名称" /></label>
+      <button type="button" className="button-secondary" onClick={save} aria-label="保存常用攻击">保存当前武器快捷攻击</button>
+      {message ? <span className="cmb-hint">{message}</span> : null}
+    </div>
   );
 }
 

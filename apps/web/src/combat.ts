@@ -3,7 +3,7 @@ import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Terrain } from './battle.ts';
 import type { Ability } from './characters';
-import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
+import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side, AttackPreset } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
 import { jumpDistance } from './combatMovement.ts';
@@ -210,6 +210,55 @@ export function reloadAmmo(battle: Battle, actorId: string, count: number = defa
   combatantOf(actor).ammo = count;
   addLog(next, `${actorLabel(next, actor)} 补充弹药至 ${count} 发。`, deps);
   return next;
+}
+
+/** 常用攻击的输入：名称 + 一套攻击参数。 */
+export type AttackPresetInput = { name: string; attackerId: string; targetId: string; attackBonus: number; damageExpression: string; damageType: DamageType; range: AttackRange };
+
+/** 保存一套常用攻击（同名同攻击者会覆盖）。 */
+export function saveAttackPreset(battle: Battle, input: AttackPresetInput, deps: CombatDeps = {}): { battle: Battle; presetId: string } {
+  const next = recordUndo(structuredClone(battle));
+  const name = input.name.trim();
+  if (!name) throw new Error('请填写常用攻击的名称。');
+  if (name.length > 30) throw new Error('常用攻击的名称不能超过 30 个字符。');
+  const attacker = actorOf(next, input.attackerId);
+  actorOf(next, input.targetId);
+  if (!Number.isInteger(input.attackBonus) || input.attackBonus < -10 || input.attackBonus > 30) throw new Error('攻击加值须为 -10 至 30 的整数。');
+  parseDice(input.damageExpression);
+  if (!damageTypes.includes(input.damageType)) throw new Error('伤害类型无效。');
+  if (input.range !== 'melee' && input.range !== 'ranged') throw new Error('攻击距离类型无效。');
+  const list = [...(next.attackPresets ?? [])];
+  const existing = list.find(item => item.attackerId === input.attackerId && item.name === name);
+  const presetId = existing?.id ?? makeIdOf(deps)();
+  const preset: AttackPreset = { id: presetId, name, attackerId: input.attackerId, targetId: input.targetId, attackBonus: input.attackBonus, damageExpression: input.damageExpression, damageType: input.damageType, range: input.range };
+  if (existing) list[list.indexOf(existing)] = preset;
+  else {
+    if (list.length >= 10) throw new Error('最多保存 10 个常用攻击。');
+    list.push(preset);
+  }
+  next.attackPresets = list;
+  addLog(next, `${actorLabel(next, attacker)} 保存了常用攻击「${name}」。`, deps);
+  return { battle: next, presetId };
+}
+
+/** 删除一个常用攻击。 */
+export function removeAttackPreset(battle: Battle, presetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const list = [...(next.attackPresets ?? [])];
+  const target = list.find(item => item.id === presetId);
+  if (!target) throw new Error('该常用攻击不存在。');
+  const rest = list.filter(item => item !== target);
+  if (rest.length) next.attackPresets = rest;
+  else delete next.attackPresets;
+  addLog(next, `删除了常用攻击「${target.name}」。`, deps);
+  return next;
+}
+
+/** 用保存好的常用攻击直接结算一次攻击。 */
+export function attackWithPreset(battle: Battle, presetId: string, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
+  const preset = (battle.attackPresets ?? []).find(item => item.id === presetId);
+  if (!preset) throw new Error('该常用攻击不存在。');
+  return attack(battle, { attackerId: preset.attackerId, targetId: preset.targetId, attackBonus: preset.attackBonus, damageExpression: preset.damageExpression, damageType: preset.damageType, range: preset.range }, deps);
 }
 
 export function appendLog(battle: Battle, text: string, deps: CombatDeps = {}, detail?: string): Battle {

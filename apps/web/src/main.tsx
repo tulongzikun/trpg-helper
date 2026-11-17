@@ -11,7 +11,7 @@ import { importBattle } from './battleTransfer';
 import { autoAct, autoSide, autoTurn } from './combatAuto';
 import { applyFallDamage } from './combatMovement';
 import { castSpell, setSpellSlots, counterspell, resolvePendingCast, setCounterspell } from './combatSpells';
-import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setAutoDeathSaves, setEnterReachOpportunity, setObscured, setTerrain, parry, setDefensiveDuelist, setDualWielder, setExhaustion, takeLongRest, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, jumpToCell, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, addItem, protectAlly, useItem, startConcentration, rerollInitiative, studyTarget, setWarCaster, setInitiative, abilityCheck, healActor, cunningAction, recklessAttack, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge, buttEndAttack, setSentinel, stabilize, delayTurn, setFlying, setElevation, diveAttack, resolveReadyPrompt, jumpBack } from './combat';
+import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setAutoDeathSaves, setEnterReachOpportunity, setObscured, setTerrain, parry, setDefensiveDuelist, setDualWielder, setExhaustion, takeLongRest, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, jumpToCell, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, addItem, protectAlly, useItem, startConcentration, rerollInitiative, studyTarget, setWarCaster, setInitiative, abilityCheck, healActor, cunningAction, recklessAttack, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge, buttEndAttack, setSentinel, stabilize, delayTurn, setFlying, setElevation, diveAttack, resolveReadyPrompt, jumpBack, saveAttackPreset, removeAttackPreset, attackWithPreset } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -65,6 +65,9 @@ function App() {
   onSetCounterspell:(actorId,enabled)=>tryBattle(()=>changeBattle(battleId,battle=>setCounterspell(battle,actorId,enabled))),
   onCounterspell:reactorId=>tryBattle(()=>changeBattle(battleId,battle=>counterspell(battle,reactorId).battle)),
   onResolveCast:()=>tryBattle(()=>changeBattle(battleId,battle=>resolvePendingCast(battle).battle)),
+  onSavePreset:input=>tryBattle(()=>changeBattle(battleId,battle=>saveAttackPreset(battle,input).battle)),
+  onUsePreset:presetId=>tryBattle(()=>changeBattle(battleId,battle=>attackWithPreset(battle,presetId).battle)),
+  onRemovePreset:presetId=>tryBattle(()=>changeBattle(battleId,battle=>removeAttackPreset(battle,presetId))),
   onParry:(actorId)=>tryBattle(()=>changeBattle(battleId,battle=>parry(battle,actorId))),
   onSave:options=>tryBattle(()=>changeBattle(battleId,battle=>savingThrow(battle,options).battle)),
   onAreaSave:options=>tryBattle(()=>changeBattle(battleId,battle=>areaSave(battle,options).battle)),
