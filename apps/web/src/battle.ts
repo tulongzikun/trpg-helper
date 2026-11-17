@@ -174,6 +174,9 @@ export type CombatantState = {
   barkskin?: number;
   barkskinBy?: string;
   /** 援助术：额外生命上限（长休时移除）。 */
+  /** 本场战斗临时赋予的伤害抗性（叠加在模板之上）。 */ damageResistances?: string[];
+  /** 本场战斗临时赋予的伤害免疫。 */ damageImmunities?: string[];
+  /** 本场战斗临时赋予的伤害易伤。 */ damageVulnerabilities?: string[];
   aided?: number;
   /** 变形术：剩余轮数（变成小兽：失能、AC 10、速度上限 25 尺）。 */
   polymorphed?: number;
@@ -361,6 +364,11 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.barkskin !== undefined && !isInteger(value.barkskin, 0, 100)) return false;
   if (value.barkskinBy !== undefined && (typeof value.barkskinBy !== 'string' || value.barkskinBy.length === 0 || value.barkskinBy.length > 64)) return false;
   if (value.aided !== undefined && !isInteger(value.aided, 0, 100)) return false;
+  for (const key of ['damageResistances', 'damageImmunities', 'damageVulnerabilities'] as const) {
+    const list = value[key];
+    if (list === undefined) continue;
+    if (!Array.isArray(list) || list.length > 13 || list.some(item => typeof item !== 'string' || item.length === 0 || item.length > 16)) return false;
+  }
   if (value.polymorphed !== undefined && !isInteger(value.polymorphed, 0, 100)) return false;
   if (value.polymorphedBy !== undefined && (typeof value.polymorphedBy !== 'string' || value.polymorphedBy.length === 0 || value.polymorphedBy.length > 64)) return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;

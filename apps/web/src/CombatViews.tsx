@@ -70,6 +70,7 @@ export type CombatHandlers = {
   onFlee: (actorId: string) => void;
   onExecute: (actorId: string, targetId: string) => void;
   onMorale: (actorId: string) => void;
+  onDefense: (actorId: string, kind: 'resistances' | 'immunities' | 'vulnerabilities', types: string[]) => void;
   onSurrender: (actorId: string) => void;
   onSuppress: (actorId: string, targetId: string) => void;
   onMount: (actorId: string, mountId: string) => void;
@@ -312,6 +313,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <HelpPanel key={`help-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <ProtectionPanel key={`protect-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <ItemPanel key={`item-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
+    <DefensePanel key={`defense-${actor.id}`} actor={actor} handlers={handlers} />
             <CounterspellPanel key={`counter-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <CheckPanel key={`check-${actor.id}`} actor={actor} handlers={handlers} />
     <HealPanel key={`heal-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
@@ -1480,6 +1482,41 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
       <div className="cmb-ai-actions"><button type="button" className="button-secondary" onClick={add}>记录物品</button></div>
       {notice ? <p className="cmb-muted">{notice}</p> : null}
       <p className="cmb-muted">使用物品消耗动作；治疗骰按本地掷骰结算。</p>
+    </div>
+  );
+}
+
+function DefensePanel({ actor, handlers }: { actor: Actor; handlers: CombatHandlers }) {
+  const state = actor.combat;
+  const [type, setType] = useState<DamageType>('火焰');
+  if (!state) return null;
+  const listOf = (kind: 'resistances' | 'immunities' | 'vulnerabilities') =>
+    kind === 'resistances' ? state.damageResistances ?? [] : kind === 'immunities' ? state.damageImmunities ?? [] : state.damageVulnerabilities ?? [];
+  const toggle = (kind: 'resistances' | 'immunities' | 'vulnerabilities') => {
+    const current = listOf(kind);
+    handlers.onDefense(actor.id, kind, current.includes(type) ? current.filter(item => item !== type) : [...current, type]);
+  };
+  return (
+    <div className="cmb-extras">
+      <label className="cmb-field">伤害类型
+        <select value={type} onChange={event => setType(event.target.value as DamageType)} aria-label="伤害类型">
+          {damageTypes.map(item => <option key={item} value={item}>{item}</option>)}
+        </select>
+      </label>
+      {(['resistances', 'immunities', 'vulnerabilities'] as const).map(kind => {
+        const active = listOf(kind).includes(type);
+        const label = kind === 'resistances' ? '抗性' : kind === 'immunities' ? '免疫' : '易伤';
+        return (
+          <button key={kind} type="button" className="button-secondary" onClick={() => toggle(kind)} aria-label={`${label}：${type}`}>
+            {active ? `取消${label}：${type}` : `添加${label}：${type}`}
+          </button>
+        );
+      })}
+      {state.damageResistances?.length || state.damageImmunities?.length || state.damageVulnerabilities?.length ? (
+        <button type="button" className="button-secondary" onClick={() => { handlers.onDefense(actor.id, 'resistances', []); handlers.onDefense(actor.id, 'immunities', []); handlers.onDefense(actor.id, 'vulnerabilities', []); }} aria-label="清除临时防御">
+          清除全部临时防御
+        </button>
+      ) : null}
     </div>
   );
 }

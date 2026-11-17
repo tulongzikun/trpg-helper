@@ -2996,6 +2996,28 @@ export function moraleCheck(battle: Battle, actorId: string, deps: CombatDeps = 
   return next;
 }
 
+export type DefenseKind = 'resistances' | 'immunities' | 'vulnerabilities';
+
+const DEFENSE_LABEL: Record<DefenseKind, string> = { resistances: '抗性', immunities: '免疫', vulnerabilities: '易伤' };
+
+/** 为某个单位设置临时的伤害抗性 / 免疫 / 易伤，传空数组即清除。 */
+export function setDamageDefenses(battle: Battle, actorId: string, kind: DefenseKind, types: string[], deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  const cleaned = [...new Set(types.map(item => item.replace(/伤害$/, '').trim()).filter(Boolean))];
+  const invalid = cleaned.filter(item => !damageTypes.includes(item as DamageType));
+  if (invalid.length) throw new Error(`不认识的伤害类型：${invalid.join('、')}。`);
+  const key: 'damageResistances' | 'damageImmunities' | 'damageVulnerabilities' = kind === 'resistances' ? 'damageResistances' : kind === 'immunities' ? 'damageImmunities' : 'damageVulnerabilities';
+  if (cleaned.length) state[key] = cleaned;
+  else delete state[key];
+  addLog(next, cleaned.length
+    ? `${actorLabel(next, actor)} 获得${DEFENSE_LABEL[kind]}：${cleaned.join('、')}。`
+    : `${actorLabel(next, actor)} 的${DEFENSE_LABEL[kind]}已清除。`, deps);
+  return next;
+}
+
 function nextTurnIndex(battle: Battle) {
   const combat = requireCombat(battle);
   combat.turnIndex += 1;
@@ -3321,9 +3343,11 @@ function defenseOf(actor: Actor, type: DamageType): { multiplier: number; label:
   const normalize = (value: string) => value.replace(/伤害$/, '').trim();
   const has = (list?: string[]) => list?.some(item => normalize(item) === type) ?? false;
   const template = actor.template;
-  if (has(template.damageImmunities)) return { multiplier: 0, label: '免疫' };
-  const resistant = has(template.damageResistances);
-  const vulnerable = has(template.damageVulnerabilities);
+  const state = actor.combat;
+  const merge = (fromTemplate?: string[], fromState?: string[]) => [...(fromState ?? []), ...(fromTemplate ?? [])];
+  if (has(merge(template.damageImmunities, state?.damageImmunities))) return { multiplier: 0, label: '免疫' };
+  const resistant = has(merge(template.damageResistances, state?.damageResistances));
+  const vulnerable = has(merge(template.damageVulnerabilities, state?.damageVulnerabilities));
   if (resistant && vulnerable) return { multiplier: 1, label: '抗性与易伤抵消' };
   if (resistant) return { multiplier: 0.5, label: '抗性' };
   if (vulnerable) return { multiplier: 2, label: '易伤' };
