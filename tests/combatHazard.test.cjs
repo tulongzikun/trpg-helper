@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { emptyStore, addMonsters, addCharacter } = require('../apps/web/src/battle.ts');
-const { addHazard, configureGrid, hazardAt, moveActorToCell, removeHazard, startCombat } = require('../apps/web/src/combat.ts');
+const { addHazard, configureGrid, endTurn, hazardAt, moveActorToCell, removeHazard, startCombat } = require('../apps/web/src/combat.ts');
 const entry = require('../packages/contracts/examples/monster-entry.json');
 const card = { entry, block: entry.statBlocks[0] };
 let counter = 0;
@@ -85,4 +85,12 @@ test('关闭方格时清除危险地形', () => {
   const withHazard = addHazard(battle, { x: 2, y: 1, damageExpression: '1d6', damageType: '火焰' });
   const closed = configureGrid(withHazard, null);
   assert.equal(closed.hazards, undefined);
+});
+
+test('站在危险地形上开始回合也会受伤', () => {
+  const { battle, friend } = setup();
+  const withHazard = addHazard(battle, { x: 1, y: 1, damageExpression: '1d6', damageType: '火焰' });
+  const back = endTurn(endTurn(withHazard, { makeId: ids() }), { random: sequence(0.5), makeId: ids() });
+  assert.equal(hpOf(back, friend.id), 36);
+  assert.ok(back.combat.log.some(item => /在危险地形/.test(item.text)));
 });

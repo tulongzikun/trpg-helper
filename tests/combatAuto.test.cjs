@@ -1,7 +1,7 @@
 ﻿const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { emptyStore, addMonsters, addCharacter } = require('../apps/web/src/battle.ts');
-const { configureGrid, currentActorId, endTurn, moveActorToCell, startCombat, toggleWallCell } = require('../apps/web/src/combat.ts');
+const { addHazard, configureGrid, currentActorId, endTurn, moveActorToCell, startCombat, toggleWallCell } = require('../apps/web/src/combat.ts');
 const { autoAct, autoSide, autoTurn } = require('../apps/web/src/combatAuto.ts');
 const entry = require('../packages/contracts/examples/monster-entry.json');
 const card = { entry, block: entry.statBlocks[0] };
@@ -206,4 +206,27 @@ test('自动行动：非战士低血量改喝治疗药水', () => {
   const after = result.battle.actors.find(item => item.id === hero.id);
   assert.ok(after.currentHp > 10);
   assert.equal(after.combat.actionUsed, true);
+});
+
+test('自动行动：移动时优先绕开危险地形', () => {
+  const { battle, hero, monsters } = setup(1, '长剑：+5 命中，1d8+3 挥砍伤害，触及 5 尺', '长剑');
+  let placed = configureGrid(battle, { width: 12, height: 12, cellFt: 5 });
+  placed = moveActorToCell(moveActorToCell(placed, hero.id, 0, 0), monsters[0].id, 5, 5);
+  placed = addHazard(placed, { x: 1, y: 0, damageExpression: '2d6', damageType: '火焰' });
+  placed = addHazard(placed, { x: 0, y: 1, damageExpression: '2d6', damageType: '火焰' });
+  const result = autoAct(placed, hero.id, { random: sequence(0.5) });
+  const moved = result.battle.actors.find(item => item.id === hero.id);
+  assert.notEqual(`${moved.position.x},${moved.position.y}`, '1,0');
+  assert.notEqual(`${moved.position.x},${moved.position.y}`, '0,1');
+});
+
+test('自动行动：四周都是危险地形时仍然可以移动', () => {
+  const { battle, hero, monsters } = setup(1, '长剑：+5 命中，1d8+3 挥砍伤害，触及 5 尺', '长剑');
+  let placed = configureGrid(battle, { width: 12, height: 12, cellFt: 5 });
+  placed = moveActorToCell(moveActorToCell(placed, hero.id, 0, 0), monsters[0].id, 6, 6);
+  for (const [x, y] of [[1, 0], [0, 1], [1, 1]]) placed = addHazard(placed, { x, y, damageExpression: '1d4', damageType: '火焰' });
+  const result = autoAct(placed, hero.id, { random: sequence(0.5, 0.5) });
+  assert.equal(result.kind, 'move');
+  const moved = result.battle.actors.find(item => item.id === hero.id);
+  assert.ok(moved.combat.movementUsed > 0);
 });

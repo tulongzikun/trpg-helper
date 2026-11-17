@@ -413,13 +413,15 @@ export function removeHazard(battle: Battle, x: number, y: number, deps: CombatD
   return next;
 }
 
-function applyHazardAt(battle: Battle, actor: Actor, x: number, y: number, deps: CombatDeps): void {
+function applyHazardAt(battle: Battle, actor: Actor, x: number, y: number, deps: CombatDeps, phase: '踏入' | '回合开始' = '踏入'): void {
   const hazard = hazardAt(battle, x, y);
   if (!hazard) return;
   if (combatantOf(actor).status === 'dead') return;
   const rolled = rollDamage(hazard.damageExpression, deps.random ?? Math.random, false);
   const result = applyDamageToActor(actor, rolled.total, hazard.damageType, battle);
-  addLog(battle, `${actorLabel(battle, actor)} 踏入危险地形 (${x}, ${y})，受到 ${result.damage} 点${hazard.damageType}伤害。`, deps);
+  addLog(battle, phase === '回合开始'
+    ? `${actorLabel(battle, actor)} 在危险地形 (${x}, ${y}) 中开始回合，受到 ${result.damage} 点${hazard.damageType}伤害。`
+    : `${actorLabel(battle, actor)} 踏入危险地形 (${x}, ${y})，受到 ${result.damage} 点${hazard.damageType}伤害。`, deps);
 }
 /** 启用、调整或关闭方格战场；关闭时清除所有位置。 */
 export function setTerrain(battle: Battle, terrain: Terrain, deps: CombatDeps = {}): Battle {
@@ -738,6 +740,9 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   addLog(next, `第 ${combat.round} 轮 · 轮到 ${actorLabel(next, actor)}（先攻 ${combatantOf(actor).initiative}）。`, deps);
   if (actor.combat?.ready) { delete actor.combat.ready; addLog(next, `${actorLabel(next, actor)} 的准备动作在回合开始时失效。`, deps); }
   applyOngoingDamage(next, deps);
+  if (actor.position) {
+    applyHazardAt(next, actor, actor.position.x, actor.position.y, deps, '回合开始');
+  }
   syncSummonsInPlace(next, deps);
   tickSummonDurations(next, deps);
   delete combat.pendingOpportunity;

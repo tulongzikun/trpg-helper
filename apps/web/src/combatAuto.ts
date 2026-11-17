@@ -102,10 +102,13 @@ export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}):
     return { battle, kind: 'wait', text: `自动行动：${best.targetName} 不在射程内，且没有方格战场可移动，原地待命。` };
   }
   const current = actorDistance(battle, actorId, best.targetId) ?? Number.POSITIVE_INFINITY;
-  const candidates = neighbors(actor.position)
+  const inBounds = neighbors(actor.position)
     .filter(cell => cell.x >= 0 && cell.y >= 0 && cell.x < battle.grid!.width && cell.y < battle.grid!.height)
     .filter(cell => !battle.actors.some(item => item.id !== actorId && item.position?.x === cell.x && item.position?.y === cell.y))
-    .filter(cell => !(battle.walls ?? []).some(wall => wall.x === cell.x && wall.y === cell.y))
+    .filter(cell => !(battle.walls ?? []).some(wall => wall.x === cell.x && wall.y === cell.y));
+  // 优先绕开危险地形；如果四周只有危险格，才退而求其次踏入。
+  const safe = inBounds.filter(cell => !(battle.hazards ?? []).some(hazard => hazard.x === cell.x && hazard.y === cell.y));
+  const candidates = (safe.length ? safe : inBounds)
     .map(cell => ({ cell, distance: Math.max(Math.abs(cell.x - target.position!.x), Math.abs(cell.y - target.position!.y)) * battle.grid!.cellFt }))
     .filter(entry => entry.distance < current)
     .sort((a, b) => a.distance - b.distance);
