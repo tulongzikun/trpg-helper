@@ -56,6 +56,8 @@ export type CombatantState = {
   nickUsed?: boolean;
   /** 本回合是否已经用掉偷袭（每回合只能偷袭一次）。 */
   sneakUsed?: boolean;
+  /** 鲁莽攻击：本回合自己的攻击具有优势，直到下个回合开始前针对它的攻击也具有优势。 */
+  reckless?: boolean;
   /** 武器精通「迟滞」造成的速度削减（尺），回合开始时清零。 */
   speedPenaltyFt?: number;
   /** 武器精通「削韧」标记：下一次攻击检定劣势，用掉后清除。 */
@@ -144,6 +146,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.dodging !== undefined && typeof value.dodging !== 'boolean') return false;
   if (value.nickUsed !== undefined && typeof value.nickUsed !== 'boolean') return false;
   if (value.sneakUsed !== undefined && typeof value.sneakUsed !== 'boolean') return false;
+  if (value.reckless !== undefined && typeof value.reckless !== 'boolean') return false;
   if (value.speedPenaltyFt !== undefined && !isInteger(value.speedPenaltyFt, 0, 50)) return false;
   if (value.sapped !== undefined && typeof value.sapped !== 'boolean') return false;
   if (value.slowSourceId !== undefined && (typeof value.slowSourceId !== 'string' || !value.slowSourceId || value.slowSourceId.length > 64)) return false;

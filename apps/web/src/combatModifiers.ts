@@ -138,6 +138,12 @@ export function sneakAttackDice(actor: Actor): number {
 }
 
 /** 灵巧动作：游荡者 2 级起，可用附赠动作疾跑、撤离或躲藏。 */
+/** 鲁莽攻击：野蛮人 2 级起。 */
+export function hasRecklessAttack(actor: Actor): boolean {
+  const sheet = sheetOf(actor);
+  return !!sheet && classOf(actor) === '野蛮人' && sheet.level >= 2;
+}
+
 export function hasCunningAction(actor: Actor): boolean {
   const sheet = sheetOf(actor);
   return !!sheet && classOf(actor) === '游荡者' && sheet.level >= 2;

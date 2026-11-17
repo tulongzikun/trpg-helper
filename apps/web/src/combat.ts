@@ -6,7 +6,7 @@ import type { Ability } from './characters';
 import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
-import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasCunningAction, hasEvasion, hasSecondWind, isAutomaticCritical, sneakAttackDice, targetAdjustment } from './combatModifiers.ts';
+import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasCunningAction, hasEvasion, hasRecklessAttack, hasSecondWind, isAutomaticCritical, sneakAttackDice, targetAdjustment } from './combatModifiers.ts';
 import { attackSources, type AttackSource } from './attackSources.ts';
 import type { AttackRange, CoverType, ModeAdjustment } from './combatModifiers.ts';
 
@@ -621,6 +621,21 @@ export function cunningAction(battle: Battle, actorId: string, kind: CunningActi
   throw new Error('灵巧动作类型无效。');
 }
 
+/** 鲁莽攻击：野蛮人 2 级起，不消耗动作；本回合攻击优势，但到自身下个回合开始前被攻击也有优势。 */
+export function recklessAttack(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (next.combat && currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以使用鲁莽攻击。');
+  if (state.status !== 'active') throw new Error('只有在场的单位可以使用鲁莽攻击。');
+  if (!hasRecklessAttack(actor)) throw new Error('只有 2 级以上的野蛮人可以使用鲁莽攻击。');
+  if (state.reckless) throw new Error('本回合已经使用过鲁莽攻击。');
+  state.reckless = true;
+  addLog(next, `${actorLabel(next, actor)} 使用鲁莽攻击：本回合攻击检定具有优势，直到下个回合开始前针对它的攻击也具有优势。`, deps);
+  return next;
+}
+
 export function dash(battle: Battle, actorId: string, deps: CombatDeps = {}, cost: 'action' | 'bonus' = 'action'): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
@@ -691,6 +706,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.dodging = false;
   combat.nickUsed = false;
   combat.sneakUsed = false;
+  combat.reckless = false;
   for (const other of battle.actors) {
     if (other.combat?.slowSourceId === actorId) {
       other.combat.speedPenaltyFt = 0;
@@ -1138,11 +1154,13 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const hiddenTarget = combatantOf(target).hidden === true;
   const dodgeAdjustment: ModeAdjustment | null = dodging ? { mode: 'disadvantage', notes: ['目标在使用闪避：攻击检定劣势'] } : null;
   const helpAdjustment: ModeAdjustment | null = helped ? { mode: 'advantage', notes: ['得到协助：攻击检定优势'] } : null;
+  const recklessAdjustment: ModeAdjustment | null = combatantOf(attacker).reckless === true ? { mode: 'advantage', notes: ['鲁莽攻击：攻击检定优势'] } : null;
+  const recklessTargetAdjustment: ModeAdjustment | null = combatantOf(target).reckless === true ? { mode: 'advantage', notes: ['目标处于鲁莽攻击：攻击检定优势'] } : null;
   const sapAdjustment: ModeAdjustment | null = sapped ? { mode: 'disadvantage', notes: ['被削韧：攻击检定劣势'] } : null;
   const vexAdjustment: ModeAdjustment | null = vexed ? { mode: 'advantage', notes: ['精通·破绽：攻击检定优势'] } : null;
   const hideAdjustment: ModeAdjustment | null = hiddenAttacker ? { mode: 'advantage', notes: ['攻击者处于躲藏：攻击检定优势'] } : null;
   const unseenAdjustment: ModeAdjustment | null = hiddenTarget ? { mode: 'disadvantage', notes: ['目标处于躲藏：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
