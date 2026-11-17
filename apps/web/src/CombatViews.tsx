@@ -28,6 +28,7 @@ export type CombatHandlers = {
   onExhaustion: (actorId: string, level: number) => void;
   onDualWielder: (actorId: string, enabled: boolean) => void;
   onSentinel: (actorId: string, enabled: boolean) => void;
+  onDelay: (actorId: string) => void;
   onDefensiveDuelist: (actorId: string, enabled: boolean) => void;
   onParry: (actorId: string) => void;
   onInitiative: (actorId: string, initiative: number) => void;
@@ -191,7 +192,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     </div>
     <div className="cmb-area-actions">
       <button type="button" className="button-secondary" disabled={state.actionUsed || state.disengaged} onClick={() => handlers.onDisengage(actor.id)}>{state.disengaged ? '本回合已撤离' : '撤离（消耗动作，本回合移动不引发借机攻击）'}</button>
-      <button type="button" className="button-secondary" disabled={state.actionUsed || state.dodging === true} onClick={() => handlers.onDodge(actor.id)}>{state.dodging ? '正在闪避' : '闪避（消耗动作，下回合前针对它的攻击劣势）'}</button>
+      <button type="button" className="button-secondary" onClick={() => handlers.onDelay(actor.id)} aria-label="延迟行动" title="把本回合挪到本轮最后，让下一位先行动">延迟行动</button>
+        <button type="button" className="button-secondary" disabled={state.actionUsed || state.dodging === true} onClick={() => handlers.onDodge(actor.id)}>{state.dodging ? '正在闪避' : '闪避（消耗动作，下回合前针对它的攻击劣势）'}</button>
       <button type="button" className="button-secondary" disabled={state.actionUsed} onClick={() => handlers.onDash(actor.id)}>疾跑（消耗动作，本回合移动力 +{actorSpeed(actor)} 尺）</button>
       <button type="button" className="button-secondary" disabled={state.actionUsed || state.hidden === true} onClick={() => handlers.onHide(actor.id)}>{state.hidden ? '躲藏中' : '躲藏（消耗动作，敏捷隐匿对抗被动察觉）'}</button>
       <button type="button" className="button-secondary" disabled={state.actionUsed} onClick={() => handlers.onPotion(actor.id)}>使用治疗药水（2d4+2）</button>

@@ -869,6 +869,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.movementUsed = 0;
   combat.disengaged = false;
   combat.dodging = false;
+  combat.delayed = false;
   combat.nickUsed = false;
   delete combat.parryBonus;
   combat.sneakUsed = false;
@@ -2409,6 +2410,22 @@ export function addReinforcement(battle: Battle, card: Card, input: Reinforcemen
 
 
 /** 起身：消耗一半速度的移动力，移除倒地状态。 */
+/** 延迟行动：把当前行动者挪到本轮最后，让下一位先行动。 */
+export function delayTurn(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const combat = requireCombat(next);
+  const actor = actorOf(next, actorId);
+  if (combat.order[combat.turnIndex] !== actorId) throw new Error('只有当前回合的单位可以延迟行动。');
+  if (combat.order.length <= 1) throw new Error('只有一名行动者时无法延迟。');
+  if (combat.turnIndex >= combat.order.length - 1) throw new Error('该单位已经是本轮的最后一个行动者。');
+  const index = combat.turnIndex;
+  combat.order = [...combat.order.slice(0, index), ...combat.order.slice(index + 1), actorId];
+  combat.turnIndex = index;
+  combatantOf(actor).delayed = true;
+  addLog(next, `${actorLabel(next, actor)} 延迟行动，排到本轮最后。`, deps);
+  return next;
+}
+
 export function standUp(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
