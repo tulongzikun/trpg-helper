@@ -4033,6 +4033,10 @@ export function shove(battle: Battle, options: ContestOptions & { effect: ShoveE
   if (isWallCell(next, toX, toY)) throw new Error('推撞方向是墙体。');
   target.position = { x: toX, y: toY };
   addLog(next, `${actorLabel(next, target)} 被推开 5 尺到 (${toX}, ${toY})。`, deps);
+  if (greaseAt(next, toX, toY)) greaseFall(next, target, deps);
+  applyHazardAt(next, target, toX, toY, deps);
+  applyLavaAt(next, target, deps);
+  applyBrambles(next, target, 5, deps);
   return { battle: next, outcome };
 }
 
