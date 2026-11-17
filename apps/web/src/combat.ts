@@ -566,6 +566,44 @@ export function greaseAt(battle: Battle, x: number, y: number): boolean {
   return (battle.grease ?? []).some(cell => cell.x === x && cell.y === y);
 }
 
+/** 从起点出发，沿四邻相连的格子收集同一片区域（不跨越断开的空隙）。 */
+function connectedCells(cells: Position[], x: number, y: number): Position[] {
+  const inside = (px: number, py: number) => cells.some(cell => cell.x === px && cell.y === py);
+  const seen: Position[] = [];
+  const queue: Position[] = [{ x, y }];
+  while (queue.length) {
+    const cell = queue.shift() as Position;
+    if (seen.some(item => item.x === cell.x && item.y === cell.y)) continue;
+    seen.push(cell);
+    for (const next of [{ x: cell.x + 1, y: cell.y }, { x: cell.x - 1, y: cell.y }, { x: cell.x, y: cell.y + 1 }, { x: cell.x, y: cell.y - 1 }]) {
+      if (inside(next.x, next.y) && !seen.some(item => item.x === next.x && item.y === next.y)) queue.push(next);
+    }
+  }
+  return seen;
+}
+
+/** 点燃蛛网：火焰沿相连的蛛网蔓延，网内单位受到 2d4 火焰伤害，随后蛛网烧尽。 */
+export function igniteWeb(battle: Battle, x: number, y: number, deps: CombatDeps = {}): { battle: Battle; burned: number; victims: string[] } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (!webAt(next, x, y)) throw new Error('该格没有蛛网可供点燃。');
+  const cells = next.webs ?? [];
+  const burned = connectedCells(cells, x, y);
+  const victims: string[] = [];
+  for (const actor of next.actors) {
+    const position = actor.position;
+    if (!position || (combatantOf(actor).status ?? 'active') !== 'active') continue;
+    if (!burned.some(item => item.x === position.x && item.y === position.y)) continue;
+    const damage = rollDamage('2d4', randomOf(deps));
+    applyDamageToActor(actor, damage.total, '火焰', next, deps);
+    victims.push(actor.name);
+  }
+  next.webs = cells.filter(cell => !burned.some(item => item.x === cell.x && item.y === cell.y));
+  if (!next.webs.length) delete next.webs;
+  const names = victims.length ? `，${victims.join('、')} 受到 2d4 火焰伤害` : '';
+  addLog(next, `点燃了 ${burned.length} 格蛛网${names}，随后蛛网烧尽。`, deps);
+  return { battle: next, burned: burned.length, victims };
+}
 /** 点燃油污：火焰沿着连成一片的油污蔓延，每格上的单位受到 1d6 火焰伤害，随后油污烧尽。 */
 export function igniteGrease(battle: Battle, x: number, y: number, deps: CombatDeps = {}): { battle: Battle; burned: number; victims: string[] } {
   const next = recordUndo(structuredClone(battle));
