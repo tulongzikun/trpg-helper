@@ -47,6 +47,7 @@ export function effectsOf(actor: Actor): string[] {
   if (state.commanded === 'halt') parts.push('命令：停止');
   if (state.entangled === true) parts.push('被藤蔓缠住');
   if (state.suppressed === true) parts.push('被压制');
+  if (state.exhaustion) parts.push(`力竭 ${state.exhaustion} 级（攻击／豁免／检定 -${2 * state.exhaustion}，速度 -${5 * state.exhaustion} 尺）`);
   if (state.aimed === true) parts.push('瞄准');
   if (state.shield) parts.push(`护盾（AC +${state.shield}）`);
   add('祝福', state.blessed);
