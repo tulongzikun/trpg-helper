@@ -941,6 +941,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.delayed = false;
   combat.nickUsed = false;
   delete combat.parryBonus;
+  delete combat.guarding;
   combat.sneakUsed = false;
   combat.reckless = false;
   for (const other of battle.actors) {
@@ -1469,6 +1470,35 @@ function longRangeAdjustment(actor: Actor, options: AttackOptions, distanceFt: n
   return { mode: 'disadvantage', notes: [`距离 ${distanceFt} 尺超出常规射程 ${normalRange} 尺：攻击检定劣势`] };
 }
 
+/** 找出正在保护该目标的同伴（同阵营、相邻或未启用方格）。 */
+function guardingProtector(battle: Battle, target: Actor): Actor | undefined {
+  return battle.actors.find(item => {
+    if (item.id === target.id) return false;
+    if (item.combat?.guarding !== target.id) return false;
+    if (item.combat.status !== 'active') return false;
+    if (item.position && target.position) return cellDistance(item.position, target.position) <= 1;
+    return true;
+  });
+}
+
+export function protectAlly(battle: Battle, protectorId: string, targetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const protector = actorOf(next, protectorId);
+  const target = actorOf(next, targetId);
+  if (protectorId === targetId) throw new Error('不能保护自己。');
+  if (!fightingStylesOf(protector).includes('保护')) throw new Error('只有选择「保护」战斗风格的单位可以保护同伴。');
+  if (combatantOf(protector).status !== 'active') throw new Error('只有在场的单位可以保护同伴。');
+  if (combatantOf(target).status !== 'active') throw new Error('只能保护在场的同伴。');
+  if (protector.side !== target.side || protector.side === '中立') throw new Error('只能保护同阵营的同伴。');
+  if (combatantOf(protector).reactionUsed) throw new Error('该单位本回合已经使用过反应。');
+  if (protector.position && target.position && cellDistance(protector.position, target.position) > 1) throw new Error('保护的目标需要在 5 尺内。');
+  combatantOf(protector).reactionUsed = true;
+  combatantOf(protector).guarding = targetId;
+  addLog(next, `${actorLabel(next, protector)} 用保护风格挡在 ${actorLabel(next, target)} 身前：针对后者的下一次攻击具有劣势。`, deps);
+  return next;
+}
+
 function resolveOneAttack(battle: Battle, options: AttackOptions, context: AttackContext, deps: CombatDeps, consumeCost: boolean): AttackOutcome {
   const attacker = actorOf(battle, options.attackerId);
   const target = actorOf(battle, options.targetId);
@@ -1496,6 +1526,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const engagedInMelee = context.range === 'ranged' && !!attacker.position && battle.actors.some(item => item.id !== attacker.id && item.side !== attacker.side && item.side !== '中立' && item.combat?.status === 'active' && !!item.position && cellDistance(item.position, attacker.position!) <= 1);
   const engagedAdjustment: ModeAdjustment | null = engagedInMelee ? { mode: 'disadvantage', notes: ['远程攻击时敌人贴身：攻击检定劣势'] } : null;
   const hiddenTarget = combatantOf(target).hidden === true;
+  const guard = guardingProtector(battle, target);
+  const guardAdjustment: ModeAdjustment | null = guard ? { mode: 'disadvantage', notes: [`${actorLabel(battle, guard)} 用保护风格挡下攻击：攻击检定劣势`] } : null;
   const dodgeAdjustment: ModeAdjustment | null = dodging ? { mode: 'disadvantage', notes: ['目标在使用闪避：攻击检定劣势'] } : null;
   const helpAdjustment: ModeAdjustment | null = helped ? { mode: 'advantage', notes: ['得到协助：攻击检定优势'] } : null;
   const recklessAdjustment: ModeAdjustment | null = combatantOf(attacker).reckless === true ? { mode: 'advantage', notes: ['鲁莽攻击：攻击检定优势'] } : null;
@@ -1505,7 +1537,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const obscuredAdjustment: ModeAdjustment | null = battle.obscured === 'heavy' ? { mode: 'disadvantage', notes: ['重度遮蔽：攻击检定劣势'] } : null;
   const hideAdjustment: ModeAdjustment | null = hiddenAttacker ? { mode: 'advantage', notes: ['攻击者处于躲藏：攻击检定优势'] } : null;
   const unseenAdjustment: ModeAdjustment | null = hiddenTarget ? { mode: 'disadvantage', notes: ['目标处于躲藏：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
@@ -1520,6 +1552,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   if (archery > 0) notes.push('射术：远程攻击检定 +2');
   const total = natural + options.attackBonus + archery - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
   const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + defenseBonus(target);
+  if (guard) delete combatantOf(guard).guarding;
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
   const automaticCritical = hit && isAutomaticCritical(target, context.range, context.distanceFt);

@@ -83,6 +83,7 @@ export type CombatHandlers = {
   onCunning: (kind: 'dash' | 'disengage' | 'hide') => void;
   onReckless: (actorId: string) => void;
   onHelp: (helperId: string, targetId: string) => void;
+  onProtect: (protectorId: string, targetId: string) => void;
   onStand: (actorId: string) => void;
   onReady: (actorId: string, input: { action: string; trigger: string }) => void;
   onTriggerReady: (actorId: string) => void;
@@ -234,6 +235,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <SummonPanel key={`summon-${actor.id}`} battle={battle} handlers={handlers} />
     <AuraPanel key={`aura-${actor.id}`} battle={battle} handlers={handlers} />
     <HelpPanel key={`help-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
+    <ProtectionPanel key={`protect-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <CheckPanel key={`check-${actor.id}`} actor={actor} handlers={handlers} />
     <HealPanel key={`heal-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <StudyPanel key={`study-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
@@ -1122,3 +1124,22 @@ export function StudyPanel({ battle, actor, handlers }: { battle: Battle; actor:
     <p className="cmb-hint">成功后在战斗日志里列出目标的 AC、生命值、抗性与状态。</p>
   </section>;
 }
+
+export function ProtectionPanel({ battle, actor, handlers }: { battle: Battle; actor: Actor; handlers: CombatHandlers }) {
+  const allies = battle.actors.filter(item => item.id !== actor.id && item.side === actor.side && item.side !== '中立' && item.combat?.status === 'active');
+  if (!allies.length) return null;
+  if (!actor.combat?.guarding && actor.combat?.reactionUsed) return null;
+  return (
+    <div className="cmb-help">
+      <div className="cmb-ai-head">保护</div>
+      {actor.combat?.guarding ? <p className="cmb-muted">正在保护：{[actor.combat.guarding]}</p> : null}
+      <div className="cmb-ai-actions">
+        {allies.map(ally => (
+          <button key={ally.id} type="button" className="button-secondary" disabled={actor.combat?.reactionUsed === true} onClick={() => handlers.onProtect(actor.id, ally.id)}>保护 {ally.name}</button>
+        ))}
+      </div>
+      <p className="cmb-muted">保护消耗反应；被保护的同伴受到的下一次攻击具有劣势，结算后失效。</p>
+    </div>
+  );
+}
+

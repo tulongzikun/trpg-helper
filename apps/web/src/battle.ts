@@ -68,6 +68,7 @@ export type CombatantState = {
   revealed?: boolean;
   /** 战地施法者专长：专注检定时具有优势。 */
   warCaster?: boolean;
+  guarding?: string;
   delayed?: boolean;
   flying?: boolean;
   /** 力竭等级（0–6）：每级使攻击、豁免、属性检定 -2，速度 -5 尺。 */
@@ -180,6 +181,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.stable !== undefined && typeof value.stable !== 'boolean') return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
   if (value.warCaster !== undefined && typeof value.warCaster !== 'boolean') return false;
+  if (value.guarding !== undefined && (typeof value.guarding !== 'string' || value.guarding.length === 0 || value.guarding.length > 64)) return false;
   if (value.delayed !== undefined && typeof value.delayed !== 'boolean') return false;
   if (value.flying !== undefined && typeof value.flying !== 'boolean') return false;
 
