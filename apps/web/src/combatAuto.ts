@@ -268,5 +268,7 @@ export function autoSide(battle: Battle, side: Side, deps: CombatDeps = {}, opti
     if (currentActorId(current) === actorId) break;
   }
   if (!stopped && turns.length >= maxTurns) stopped = { reason: 'limit', text: `已达到自动推进上限（${maxTurns} 回合）。` };
+  // 停下的原因也留一份在战报里，导出的记录才解释得清「为什么只打了这几下」。
+  if (stopped && stopped.reason !== 'finished') current = appendCombatLog(current, stopped.text, deps);
   return stopped ? { battle: current, turns, stopped } : { battle: current, turns };
 }

@@ -51,3 +51,10 @@ test('正常推进完整轮次时不带 stopped', () => {
   assert.equal(result.turns.length, 1);
   assert.equal(result.stopped.reason, 'side');
 });
+
+test('停止原因会写进战报', () => {
+  const { battle } = setup();
+  const result = autoSide(battle, '敌方', { random: () => 0.5 });
+  const text = result.battle.combat.log.map(item => item.text).join('\n');
+  assert.match(text, /不属于敌方，停止自动推进。/);
+});
