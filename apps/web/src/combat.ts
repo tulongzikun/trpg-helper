@@ -1534,6 +1534,41 @@ export function lootCorpse(battle: Battle, looterId: string, targetId: string, d
   return { battle: next, looted: loot.map(entry => entry.name) };
 }
 
+/** 传递物品：把身上的物品交给 5 尺内的同伴，同名物品合并。 */
+export function giveItem(battle: Battle, fromId: string, toId: string, name: string, quantity = 1, deps: CombatDeps = {}): { battle: Battle; moved: number } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const giver = actorOf(next, fromId);
+  const receiver = actorOf(next, toId);
+  const giverState = combatantOf(giver);
+  const receiverState = combatantOf(receiver);
+  if (giver.id === receiver.id) throw new Error('不能把物品递给自己。');
+  if (giverState.status !== 'active' || receiverState.status !== 'active') throw new Error('只有在场的单位可以传递物品。');
+  if (giver.side !== receiver.side || giver.side === '中立') throw new Error('只能把物品递给同阵营的同伴。');
+  if (giver.position && receiver.position && cellDistance(giver.position, receiver.position) > 1) throw new Error('只能把物品传递给 5 尺内的同伴。');
+  const item = (giverState.items ?? []).find(entry => entry.name === name);
+  if (!item) throw new Error(`该单位没有「${name}」这个物品。`);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > item.quantity) throw new Error(`传递数量须为 1 至 ${item.quantity} 的整数。`);
+  const owned = receiverState.items ?? [];
+  const existing = owned.find(entry => entry.name === name);
+  if (!existing && owned.length + 1 > 20) throw new Error('接收方已经记录了 20 种物品，无法再接收。');
+  if (existing) {
+    existing.quantity = Math.min(99, existing.quantity + quantity);
+    if (item.healExpression) existing.healExpression = existing.healExpression ?? item.healExpression;
+  } else {
+    owned.push({ name: item.name, quantity: Math.min(99, quantity), ...(item.healExpression ? { healExpression: item.healExpression } : {}) });
+  }
+  receiverState.items = owned;
+  item.quantity -= quantity;
+  if (item.quantity <= 0) {
+    const rest = (giverState.items ?? []).filter(entry => entry !== item);
+    if (rest.length) giverState.items = rest;
+    else delete giverState.items;
+  }
+  addLog(next, `${actorLabel(next, giver)} 把「${item.name}」×${quantity} 递给 ${actorLabel(next, receiver)}。`, deps);
+  return { battle: next, moved: quantity };
+}
+
 export function setActorHp(battle: Battle, actorId: string, hp: number, deps: CombatDeps = {}): Battle {
   if (!battle.combat) {
     const next = structuredClone(battle);

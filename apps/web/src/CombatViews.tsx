@@ -94,6 +94,7 @@ export type CombatHandlers = {
   onAddItem: (actorId: string, name: string, quantity: number, healExpression: string) => void;
   onUseItem: (actorId: string, name: string, targetId?: string) => void;
   onLoot: (looterId: string, targetId: string) => void;
+  onGive: (fromId: string, toId: string, name: string) => void;
   onStand: (actorId: string) => void;
   onReady: (actorId: string, input: { action: string; trigger: string }) => void;
   onTriggerReady: (actorId: string) => void;
@@ -1237,6 +1238,8 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
   const [notice, setNotice] = useState('');
   const items = actor.combat?.items ?? [];
   const corpses = battle.actors.filter(item => item.combat?.status === 'dead' && (item.combat?.items ?? []).length > 0);
+  const allies = battle.actors.filter(item => item.id !== actor.id && item.combat?.status === 'active' && item.side === actor.side && item.side !== '中立');
+  const [giveTo, setGiveTo] = useState(allies[0]?.id ?? '');
   const add = () => {
     const count = Number(quantity);
     if (!name.trim()) return setNotice('请填写物品名称。');
@@ -1256,6 +1259,20 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
           ))}
         </div>
       ) : <p className="cmb-muted">还没有记录物品。</p>}
+      {items.length && allies.length ? (
+        <label>递给<select value={giveTo} onChange={event => setGiveTo(event.target.value)} aria-label="递给同伴">
+          {allies.map(ally => <option key={ally.id} value={ally.id}>{ally.name}</option>)}
+        </select></label>
+      ) : null}
+      {items.length && allies.length ? (
+        <div className="cmb-ai-actions">
+          {items.map(item => (
+            <button key={`give-${item.name}`} type="button" className="button-secondary" onClick={() => handlers.onGive(actor.id, giveTo, item.name)} aria-label={`递给同伴 ${item.name}`}>
+              递出 {item.name}（×1）
+            </button>
+          ))}
+        </div>
+      ) : null}
       {corpses.length ? (
         <div className="cmb-ai-actions">
           {corpses.map(corpse => (
