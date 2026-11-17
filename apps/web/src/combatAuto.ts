@@ -2,6 +2,7 @@
 import { hasSecondWind } from './combatModifiers.ts';
 import { attackSources } from './attackSources.ts';
 import type { CombatDeps } from './combat.ts';
+import { entangleAt, greaseAt, sleepCloudAt, webAt } from './combat.ts';
 import { suggestAttacks } from './combatAi.ts';
 import { battleOutcome } from './combatOutcome.ts';
 import type { Battle, Position, Side } from './battle';
@@ -172,7 +173,9 @@ function decideAutoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): 
     .filter(cell => !battle.actors.some(item => item.id !== actorId && item.position?.x === cell.x && item.position?.y === cell.y))
     .filter(cell => !(battle.walls ?? []).some(wall => wall.x === cell.x && wall.y === cell.y));
   // 优先绕开危险地形；如果四周只有危险格，才退而求其次踏入。
-  const safe = inBounds.filter(cell => !(battle.hazards ?? []).some(hazard => hazard.x === cell.x && hazard.y === cell.y));
+  // 油污、蛛网、藤蔓与睡眠云都会让踏入者吃亏，能绕开就绕开。
+  const sticky = (cell: Position) => greaseAt(battle, cell.x, cell.y) || webAt(battle, cell.x, cell.y) || entangleAt(battle, cell.x, cell.y) || sleepCloudAt(battle, cell.x, cell.y);
+  const safe = inBounds.filter(cell => !(battle.hazards ?? []).some(hazard => hazard.x === cell.x && hazard.y === cell.y) && !sticky(cell));
   const candidates = (safe.length ? safe : inBounds)
     .map(cell => ({ cell, distance: Math.max(Math.abs(cell.x - target.position!.x), Math.abs(cell.y - target.position!.y)) * battle.grid!.cellFt }))
     .filter(entry => entry.distance < current)
