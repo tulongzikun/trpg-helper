@@ -13,6 +13,7 @@ import type { Ability } from './characters';
 import type { Card } from './catalog';
 import { fallAverageDamage, jumpDistance } from './combatMovement';
 import type { SpellCastOptions } from './combatSpells';
+import { spellAreaTargets } from './combatSpells';
 import { settlementText } from './combatSettlement';
 
 const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
@@ -976,9 +977,20 @@ function SpellPanel({ battle, actor, onCast, onSetSlots }: { battle: Battle; act
   const [bonusAction, setBonusAction] = useState(false);
   const [concentration, setConcentration] = useState(false);
   const [slotText, setSlotText] = useState('');
+  const [shape, setShape] = useState<'single' | 'sphere' | 'cone' | 'line' | 'cube'>('single');
+  const [sizeFt, setSizeFt] = useState(20);
   const slotSummary = (actor.combat?.spellSlots ?? []).map((count, index) => count > 0 ? `${index + 1} 环 ${count}` : '').filter(Boolean).join(' · ') || '未记录';
   const targets = battle.actors.filter(item => item.id !== actor.id && item.combat?.status === 'active');
   const target = targetId || targets[0]?.id || '';
+  const area = (() => {
+    if (mode !== 'save' || shape === 'single' || !target) return [target];
+    try {
+      const ids = spellAreaTargets(battle, actor.id, shape, sizeFt);
+      return ids.length ? ids : [target];
+    } catch {
+      return [target];
+    }
+  })();
   return (
     <div className="cmb-spell">
       <span className="cmb-muted">施放法术</span>
@@ -1001,7 +1013,16 @@ function SpellPanel({ battle, actor, onCast, onSetSlots }: { battle: Battle; act
         ? <><label>DC<input type="number" min={1} max={40} value={dc} onChange={event => setDc(Number(event.target.value))} aria-label="法术豁免 DC" /></label>
           <label>豁免<select value={ability} onChange={event => setAbility(event.target.value as Ability)} aria-label="豁免属性">
             {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as Ability[]).map(key => <option key={key} value={key}>{abilityNames[key]}</option>)}
-          </select></label></>
+          </select></label>
+          <label>范围<select value={shape} onChange={event => setShape(event.target.value as 'single' | 'sphere' | 'cone' | 'line' | 'cube')} aria-label="法术范围形状">
+            <option value="single">单体</option>
+            <option value="sphere">球形</option>
+            <option value="cone">锥形</option>
+            <option value="line">线形</option>
+            <option value="cube">立方</option>
+          </select></label>
+          {shape !== 'single' ? <label>尺寸<input type="number" min={5} max={120} step={5} value={sizeFt} onChange={event => setSizeFt(Number(event.target.value))} aria-label="范围尺寸" /></label> : null}
+          </>
         : <label>攻击加值<input type="number" value={bonus} onChange={event => setBonus(Number(event.target.value))} aria-label="法术攻击加值" /></label>}
       <label className="cmb-check"><input type="checkbox" checked={bonusAction} onChange={event => setBonusAction(event.target.checked)} aria-label="附赠动作施法" />附赠动作</label>
       <label className="cmb-check"><input type="checkbox" checked={concentration} onChange={event => setConcentration(event.target.checked)} aria-label="需要专注" />专注</label>
@@ -1010,9 +1031,9 @@ function SpellPanel({ battle, actor, onCast, onSetSlots }: { battle: Battle; act
         ...(bonusAction ? { cost: 'bonus' as const } : {}),
         ...(concentration ? { concentration: true } : {}),
         ...(mode === 'save'
-          ? { save: { ability, dc, targetIds: [target], damageExpression: damage, damageType: type } }
+          ? { save: { ability, dc, targetIds: area, damageExpression: damage, damageType: type } }
           : { attack: { targetId: target, attackBonus: bonus, damageExpression: damage, damageType: type } }),
-      })}>施放</button>
+      })}>施放{area.length > 1 ? `（${area.length} 个目标）` : ''}</button>
     </div>
   );
 }
