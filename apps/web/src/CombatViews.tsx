@@ -90,6 +90,7 @@ export type CombatHandlers = {
   onCunning: (kind: 'dash' | 'disengage' | 'hide') => void;
   onReckless: (actorId: string) => void;
   onHelp: (helperId: string, targetId: string) => void;
+  onHelpCheck: (helperId: string, targetId: string) => void;
   onProtect: (protectorId: string, targetId: string) => void;
   onAddItem: (actorId: string, name: string, quantity: number, healExpression: string, identified: boolean) => void;
   onIdentify: (actorId: string, name: string) => void;
@@ -839,9 +840,9 @@ export function HelpPanel({ battle, actor, handlers }: { battle: Battle; actor: 
     <div className="cmb-ai-head">协助</div>
     {ready ? <p className="cmb-hint">{actor.name} 已获得协助：下一次攻击检定具有优势。</p> : null}
     <div className="cmb-ai-actions">
-      {allies.map(ally => <button key={ally.id} type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onHelp(actor.id, ally.id)}>协助 {ally.name}</button>)}
+      {allies.map(ally => <span key={ally.id} className="cmb-inline-action"><button type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onHelp(actor.id, ally.id)}>协助 {ally.name} 攻击</button><button type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onHelpCheck(actor.id, ally.id)}>协助 {ally.name} 检定</button></span>)}
     </div>
-    <p className="cmb-hint">协助消耗动作；受协助的单位下一次攻击检定具有优势，用掉即消失。</p>
+    <p className="cmb-hint">协助消耗动作；受协助的单位下一次攻击或属性检定具有优势，用掉即消失。</p>
   </div>;
 }
 

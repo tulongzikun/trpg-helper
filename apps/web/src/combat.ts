@@ -1022,6 +1022,27 @@ export function hide(battle: Battle, actorId: string, stealthTotal?: number, dep
   return next;
 }
 
+/** 协助检定：消耗动作，让同阵营的另一个单位下一次属性检定具有优势。 */
+export function helpCheck(battle: Battle, helperId: string, targetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (helperId === targetId) throw new Error('不能协助自己。');
+  if (currentActorId(next) !== helperId) throw new Error('只有当前回合的单位可以协助。');
+  const helper = actorOf(next, helperId);
+  const target = actorOf(next, targetId);
+  const state = combatantOf(helper);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以协助。');
+  const blocker = actionBlocker(helper);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (combatantOf(target).status !== 'active') throw new Error('只能协助在场的单位。');
+  if (helper.side !== target.side || helper.side === '中立') throw new Error('只能协助同阵营的单位。');
+  state.actionUsed = true;
+  combatantOf(target).helpedCheck = true;
+  addLog(next, `${actorLabel(next, helper)} 协助 ${actorLabel(next, target)} 进行检定，${actorLabel(next, target)} 的下一次属性检定具有优势。`, deps);
+  return next;
+}
+
 /** 协助：消耗动作，让同阵营的另一个单位下一次攻击检定具有优势。 */
 export function help(battle: Battle, helperId: string, targetId: string, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -2181,12 +2202,15 @@ export function abilityCheck(battle: Battle, options: CheckOptions, deps: Combat
   if (combatantOf(actor).status !== 'active') throw new Error('只有在场的单位可以进行检定。');
   const bonus = (options.bonus ?? abilityCheckBonus(actor, options.ability, options.skill ?? '')) - exhaustionPenalty(actor);
   const adjustment = checkAdjustment(actor, options.ability);
-  const combined = combineAttackModes(options.mode ?? 'normal', adjustment ? [adjustment] : []);
+  const helped = combatantOf(actor).helpedCheck === true;
+  const helpAdjustment = helped ? { mode: 'advantage' as const, notes: ['得到协助：属性检定优势'] } : null;
+  const combined = combineAttackModes(options.mode ?? 'normal', [...(adjustment ? [adjustment] : []), ...(helpAdjustment ? [helpAdjustment] : [])]);
   const random = randomOf(deps);
   let natural = rollDie(20, random);
   if (combined.mode === 'advantage') natural = Math.max(natural, rollDie(20, random));
   if (combined.mode === 'disadvantage') natural = Math.min(natural, rollDie(20, random));
   const total = natural + bonus;
+  if (helped) delete combatantOf(actor).helpedCheck;
   const success = natural === 20 ? true : natural === 1 ? false : total >= options.dc;
   const label = options.skill ? `${saveNames[options.ability]}（${options.skill}）` : saveNames[options.ability];
   addLog(

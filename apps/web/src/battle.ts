@@ -110,6 +110,7 @@ export type CombatantState = {
   vexTargetId?: string;
   /** 是否获得了协助：下一次攻击检定具有优势，用掉后清除。 */
   helpedAttack?: boolean;
+  helpedCheck?: boolean;
   /** 使用疾跑后本回合额外获得的移动力（尺），回合开始时清零。 */
   dashMovement?: number;
   /** 是否处于躲藏状态：攻击时获得优势，攻击或被攻击后现身。 */
@@ -264,6 +265,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.slowSourceId !== undefined && (typeof value.slowSourceId !== 'string' || !value.slowSourceId || value.slowSourceId.length > 64)) return false;
   if (value.vexTargetId !== undefined && (typeof value.vexTargetId !== 'string' || !value.vexTargetId || value.vexTargetId.length > 64)) return false;
   if (value.helpedAttack !== undefined && typeof value.helpedAttack !== 'boolean') return false;
+    if (value.helpedCheck !== undefined && typeof value.helpedCheck !== 'boolean') return false;
   if (value.dashMovement !== undefined && !isInteger(value.dashMovement, 0, 300)) return false;
   if (value.hidden !== undefined && typeof value.hidden !== 'boolean') return false;
   if (value.ongoing !== undefined && (!Array.isArray(value.ongoing) || !value.ongoing.every(isOngoingEffect))) return false;
