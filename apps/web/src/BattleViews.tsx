@@ -4,6 +4,7 @@ import type { BattleStore, Position, Side } from './battle';
 import type { CombatHandlers } from './CombatViews';
 import { BattleIo, CombatLog, CombatSetup, CombatToolbar, GridPanel, InitiativeRail, ReinforcePanel, SettlementPanel, TurnPanel } from './CombatViews';
 import { rewardSummary } from './encounterReward';
+import { battleOutcome, outcomeLabel } from './combatOutcome';
 import { currentActorId } from './combat';
 
 export function AddMonsterDialog({ card, store, onClose, onAdd }: { card: Card; store: BattleStore; onClose: () => void; onAdd: (options: { battleId?: string; newBattleName?: string; side: Side; count: number }) => string | null }) {
@@ -75,6 +76,7 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
             </article>;
           })}</div> : <div className="battle-empty"><span>✧</span><h3>战场还是空的</h3><p>从怪物图鉴添加单位，开始准备这场战斗。</p><button className="button-secondary" onClick={onCatalog}>浏览怪物图鉴</button></div>}
           {battle.combat && <p className="cmb-reward">{rewardSummary(battle)}</p>}
+          <p className="cmb-outcome">{outcomeLabel(battleOutcome(battle))}</p>
           {battle.combat && <CombatLog battle={battle} />}
           <SettlementPanel battle={battle} />
           <BattleIo battle={battle} onImport={onImportBattle} />
