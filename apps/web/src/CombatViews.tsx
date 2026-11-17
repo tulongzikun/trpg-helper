@@ -33,6 +33,7 @@ export type CombatHandlers = {
   onDifficult: (x: number, y: number) => void;
   onWall: (x: number, y: number) => void;
   onDisengage: (actorId: string) => void;
+  onStand: (actorId: string) => void;
   onReady: (actorId: string, input: { action: string; trigger: string }) => void;
   onTriggerReady: (actorId: string) => void;
   onCancelReady: (actorId: string) => void;
@@ -154,6 +155,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <OpportunityPanel key={`opportunity-${actor.id}`} battle={battle} handlers={handlers} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
+              {actor.combat?.conditions.includes('倒地') && <button type="button" className="button-secondary" onClick={() => handlers.onStand(actor.id)}>起身（消耗一半移动力）</button>}
       <label className="cmb-temp">临时生命<input key={state.tempHp} type="number" min={0} step={1} defaultValue={state.tempHp} aria-label="临时生命值" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0) handlers.onTempHp(actor.id, value); }} /></label>
     </div>
     {state.conditions.length > 0 && <div className="cmb-conditions">{state.conditions.map(condition => <span key={condition}>{condition}</span>)}</div>}
@@ -673,3 +675,4 @@ export function ReinforcePanel({ battle, cards, onReinforce }: { battle: Battle;
     <div className="cmb-reinforce-actions"><button type="submit" className="button-secondary">加入增援</button>{message && <span className="cmb-muted">{message}</span>}</div>
   </form>;
 }
+

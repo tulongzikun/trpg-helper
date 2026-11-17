@@ -1319,3 +1319,22 @@ export function addReinforcement(battle: Battle, card: Card, input: Reinforcemen
   return { battle: next, actorId: actor.id, initiative };
 }
 
+
+/** 起身：消耗一半速度的移动力，移除倒地状态。 */
+export function standUp(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (currentActorId(next) !== actor.id) throw new Error('只有当前回合的单位可以起身。');
+  if (!state.conditions.includes('倒地')) throw new Error('该单位没有倒地。');
+  if (state.status !== 'active') throw new Error('只有在场的单位可以起身。');
+  const speed = actorSpeed(actor);
+  const cost = Math.floor(speed / 2);
+  const remaining = Math.max(0, speed - state.movementUsed);
+  if (remaining < cost) throw new Error(`剩余移动力不足，起身需要 ${cost} 尺。`);
+  state.movementUsed += cost;
+  state.conditions = state.conditions.filter(item => item !== '倒地');
+  addLog(next, `${actorLabel(next, actor)} 起身，消耗 ${cost} 尺移动力。`, deps);
+  return next;
+}
