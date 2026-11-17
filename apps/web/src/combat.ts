@@ -293,6 +293,20 @@ export function setSentinel(battle: Battle, actorId: string, enabled: boolean, d
   return next;
 }
 
+/** 俯冲攻击：从 10 尺以上高空扑向目标，攻击检定获得优势，命中后落地。 */
+export function diveAttack(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
+  const probe = structuredClone(battle);
+  requireCombat(probe);
+  const attacker = actorOf(probe, options.attackerId);
+  if (combatantOf(attacker).flying !== true) throw new Error('只有飞行中的单位可以俯冲攻击。');
+  if ((attacker.elevation ?? 0) < 10) throw new Error('俯冲需要至少 10 尺的高度。');
+  const result = attack(probe, { ...options, mode: options.mode ?? 'advantage' }, deps);
+  const diver = actorOf(result.battle, options.attackerId);
+  if (diver.combat) diver.combat.flying = false;
+  delete diver.elevation;
+  addLog(result.battle, `${actorLabel(result.battle, diver)} 俯冲落地。`, deps);
+  return { battle: result.battle, outcome: { ...result.outcome, notes: [...result.outcome.notes, '俯冲攻击：攻击检定优势，落地后失去飞行'] } };
+}
 /** 设置单位高度（尺），用于高低差判定：远程攻击从 10 尺以上高处射击有优势，仰射则有劣势。 */
 export function setElevation(battle: Battle, actorId: string, feet: number, deps: CombatDeps = {}): Battle {
   if (!Number.isInteger(feet) || feet < 0 || feet > 500) throw new Error('高度须为 0 至 500 尺的整数。');
