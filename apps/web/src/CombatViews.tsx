@@ -116,6 +116,7 @@ export type CombatHandlers = {
   onIdentify: (actorId: string, name: string) => void;
   onUseItem: (actorId: string, name: string, targetId?: string) => void;
   onThrowFlask: (actorId: string, kind: 'holy-water' | 'alchemists-fire', targetId: string) => void;
+  onAntitoxin: (actorId: string) => void;
   onLoot: (looterId: string, targetId: string) => void;
   onLootAll: (looterId: string) => void;
   onGive: (fromId: string, toId: string, name: string) => void;
@@ -313,6 +314,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       {<button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed || !hostileTargets(battle, actor.id, 120).length} onClick={() => handlers.onDispel(actor.id, hostileTargets(battle, actor.id, 120)[0]?.id ?? '')} aria-label="驱散魔法">驱散魔法（动作，DC 13 施法属性检定，120 尺）</button>}
       {state.charmed ? <span className="cmb-hint">魅惑术：剩余 {state.charmed} 轮（无法攻击施法者）</span> : null}
 {state.frightened ? <span className="cmb-hint">恐惧术：剩余 {state.frightened} 轮（无法靠近恐惧源，对其攻击劣势）</span> : null}
+      {state.conditions.includes('中毒') ? <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onAntitoxin(actor.id)} aria-label="解毒剂">解毒剂（动作，解除中毒）</button> : null}
+      {state.conditions.includes('中毒') ? <span className="cmb-hint">中毒：攻击检定劣势{state.poisoned ? `，剩余 ${state.poisoned} 轮` : ''}</span> : null}
       {state.sleeping ? <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onWake(actor.id, actor.id)} aria-label="唤醒">唤醒（动作，移除沉睡）</button> : null}
       {state.blessed ? <span className="cmb-hint">祝福：剩余 {state.blessed} 轮</span> : null}
       {state.shield ? <span className="cmb-hint">护盾术：AC +{state.shield}</span> : null}

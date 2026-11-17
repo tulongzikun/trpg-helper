@@ -1194,6 +1194,55 @@ export function castDispelMagic(battle: Battle, casterId: string, targetId: stri
   return { battle: next, outcome: { success: true, natural, total, dc: DISPEL_DC, dispelled } };
 }
 
+const POISON_DC = 13;
+
+/**
+ * 施加毒素：目标做一次体质豁免 DC 13，失败则陷入「中毒」（攻击检定劣势，持续 rounds 轮，默认 10 轮）。
+ * 由怪物毒液或陷阱调用，不消耗动作。
+ */
+export function applyPoison(battle: Battle, actorId: string, deps: CombatDeps = {}, rounds = 10): { battle: Battle; outcome: SaveOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status === 'dead') throw new Error('无法对已经死亡的单位施加毒素。');
+  if (!Number.isInteger(rounds) || rounds < 1 || rounds > 100) throw new Error('中毒轮数须为 1 至 100 的整数。');
+  const save = resolveSave(actor, { actorId, ability: 'con', dc: POISON_DC, bonus: defaultSaveBonus(actor, 'con') + auraBonus(next, actorId, 'saves') }, randomOf(deps));
+  if (save.success) {
+    addLog(next, `${actorLabel(next, actor)} 抵抗了毒素（体质 ${save.natural} → ${save.total}，DC ${POISON_DC}）。`, deps);
+    return { battle: next, outcome: save };
+  }
+  if (!state.conditions.includes('中毒')) state.conditions.push('中毒');
+  state.poisoned = rounds;
+  addLog(next, `${actorLabel(next, actor)} 中毒了：攻击检定劣势，持续 ${rounds} 轮（体质 ${save.natural} → ${save.total}，DC ${POISON_DC}）。`, deps);
+  return { battle: next, outcome: save };
+}
+
+/** 使用解毒剂：消耗动作与背包里的一瓶解毒剂，立刻解除中毒。 */
+export function drinkAntitoxin(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status === 'dead') throw new Error('已经死亡的单位无法使用解毒剂。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以使用解毒剂。');
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (!state.conditions.includes('中毒')) throw new Error('该单位没有中毒。');
+  const items = state.items ?? [];
+  const index = items.findIndex(item => item.name === '解毒剂' && item.quantity > 0);
+  if (index < 0) throw new Error('背包里没有解毒剂。');
+  const picked = items[index];
+  if (picked.quantity > 1) picked.quantity -= 1;
+  else items.splice(index, 1);
+  state.conditions = state.conditions.filter(condition => condition !== '中毒');
+  delete state.poisoned;
+  state.actionUsed = true;
+  addLog(next, `${actorLabel(next, actor)} 喝下解毒剂，解除了中毒。`, deps);
+  return next;
+}
+
 /** 施法者失去专注（或改用别的专注法术）时，立即结束其施加的祝福。 */
 function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps: CombatDeps = {}): void {
   for (const [field, byField, name] of [['blessed', 'blessedBy', '祝福术'], ['hasted', 'hastedBy', '加速术'], ['invisible', 'invisibleBy', '隐形术'], ['slowed', 'slowedBy', '缓慢术'], ['frightened', 'frightenedBy', '恐惧术']] as const) {
@@ -1933,6 +1982,14 @@ function resetTurnResources(battle: Battle, actorId: string) {
     if (left > 1) { combat[key] = left - 1; continue; }
     delete combat[key];
     addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 身上的${name}结束了。`, {});
+  }
+  if (typeof combat.poisoned === 'number') {
+    combat.poisoned -= 1;
+    if (combat.poisoned <= 0) {
+      delete combat.poisoned;
+      combat.conditions = combat.conditions.filter(condition => condition !== '中毒');
+      addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 的毒素失效了。`, {});
+    }
   }
   if (typeof combat.charmed === 'number') {
     combat.charmed -= 1;
@@ -2729,6 +2786,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const state = combatantOf(attacker);
   if (state.conditions.includes('魅惑') && state.charmedBy === target.id) throw new Error('被魅惑的单位无法攻击魅惑它的施法者。');
   const frightenedAdjustment: ModeAdjustment | null = (state.frightened ?? 0) > 0 && state.frightenedBy === target.id ? { mode: 'disadvantage', notes: ['处于恐慌：对恐惧源攻击检定劣势'] } : null;
+  const poisonAdjustment: ModeAdjustment | null = state.conditions.includes('中毒') ? { mode: 'disadvantage', notes: ['中毒：攻击检定劣势'] } : null;
   const targetWasDown = combatantOf(target).status === 'down';
   const ammoWeapon = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
   if (ammoWeapon?.properties?.includes('弹药')) state.ammo = Math.max(0, (state.ammo ?? defaultAmmo) - 1);
@@ -2771,7 +2829,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const fogAdjustment: ModeAdjustment | null = attackerFog !== targetFog ? { mode: 'disadvantage', notes: ['云雾遮蔽：攻击检定劣势'] } : null;
   const darknessAdjustment: ModeAdjustment | null = inDarkness(battle, attacker.id) !== inDarkness(battle, target.id) ? { mode: 'disadvantage', notes: ['魔法黑暗：看不清目标'] } : null;
   const invisibleAdjustment: ModeAdjustment | null = invisibleAttacker ? { mode: 'advantage', notes: ['攻击者处于隐形：攻击检定优势'] } : invisibleTarget ? { mode: 'disadvantage', notes: ['目标处于隐形：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(darknessAdjustment ? [darknessAdjustment] : []), ...(frightenedAdjustment ? [frightenedAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(darknessAdjustment ? [darknessAdjustment] : []), ...(frightenedAdjustment ? [frightenedAdjustment] : []),
+    ...(poisonAdjustment ? [poisonAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
@@ -3457,6 +3516,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.charmedBy;
     delete actor.combat.frightened;
     delete actor.combat.frightenedBy;
+    delete actor.combat.poisoned;
+    actor.combat.conditions = actor.combat.conditions.filter(condition => condition !== '中毒');
     delete actor.combat.invisible;
     delete actor.combat.invisibleBy;
     delete actor.combat.shield;

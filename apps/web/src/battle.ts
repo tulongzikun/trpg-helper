@@ -145,6 +145,8 @@ export type CombatantState = {
   frightened?: number;
   /** 施加恐惧术的施法者 id。 */
   frightenedBy?: string;
+  /** 中毒剩余轮数（攻击检定劣势），归零时自动解除。 */
+  poisoned?: number;
   /** 护盾术：AC 加值，直到自己下个回合开始。 */
   shield?: number;
 };
