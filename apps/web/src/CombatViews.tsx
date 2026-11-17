@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
-import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, pendingOpportunities, summonsOf } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
@@ -626,6 +626,10 @@ export function AreaEffectForm({ battle, onSave, onAreaSave }: { battle: Battle;
   };
   return <div className="cmb-area">
     <div className="cmb-attack-head"><h4>豁免与范围效果</h4><small>已选 {selected.length} / {actors.length}</small></div>
+      {(() => {
+        const allies = friendlyFireTargets(battle, currentActorId(battle) ?? '', selected);
+        return allies.length ? <p className="cmb-hint">注意：这次范围会波及 {allies.length} 名友方单位（{allies.map(item => item.name).join('、')}）。</p> : null;
+      })()}
     <div className="cmb-targets">
       {actors.map(actor => <label key={actor.id} className="cmb-target"><input type="checkbox" checked={selected.includes(actor.id)} onChange={() => toggle(actor.id)} />{actorLabel(battle, actor)}<small>HP {actor.currentHp}/{actor.maxHp}</small></label>)}
     </div>

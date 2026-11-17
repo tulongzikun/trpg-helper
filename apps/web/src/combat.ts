@@ -2553,6 +2553,15 @@ export function savingThrow(battle: Battle, options: SaveOptions, deps: CombatDe
   return { battle: next, outcome };
 }
 
+/** 范围效果会波及的自己人：用于界面提示「会误伤队友」。
+ */
+export function friendlyFireTargets(battle: Battle, actorId: string, targetIds: string[]): Actor[] {
+  const source = battle.actors.find(item => item.id === actorId);
+  if (!source) return [];
+  const wanted = new Set(targetIds);
+  return battle.actors.filter(item => wanted.has(item.id) && item.id !== actorId && item.side === source.side && item.side !== '中立');
+}
+
 export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatDeps = {}): { battle: Battle; results: AreaSaveResult[] } {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
