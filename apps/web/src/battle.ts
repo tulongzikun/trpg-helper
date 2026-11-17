@@ -117,6 +117,8 @@ export type CombatantState = {
   hidden?: boolean;
   /** 祝福术：剩余轮数（攻击检定与豁免 +1d4）。 */
   blessed?: number;
+  /** 施加祝福术的施法者 id：施法者失去专注时祝福立刻结束。 */
+  blessedBy?: string;
   /** 护盾术：AC 加值，直到自己下个回合开始。 */
   shield?: number;
 };

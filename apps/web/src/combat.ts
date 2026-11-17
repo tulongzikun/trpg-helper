@@ -491,6 +491,17 @@ export function blessTargets(battle: Battle, casterId: string): Actor[] {
     && (!battle.grid || !caster.position || !item.position || (actorDistance(battle, casterId, item.id) ?? 0) <= 30));
 }
 
+/** 施法者失去专注（或改用别的专注法术）时，立即结束其施加的祝福。 */
+function clearBlessOf(battle: Battle, casterId: string, reason: string, deps: CombatDeps = {}): void {
+  const affected = battle.actors.filter(item => item.combat?.blessedBy === casterId);
+  if (!affected.length) return;
+  for (const item of affected) {
+    delete item.combat!.blessed;
+    delete item.combat!.blessedBy;
+  }
+  addLog(battle, `${reason}，${affected.map(item => actorLabel(battle, item)).join('、')} 的祝福术结束了。`, deps);
+}
+
 /** 祝福术：动作施放，最多 3 名友方在 10 轮内攻击检定与豁免 +1d4，施法者需维持专注。 */
 export function castBless(battle: Battle, casterId: string, targetIds: string[], deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -510,7 +521,11 @@ export function castBless(battle: Battle, casterId: string, targetIds: string[],
   }
   state.actionUsed = true;
   state.concentration = { spell: '祝福术' };
-  for (const id of ids) combatantOf(actorOf(next, id)).blessed = 10;
+  for (const id of ids) {
+    const targetState = combatantOf(actorOf(next, id));
+    targetState.blessed = 10;
+    targetState.blessedBy = casterId;
+  }
   addLog(next, `${actorLabel(next, caster)} 施放祝福术：${ids.map(id => actorLabel(next, actorOf(next, id))).join('、')} 的攻击检定与豁免 +1d4，持续 10 轮。`, deps);
   return next;
 }
@@ -1490,6 +1505,7 @@ function settleDeath(battle: Battle, actor: Actor, deps: CombatDeps = {}): void 
     delete state.concentration;
     dismissSummonsOf(battle, actor.id, `施法者死亡，无法维持「${spell}」`, deps);
     addLog(battle, `${actorLabel(battle, actor)} 死亡，中断了对「${spell}」的专注。`, deps);
+    clearBlessOf(battle, actor.id, `${actorLabel(battle, actor)} 死亡`, deps);
   }
   if (state.ongoing?.length) {
     delete state.ongoing;
@@ -2566,6 +2582,9 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.helpedAttack;
     delete actor.combat.ready;
     delete actor.combat.concentration;
+    delete actor.combat.blessed;
+    delete actor.combat.blessedBy;
+    delete actor.combat.shield;
     delete actor.combat.speedPenaltyFt;
     delete actor.combat.slowSourceId;
     delete actor.combat.ammo;
@@ -2821,6 +2840,7 @@ function concentrationCheck(battle: Battle, actor: Actor, damage: number, random
   if (actor.combat?.status !== 'active' || damage <= 0) {
     delete actor.combat!.concentration;
     dismissSummonsOf(battle, actor.id, `施法者失去专注「${concentration.spell}」`, deps);
+    clearBlessOf(battle, actor.id, `${actorLabel(battle, actor)} 失去专注「${concentration.spell}」`, deps);
     return { lost: true, dc, natural: 0, total: 0, text: `失去对「${concentration.spell}」的专注` };
   }
   const warcaster = actor.combat?.warCaster === true;
@@ -2828,6 +2848,7 @@ function concentrationCheck(battle: Battle, actor: Actor, damage: number, random
   if (outcome.success) return { lost: false, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，维持「${concentration.spell}」${warcaster ? '（战地施法者：优势）' : ''}` };
   delete actor.combat!.concentration;
   dismissSummonsOf(battle, actor.id, `施法者失去专注「${concentration.spell}」`, deps);
+  clearBlessOf(battle, actor.id, `${actorLabel(battle, actor)} 失去专注「${concentration.spell}」`, deps);
   return { lost: true, dc, natural: outcome.natural, total: outcome.total, text: `专注检定 DC ${dc}：d20(${outcome.natural}) + ${outcome.total - outcome.natural} = ${outcome.total}，失去对「${concentration.spell}」的专注` };
 }
 
@@ -2879,7 +2900,10 @@ export function startConcentration(battle: Battle, actorId: string, spell: strin
   if (state.status !== 'active') throw new Error('只有在场的单位可以维持专注。');
   const replaced = state.concentration?.spell;
   state.concentration = { spell: spell.trim() };
-  if (replaced && replaced !== spell.trim()) dismissSummonsOf(next, actor.id, `施法者改用「${spell.trim()}」专注`, deps);
+  if (replaced && replaced !== spell.trim()) {
+    dismissSummonsOf(next, actor.id, `施法者改用「${spell.trim()}」专注`, deps);
+    clearBlessOf(next, actor.id, `${actorLabel(next, actor)} 改用「${spell.trim()}」专注`, deps);
+  }
   addLog(next, `${actorLabel(next, actor)} 开始专注「${spell.trim()}」。`, deps, replaced ? `替换了原先的「${replaced}」` : undefined);
   return next;
 }
@@ -2893,6 +2917,7 @@ export function endConcentration(battle: Battle, actorId: string, deps: CombatDe
   const spell = state.concentration.spell;
   delete state.concentration;
   dismissSummonsOf(next, actor.id, `施法者结束专注「${spell}」`, deps);
+  clearBlessOf(next, actor.id, `${actorLabel(next, actor)} 结束了专注「${spell}」`, deps);
   addLog(next, `${actorLabel(next, actor)} 结束了对「${spell}」的专注。`, deps);
   return next;
 }
