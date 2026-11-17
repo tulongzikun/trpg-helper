@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
-import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
@@ -120,6 +120,7 @@ export type CombatHandlers = {
   onAddItem: (actorId: string, name: string, quantity: number, healExpression: string, identified: boolean) => void;
   onIdentify: (actorId: string, name: string) => void;
   onUseItem: (actorId: string, name: string, targetId?: string) => void;
+  onReadScroll: (actorId: string, name: string) => void;
   onThrowFlask: (actorId: string, kind: 'holy-water' | 'alchemists-fire', targetId: string) => void;
   onAntitoxin: (actorId: string) => void;
   onLoot: (looterId: string, targetId: string) => void;
@@ -1364,6 +1365,11 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
         <div className="cmb-ai-actions">
           {items.map(item => (
             <Fragment key={item.name}>
+              {scrollSpellOf(item.name) ? (
+                <button type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onReadScroll(actor.id, item.name)} aria-label="阅读法术卷轴">
+                  阅读卷轴 {item.name}（动作，DC {scrollDc(item.name)}）
+                </button>
+              ) : null}
               <button key={item.name} type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onUseItem(actor.id, item.name)}>
                 使用 {item.name}（×{item.quantity}）{item.identified === false ? '（未鉴定）' : ''}
               </button>

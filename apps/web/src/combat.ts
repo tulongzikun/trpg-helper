@@ -1009,7 +1009,7 @@ export function healTargets(battle: Battle, casterId: string, rangeFt = MASS_HEA
   });
 }
 
-function spellHealBonus(actor: Actor): number {
+export function spellcastingBonus(actor: Actor): number {
   const abilities = actor.template.abilities ?? actor.characterSnapshot?.sheet.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
   const mod = (score: number) => Math.floor((score - 10) / 2);
   return Math.max(0, mod(abilities.int), mod(abilities.wis), mod(abilities.cha));
@@ -1037,7 +1037,7 @@ export function castMassHealingWord(battle: Battle, casterId: string, targetIds:
     if (!allowed.has(id)) throw new Error('群体治疗术只能影响 60 尺内的同阵营单位。');
     return target;
   });
-  const bonus = spellHealBonus(caster);
+  const bonus = spellcastingBonus(caster);
   const random = randomOf(deps);
   state.bonusUsed = true;
   const healed: { id: string; amount: number }[] = [];
@@ -1880,6 +1880,75 @@ function applyLavaAt(battle: Battle, actor: Actor, deps: CombatDeps, phase: '踏
   const burned = rollDamage('1d10', randomOf(deps), false);
   const result = applyDamageToActor(actor, burned.total, '火焰', battle, deps);
   addLog(battle, `${actorLabel(battle, actor)} ${phase === '踏入' ? '踏入' : '在'}岩浆，受到 ${result.damage} 点火焰伤害。`, deps);
+}
+
+export type ScrollSpell = '治疗术' | '祝福术' | '加速术' | '群体治疗术';
+
+const SCROLL_PREFIX = '法术卷轴';
+const SCROLL_SPELLS: ScrollSpell[] = ['群体治疗术', '治疗术', '祝福术', '加速术'];
+
+/** 从物品名解析卷轴法术：名称须以「法术卷轴」开头并含已支持的法术名。 */
+export function scrollSpellOf(name: string): ScrollSpell | null {
+  if (!name.startsWith(SCROLL_PREFIX)) return null;
+  return SCROLL_SPELLS.find(spell => name.includes(spell)) ?? null;
+}
+
+/** 卷轴豁免 DC：名称里的「（N 环）」决定环阶，缺省按 1 环（DC 11）。 */
+export function scrollDc(name: string): number {
+  const level = Number(name.match(/[(（](\d+)\s*环[)）]/)?.[1] ?? 1);
+  return 10 + (Number.isInteger(level) && level > 0 ? level : 1);
+}
+
+/** 阅读法术卷轴：动作，施法属性检定对抗 DC 10 + 环阶，成功则施放，失败则卷轴损毁。 */
+export function readScroll(battle: Battle, actorId: string, name: string, deps: CombatDeps = {}): { battle: Battle; spell: ScrollSpell; success: boolean; outcome: { natural: number; total: number; dc: number } } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以阅读卷轴。');
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以阅读卷轴。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const item = (state.items ?? []).find(entry => entry.name === name);
+  if (!item) throw new Error(`该单位没有「${name}」这个物品。`);
+  if (item.quantity <= 0) throw new Error(`「${name}」已经用完。`);
+  const spell = scrollSpellOf(name);
+  if (!spell) throw new Error(`「${name}」不是可用的法术卷轴。`);
+  requireVoice(next, actorId);
+  const dc = scrollDc(name);
+  const bonus = spellcastingBonus(actor);
+  const natural = rollDie(20, randomOf(deps));
+  const total = natural + bonus;
+  const success = natural === 20 || (natural !== 1 && total >= dc);
+  item.quantity -= 1;
+  if (item.quantity <= 0) {
+    state.items = (state.items ?? []).filter(entry => entry !== item);
+    if (state.items.length === 0) delete state.items;
+  }
+  const outcome = { natural, total, dc };
+  if (!success) {
+    state.actionUsed = true;
+    addLog(next, `${actorLabel(next, actor)} 阅读「${name}」失败（d20 ${natural}+${bonus}=${total} 对 DC ${dc}），卷轴化为灰烬。`, deps);
+    return { battle: next, spell, success: false, outcome };
+  }
+  let applied = next;
+  if (spell === '治疗术') {
+    state.actionUsed = true;
+    applied = healActor(next, actorId, rollDamage('2d4+2', randomOf(deps), false).total, deps);
+  } else if (spell === '祝福术') {
+    const targets = blessTargets(next, actorId).slice(0, 3);
+    if (!targets.length) targets.push(actor);
+    applied = castBless(next, actorId, targets.map(entry => entry.id), deps);
+  } else if (spell === '加速术') {
+    const target = spellTargets(next, actorId)[0];
+    if (!target) throw new Error('加速术卷轴没有可以影响的目标。');
+    applied = castHaste(next, actorId, target.id, deps);
+  } else {
+    applied = castMassHealingWord(next, actorId, healTargets(next, actorId).map(entry => entry.id), deps).battle;
+  }
+  addLog(applied, `${actorLabel(applied, actorOf(applied, actorId))} 借「${name}」施放${spell}（d20 ${natural}+${bonus}=${total} 对 DC ${dc} 成功），卷轴化为灰烬。`, deps);
+  return { battle: applied, spell, success: true, outcome };
 }
 
 /** 瞄准：附赠动作，让下一次远程攻击检定获得优势。 */
