@@ -153,3 +153,5 @@
 .cmb-reinforce-grid label { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); }
 .cmb-reinforce-grid input, .cmb-reinforce-grid select { font-size: 0.88rem; padding: 4px 6px; }
 .cmb-reinforce-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+
+.cmb-reward { margin: 10px 0 0; padding: 8px 12px; border-left: 3px solid var(--accent, #7a5cff); background: #f6f4ff; border-radius: 8px; font-size: 0.9rem; color: #443a6b; }
