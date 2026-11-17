@@ -16,6 +16,7 @@ export type CombatDeps = { random?: Random; makeId?: () => string };
 export type AttackCost = 'action' | 'bonus' | 'reaction';
 export type AttackMode = 'normal' | 'advantage' | 'disadvantage';
 export type AttackOptions = {
+  nonLethal?: boolean;
   attackerId: string;
   targetId: string;
   attackBonus: number;
@@ -2754,7 +2755,7 @@ function terrainDefense(battle: Battle | undefined, type: DamageType): { multipl
   if (battle?.weather === 'rain' && type === '火焰') return { multiplier: 0.5, label: '暴雨：火焰抗性' };
   return { multiplier: 1, label: '' };
 }
-function applyDamageToActor(actor: Actor, amount: number, type: DamageType, battle?: Battle, deps: CombatDeps = {}): DamageOutcome {
+function applyDamageToActor(actor: Actor, amount: number, type: DamageType, battle?: Battle, deps: CombatDeps = {}, options: { nonLethal?: boolean } = {}): DamageOutcome {
   if (!Number.isInteger(amount) || amount < 0) throw new Error('伤害须为非负整数。');
   const state = combatantOf(actor);
   const defense = defenseOf(actor, type);
@@ -2764,8 +2765,8 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
   state.tempHp -= absorbed;
   const remaining = adjusted - absorbed;
   if (actor.currentHp === 0 && state.status === 'down') {
-    if (remaining > 0 && state.stable === true) delete state.stable;
-    if (remaining > 0) state.deathSaves.failures = Math.min(3, state.deathSaves.failures + 1);
+    if (remaining > 0 && state.stable === true && !options.nonLethal) delete state.stable;
+    if (remaining > 0 && !options.nonLethal) state.deathSaves.failures = Math.min(3, state.deathSaves.failures + 1);
     if (state.deathSaves.failures >= 3) state.status = 'dead';
     if (battle && state.status === 'dead') settleDeath(battle, actor, deps);
     return { damage: adjusted, tempAbsorbed: absorbed, status: state.status };
@@ -2774,8 +2775,15 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
   actor.currentHp = Math.max(0, before - remaining);
   if (actor.currentHp === 0) {
     const overflow = Math.max(0, remaining - before);
-    state.status = actor.characterSnapshot && overflow < actor.maxHp ? 'down' : 'dead';
-    state.deathSaves = { successes: 0, failures: 0 };
+    if (options.nonLethal) {
+      state.status = 'down';
+      state.stable = true;
+      state.deathSaves = { successes: 0, failures: 0 };
+      if (battle) addLog(battle, `${actorLabel(battle, actor)} 被非致命攻击打晕，陷入昏迷但伤势稳定。`, deps);
+    } else {
+      state.status = actor.characterSnapshot && overflow < actor.maxHp ? 'down' : 'dead';
+      state.deathSaves = { successes: 0, failures: 0 };
+    }
   }
   if (battle && state.status === 'dead') settleDeath(battle, actor, deps);
   if (battle && adjusted > 0 && state.sleeping === true) {
@@ -3122,6 +3130,7 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (!Number.isInteger(criticalRange) || criticalRange < 15 || criticalRange > 20) throw new Error('重击范围须为 15 至 20。');
   const range: AttackRange = options.range ?? 'melee';
   if (range !== 'melee' && range !== 'ranged') throw new Error('请选择近战或远程攻击。');
+  if (options.nonLethal && range !== 'melee') throw new Error('只有近战攻击可以选择非致命。');
   const reachFt = options.reachFt ?? 5;
   if (!Number.isInteger(reachFt) || reachFt < 5 || reachFt > 30) throw new Error('近战触及范围须为 5 至 30 尺的整数。');
   if (options.cover !== undefined && !coverTypes.includes(options.cover)) throw new Error('掩体取值无效。');
@@ -3299,6 +3308,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const automaticCritical = hit && isAutomaticCritical(target, context.range, context.distanceFt);
   const critical = hit && (natural >= context.criticalRange || automaticCritical);
   if (automaticCritical) notes.push('目标麻痹或昏迷且在 5 尺内：命中即重击');
+  const nonLethalHit = options.nonLethal === true && context.range === 'melee';
   let damage = 0;
   let tempAbsorbed = 0;
   let status: CombatStatus = combatantOf(target).status;
@@ -3319,14 +3329,14 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     defense = [defenseResult.label, terrainResult.label].filter(Boolean).join('，');
     const dueling = duelingBonus(attacker, options);
     if (dueling > 0) notes.push('对决：单手近战伤害 +2');
-    const result = applyDamageToActor(target, rolled.total + (options.powerAttack ? 10 : 0) + dueling, options.damageType, battle);
+    const result = applyDamageToActor(target, rolled.total + (options.powerAttack ? 10 : 0) + dueling, options.damageType, battle, {}, { nonLethal: nonLethalHit });
     damage = result.damage;
     tempAbsorbed = result.tempAbsorbed;
     status = result.status;
     if (options.extraDamageExpression && options.extraDamageType) {
       const extraRoll = rollDamage(options.extraDamageExpression, random, critical && options.extraDamageCritical !== false);
       const extraDefense = defenseOf(target, options.extraDamageType);
-      const extraResult = applyDamageToActor(target, extraRoll.total, options.extraDamageType, battle);
+      const extraResult = applyDamageToActor(target, extraRoll.total, options.extraDamageType, battle, {}, { nonLethal: nonLethalHit });
       extraDamage = extraResult.damage;
       damage += extraDamage;
       tempAbsorbed += extraResult.tempAbsorbed;
@@ -3340,7 +3350,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
       && cellDistance(item.position, targetPosition) <= 1);
     if (sneakDice > 0 && combatantOf(attacker).sneakUsed !== true && (mode === 'advantage' || allyAdjacent)) {
       const sneakRoll = rollDamage(`${sneakDice}d6`, random, critical);
-      const sneakResult = applyDamageToActor(target, sneakRoll.total, options.damageType, battle);
+      const sneakResult = applyDamageToActor(target, sneakRoll.total, options.damageType, battle, {}, { nonLethal: nonLethalHit });
       damage += sneakResult.damage;
       tempAbsorbed += sneakResult.tempAbsorbed;
       status = sneakResult.status;
@@ -3440,6 +3450,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     options.twoHanded && damageExpression !== options.damageExpression ? `双手持用：${damageExpression}` : '',
     options.powerAttack ? '强力攻击：攻击检定 -5，伤害 +10' : '',
     options.sharpshooter ? '神射手：忽略掩体与远程射程劣势' : '',
+    nonLethalHit ? '非致命：命中后使目标昏迷而非死亡' : '',
     extraNote,
     sneakNote,
     masteryNote,
