@@ -630,8 +630,10 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   if (!from) {
     actor.position = { x, y };
     addLog(next, `${actorLabel(next, actor)} 放置在 (${x}, ${y})。`, deps);
-    applyHazardAt(next, actor, x, y, deps);
-    applyLavaAt(next, actor, deps);
+    if (combatantOf(actor).flying !== true) {
+      applyHazardAt(next, actor, x, y, deps);
+      applyLavaAt(next, actor, deps);
+    }
     return next;
   }
   requireCombat(next);
@@ -646,13 +648,14 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const climbing = next.terrain === 'climbing';
   const icy = next.terrain === 'ice';
   const lava = next.terrain === 'lava';
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1) * (swimming || climbing || icy || lava ? 2 : 1);
+  const flying = state.flying === true;
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava ? 2 : 1);
   const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}${swimming ? '，水下游泳使消耗翻倍' : ''}${climbing ? '，攀爬使消耗翻倍' : ''}${icy ? '，冰面使消耗翻倍' : ''}${lava ? '，岩浆使消耗翻倍' : ''}。`, deps);
-  if (icy) {
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}。`, deps);
+  if (icy && !flying) {
     const stumble = resolveSave(actor, { actorId: actor.id, ability: 'dex', dc: 10, bonus: defaultSaveBonus(actor, 'dex') + auraBonus(next, actor.id, 'saves') }, randomOf(deps));
     if (!stumble.success) {
       const slipState = combatantOf(actor);
@@ -660,8 +663,10 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
       addLog(next, `${actorLabel(next, actor)} 在冰面上滑倒，倒地。`, deps);
     }
   }
-  applyHazardAt(next, actor, x, y, deps);
-  applyLavaAt(next, actor, deps);
+  if (!flying) {
+    applyHazardAt(next, actor, x, y, deps);
+    applyLavaAt(next, actor, deps);
+  }
   const triggered = threatPrompts(next, actor, from, { x, y });
   const entered = enteringReachPrompts(next, actor, from, { x, y });
   if (entered.length) {
@@ -2411,6 +2416,22 @@ export function addReinforcement(battle: Battle, card: Card, input: Reinforcemen
 
 /** 起身：消耗一半速度的移动力，移除倒地状态。 */
 /** 延迟行动：把当前行动者挪到本轮最后，让下一位先行动。 */
+/** 切换飞行状态：飞行单位移动时忽略地形消耗与危险地形伤害。 */
+export function setFlying(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status === 'dead') throw new Error('已经死亡的单位无法飞行。');
+  if (enabled) {
+    state.flying = true;
+    addLog(next, `${actorLabel(next, actor)} 起飞：移动忽略地形消耗与危险地形伤害。`, deps);
+  } else {
+    delete state.flying;
+    addLog(next, `${actorLabel(next, actor)} 落地。`, deps);
+  }
+  return next;
+}
+
 export function delayTurn(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   const combat = requireCombat(next);
