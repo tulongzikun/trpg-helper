@@ -9,7 +9,10 @@ import type { Battle, Position, Side } from './battle';
 
 export type AutoActionKind = 'attack' | 'move' | 'retreat' | 'wait';
 export type AutoAction = { battle: Battle; kind: AutoActionKind; text: string };
-export type AutoTurn = AutoAction & { steps: string[] };
+export type AutoTurn = AutoAction & { steps: string[]; stopped?: AutoTurnStop };
+
+/** 自动回合为什么停下来。 */
+export type AutoTurnStop = { reason: 'finished' | 'done' | 'handoff' | 'limit'; text: string };
 
 /** 无法接近目标时：还有动作就先闪避，否则原样待命。 */
 function defensiveFallback(battle: Battle, actorId: string, deps: CombatDeps, text: string): AutoAction {
@@ -205,28 +208,40 @@ export type AutoTurnOptions = { endTurn?: boolean; maxSteps?: number };
 export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {}, options: AutoTurnOptions = {}): AutoTurn {
   if (currentActorId(battle) !== actorId) throw new Error('只有当前回合的单位可以自动行动。');
   if (battleOutcome(battle) !== 'ongoing') {
-    return { battle, kind: 'wait', text: '自动行动：战斗已经结束。', steps: ['自动行动：战斗已经结束。'] };
+    return { battle, kind: 'wait', text: '自动行动：战斗已经结束。', steps: ['自动行动：战斗已经结束。'], stopped: { reason: 'finished', text: '战斗已经结束，自动回合停止。' } };
   }
   const steps: string[] = [];
   let current = battle;
   let kind: AutoActionKind = 'wait';
   const maxSteps = Math.max(1, Math.min(12, options.maxSteps ?? 8));
+  let stopped: AutoTurnStop | undefined;
   for (let index = 0; index < maxSteps; index++) {
     const actor = current.actors.find(item => item.id === actorId);
-    if (!actor || actor.combat?.actionUsed) break;
-    if (currentActorId(current) !== actorId) break;
+    if (!actor || actor.combat?.actionUsed) {
+      stopped = { reason: 'done', text: `${actor ? '该单位的动作已经用完' : '该单位已不在战斗中'}，自动回合结束。` };
+      break;
+    }
+    if (currentActorId(current) !== actorId) {
+      stopped = { reason: 'handoff', text: '回合已经交给别的单位，自动回合结束。' };
+      break;
+    }
     const step = autoAct(current, actorId, deps);
     steps.push(step.text);
     current = step.battle;
     kind = step.kind;
-    if (step.kind === 'wait') break;
+    if (step.kind === 'wait') {
+      stopped = { reason: 'done', text: '没有可执行的自动动作，自动回合结束。' };
+      break;
+    }
   }
   if (!steps.length) steps.push('自动行动：没有可执行的动作，原地待命。');
   if (options.endTurn !== false && currentActorId(current) === actorId) {
     current = endTurn(current, deps);
     steps.push('自动行动：结束回合。');
   }
-  return { battle: current, kind, text: steps.join(' '), steps };
+  if (!stopped) stopped = { reason: 'limit', text: `自动回合达到 ${maxSteps} 步上限。` };
+  if (battleOutcome(current) !== 'ongoing') stopped = { reason: 'finished', text: '战斗已经结束，自动回合停止。' };
+  return { battle: current, kind, text: steps.join(' '), steps, ...(stopped ? { stopped } : {}) };
 }
 
 export type AutoSideOptions = { maxTurns?: number };
