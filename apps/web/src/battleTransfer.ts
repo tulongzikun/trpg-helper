@@ -108,8 +108,17 @@ export function battleTranscript(battle: Battle): string {
       if (actor.combat.ongoing && actor.combat.ongoing.length > 0) parts.push(`持续：${actor.combat.ongoing.map(x => x.name).join('、')}`);
       parts.push(`资源：动作${actor.combat.actionUsed ? '已用' : '未用'}／附赠${actor.combat.bonusUsed ? '已用' : '未用'}／反应${actor.combat.reactionUsed ? '已用' : '未用'}／移动已用 ${actor.combat.movementUsed ?? 0} 尺`);
       if (actor.combat.spellSlots?.length) parts.push(`法术位：${actor.combat.spellSlots.join('/')}`);
+      if (actor.combat.items?.length) parts.push(`物品：${actor.combat.items.map(item => `${item.name}×${item.quantity}`).join('、')}`);
     }
     lines.push(`- ${parts.join(' · ')}`);
+  }
+  if (battle.attackPresets?.length) {
+    lines.push('', '## 常用攻击', '');
+    for (const preset of battle.attackPresets) {
+      const attacker = battle.actors.find(item => item.id === preset.attackerId);
+      const target = battle.actors.find(item => item.id === preset.targetId);
+      lines.push(`- 「${preset.name}」：${attacker?.name ?? '？'} → ${target?.name ?? '？'}，${preset.attackBonus >= 0 ? '+' : ''}${preset.attackBonus}，${preset.damageExpression} ${preset.damageType}，${preset.range === 'melee' ? '近战' : '远程'}`);
+    }
   }
   const log = battle.combat?.log ?? [];
   lines.push('', '## 战斗日志', '');
