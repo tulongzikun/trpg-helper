@@ -1476,6 +1476,7 @@ export function useItem(battle: Battle, actorId: string, name: string, targetId?
   const item = (state.items ?? []).find(entry => entry.name === name);
   if (!item) throw new Error(`该单位没有「${name}」这个物品。`);
   if (item.quantity <= 0) throw new Error(`「${name}」已经用完。`);
+  if (item.identified === false) throw new Error(`「${name}」尚未鉴定，无法使用。`);
   if (!item.healExpression) throw new Error(`「${name}」没有可结算的效果。`);
   const target = actorOf(next, targetId ?? actorId);
   const targetState = combatantOf(target);
@@ -1567,6 +1568,36 @@ export function giveItem(battle: Battle, fromId: string, toId: string, name: str
   }
   addLog(next, `${actorLabel(next, giver)} 把「${item.name}」×${quantity} 递给 ${actorLabel(next, receiver)}。`, deps);
   return { battle: next, moved: quantity };
+}
+
+/** 记录一件未鉴定的物品：效果先隐藏，鉴定后才能使用。 */
+export function addUnidentifiedItem(battle: Battle, actorId: string, name: string, quantity: number, healExpression?: string, deps: CombatDeps = {}): Battle {
+  const next = addItem(battle, actorId, name, quantity, healExpression, deps);
+  const actor = actorOf(next, actorId);
+  const item = (combatantOf(actor).items ?? []).find(entry => entry.name === name);
+  if (!item) return next;
+  item.identified = false;
+  addLog(next, `${actorLabel(next, actor)} 记录了一件未鉴定的物品「${name}」×${quantity}。`, deps);
+  return next;
+}
+
+/** 鉴定物品：消耗动作，成功后可以使用。 */
+export function identifyItem(battle: Battle, actorId: string, name: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以鉴定物品。');
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const item = (state.items ?? []).find(entry => entry.name === name);
+  if (!item) throw new Error(`该单位没有「${name}」这个物品。`);
+  if (item.identified !== false) throw new Error(`「${name}」已经鉴定过了。`);
+  item.identified = true;
+  state.actionUsed = true;
+  addLog(next, `${actorLabel(next, actor)} 鉴定了「${name}」${item.healExpression ? `：${item.healExpression} 治疗` : ''}。`, deps);
+  return next;
 }
 
 export function setActorHp(battle: Battle, actorId: string, hp: number, deps: CombatDeps = {}): Battle {

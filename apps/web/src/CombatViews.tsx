@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
@@ -91,7 +91,8 @@ export type CombatHandlers = {
   onReckless: (actorId: string) => void;
   onHelp: (helperId: string, targetId: string) => void;
   onProtect: (protectorId: string, targetId: string) => void;
-  onAddItem: (actorId: string, name: string, quantity: number, healExpression: string) => void;
+  onAddItem: (actorId: string, name: string, quantity: number, healExpression: string, identified: boolean) => void;
+  onIdentify: (actorId: string, name: string) => void;
   onUseItem: (actorId: string, name: string, targetId?: string) => void;
   onLoot: (looterId: string, targetId: string) => void;
   onGive: (fromId: string, toId: string, name: string) => void;
@@ -1235,6 +1236,7 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
   const [name, setName] = useState('治疗药水');
   const [dice, setDice] = useState('2d4+2');
   const [quantity, setQuantity] = useState('1');
+  const [unidentified, setUnidentified] = useState(false);
   const [notice, setNotice] = useState('');
   const items = actor.combat?.items ?? [];
   const corpses = battle.actors.filter(item => item.combat?.status === 'dead' && (item.combat?.items ?? []).length > 0);
@@ -1245,7 +1247,7 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
     if (!name.trim()) return setNotice('请填写物品名称。');
     if (!Number.isInteger(count) || count < 1 || count > 99) return setNotice('物品数量须为 1 至 99 的整数。');
     setNotice('');
-    handlers.onAddItem(actor.id, name.trim(), count, dice.trim());
+    handlers.onAddItem(actor.id, name.trim(), count, dice.trim(), !unidentified);
   };
   return (
     <div className="cmb-help">
@@ -1253,9 +1255,16 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
       {items.length ? (
         <div className="cmb-ai-actions">
           {items.map(item => (
-            <button key={item.name} type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onUseItem(actor.id, item.name)}>
-              使用 {item.name}（×{item.quantity}）
-            </button>
+            <Fragment key={item.name}>
+              <button key={item.name} type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onUseItem(actor.id, item.name)}>
+                使用 {item.name}（×{item.quantity}）{item.identified === false ? '（未鉴定）' : ''}
+              </button>
+              {item.identified === false ? (
+                <button key={`identify-${item.name}`} type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onIdentify(actor.id, item.name)} aria-label={`鉴定 ${item.name}`}>
+                  鉴定 {item.name}
+                </button>
+              ) : null}
+            </Fragment>
           ))}
         </div>
       ) : <p className="cmb-muted">还没有记录物品。</p>}
@@ -1285,6 +1294,7 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
       <label>名称<input value={name} onChange={event => setName(event.target.value)} /></label>
       <label>治疗骰<input value={dice} onChange={event => setDice(event.target.value)} placeholder="2d4+2" /></label>
       <label>数量<input value={quantity} onChange={event => setQuantity(event.target.value)} inputMode="numeric" /></label>
+      <label className="cmb-check"><input type="checkbox" checked={unidentified} onChange={event => setUnidentified(event.target.checked)} aria-label="未鉴定" />未鉴定（需先花动作鉴定）</label>
       <div className="cmb-ai-actions"><button type="button" className="button-secondary" onClick={add}>记录物品</button></div>
       {notice ? <p className="cmb-muted">{notice}</p> : null}
       <p className="cmb-muted">使用物品消耗动作；治疗骰按本地掷骰结算。</p>

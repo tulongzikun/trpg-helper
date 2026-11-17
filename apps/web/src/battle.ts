@@ -35,6 +35,7 @@ export type CombatItem = {
   name: string;
   quantity: number;
   healExpression?: string;
+  identified?: boolean;
 };
 /** 借机攻击：reactorId 用反应攻击离开其触及范围的 targetId。 */
 export type OpportunityPrompt = { reactorId: string; targetId: string; kind?: 'opportunity' | 'ready' };
@@ -209,6 +210,7 @@ function isCombatItem(value: unknown): value is CombatItem {
   if (typeof item.name !== 'string' || item.name.length === 0 || item.name.length > 40) return false;
   if (!isInteger(item.quantity, 0, 99)) return false;
   if (item.healExpression !== undefined && (typeof item.healExpression !== 'string' || item.healExpression.length === 0 || item.healExpression.length > 20)) return false;
+  if (item.identified !== undefined && typeof item.identified !== 'boolean') return false;
   return true;
 }
 
