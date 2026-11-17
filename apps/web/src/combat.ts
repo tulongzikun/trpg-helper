@@ -349,7 +349,8 @@ function exhaustionSpeedPenalty(actor: Actor): number {
 function movementAllowance(actor: Actor): number {
   const base = actor.combat?.hasted ? actorSpeed(actor) * 2 : actorSpeed(actor);
   const paced = actor.combat?.slowed ? Math.floor(base / 2) : base;
-  return Math.max(0, paced - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
+  const shaped = actor.combat?.polymorphed ? Math.min(base, 25) : base;
+  return Math.max(0, Math.min(paced, shaped) - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
 }
 /** 缓慢术：受影响期间无法使用反应。 */
 function requireReactionAllowed(actor: Actor): void {
@@ -1272,6 +1273,42 @@ export function castDispelMagic(battle: Battle, casterId: string, targetId: stri
   return { battle: next, outcome: { success: true, natural, total, dc: DISPEL_DC, dispelled } };
 }
 
+const POLYMORPH_DC = 13;
+const POLYMORPH_RANGE_FT = 60;
+
+/** 变形术：动作施放、需维持专注，60 尺内一个单位做感知豁免，失败变成小兽（失能、AC 10、速度 25 尺），持续 10 轮。 */
+export function castPolymorph(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): { battle: Battle; outcome: SaveOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
+  const casterState = combatantOf(caster);
+  if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放变形术。');
+  if (targetId === casterId) throw new Error('无法对自己施放变形术。');
+  const target = actorOf(next, targetId);
+  const targetState = combatantOf(target);
+  if (targetState.status === 'dead') throw new Error('无法以已经死亡的单位为目标。');
+  if (targetState.polymorphed) throw new Error('目标已经处于变形术的影响下。');
+  const distance = actorDistance(next, casterId, targetId);
+  if (distance !== undefined && distance > POLYMORPH_RANGE_FT) throw new Error(`变形术只能影响 ${POLYMORPH_RANGE_FT} 尺内的单位。`);
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (casterState.concentration) throw new Error('施法者已经在维持其他专注。');
+  casterState.actionUsed = true;
+  casterState.concentration = { spell: '变形术' };
+  const save = resolveSave(target, { actorId: target.id, ability: 'wis', dc: POLYMORPH_DC, bonus: defaultSaveBonus(target, 'wis') + auraBonus(next, target.id, 'saves') }, randomOf(deps));
+  if (save.success) {
+    addLog(next, `${actorLabel(next, caster)} 对 ${actorLabel(next, target)} 施放变形术：感知豁免 ${save.natural} → ${save.total}，DC ${POLYMORPH_DC}，抵抗了变形。`, deps);
+    return { battle: next, outcome: save };
+  }
+  targetState.polymorphed = 10;
+  targetState.polymorphedBy = casterId;
+  if (!targetState.conditions.includes('失能')) targetState.conditions.push('失能');
+  addLog(next, `${actorLabel(next, caster)} 对 ${actorLabel(next, target)} 施放变形术：感知豁免 ${save.natural} → ${save.total}，DC ${POLYMORPH_DC}，目标变成小兽——失能、AC 10、速度 25 尺，持续 10 轮。`, deps);
+  return { battle: next, outcome: save };
+}
+
 /** 设置天气：传 null 表示放晴。暴雨让远程攻击劣势且火焰伤害减半；强风让远程攻击劣势，并会吹落飞行单位。 */
 export function setWeather(battle: Battle, weather: Weather | null, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -1408,6 +1445,15 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
       item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '麻痹');
     }
     addLog(battle, `${reason}，${held.map(item => actorLabel(battle, item)).join('、')} 的定身术结束了。`, deps);
+  }
+  const shaped = battle.actors.filter(item => item.combat?.polymorphedBy === casterId);
+  if (shaped.length) {
+    for (const item of shaped) {
+      delete item.combat!.polymorphed;
+      delete item.combat!.polymorphedBy;
+      item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '失能');
+    }
+    addLog(battle, `${reason}，${shaped.map(item => actorLabel(battle, item)).join('、')} 的变形术结束了。`, deps);
   }
   if (battle.silence && battle.silenceBy === casterId) {
     delete battle.silence;
@@ -2104,7 +2150,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
       addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 身上的祝福术结束了。`, {});
     }
   }
-  for (const [key, name] of [['hasted', '加速术'], ['invisible', '隐形术'], ['slowed', '缓慢术']] as const) {
+  for (const [key, name] of [['hasted', '加速术'], ['invisible', '隐形术'], ['slowed', '缓慢术'], ['polymorphed', '变形术']] as const) {
     const left = combat[key];
     if (typeof left !== 'number') continue;
     if (left > 1) { combat[key] = left - 1; continue; }
@@ -2981,7 +3027,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const blessDie = combatantOf(attacker).blessed ? rollDie(4, random) : 0;
   if (blessDie) notes.push(`祝福：攻击检定 +${blessDie}`);
   const total = natural + options.attackBonus + archery + blessDie - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
-  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) - (combatantOf(target).slowed ? 2 : 0) + defenseBonus(target);
+  const targetAc = (combatantOf(target).polymorphed ? 10 : target.template.armorClass) + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) - (combatantOf(target).slowed ? 2 : 0) + defenseBonus(target);
   if (guard) delete combatantOf(guard).guarding;
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
@@ -3653,6 +3699,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
   delete actor.combat.paralyzed;
   delete actor.combat.paralyzedBy;
     delete actor.combat.commanded;
+    delete actor.combat.polymorphed;
+    delete actor.combat.polymorphedBy;
     delete actor.combat.vexTargetId;
     delete actor.combat.helpedAttack;
     delete actor.combat.ready;

@@ -146,6 +146,10 @@ export type CombatantState = {
   /** 施加恐惧术的施法者 id。 */
   frightenedBy?: string;
   surprised?: boolean;
+  /** 变形术：剩余轮数（变成小兽：失能、AC 10、速度上限 25 尺）。 */
+  polymorphed?: number;
+  /** 施加变形术的施法者 id。 */
+  polymorphedBy?: string;
   /** 中毒剩余轮数（攻击检定劣势），归零时自动解除。 */
   poisoned?: number;
   /** 护盾术：AC 加值，直到自己下个回合开始。 */
@@ -295,6 +299,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.charmedBy !== undefined && (typeof value.charmedBy !== 'string' || value.charmedBy.length === 0 || value.charmedBy.length > 64)) return false;
   if (value.frightened !== undefined && !isInteger(value.frightened, 0, 100)) return false;
   if (value.frightenedBy !== undefined && (typeof value.frightenedBy !== 'string' || value.frightenedBy.length < 1 || value.frightenedBy.length > 64)) return false; if (value.surprised !== undefined && typeof value.surprised !== 'boolean') return false;
+  if (value.polymorphed !== undefined && !isInteger(value.polymorphed, 0, 100)) return false;
+  if (value.polymorphedBy !== undefined && (typeof value.polymorphedBy !== 'string' || value.polymorphedBy.length === 0 || value.polymorphedBy.length > 64)) return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
   if (value.warCaster !== undefined && typeof value.warCaster !== 'boolean') return false;
   if (value.counterspell !== undefined && typeof value.counterspell !== 'boolean') return false;
