@@ -3,7 +3,7 @@ import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Terrain, Weather } from './battle.ts';
 import type { Ability } from './characters';
-import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side, AttackPreset } from './battle';
+import type { Actor, Aura, Battle, CombatLogEntry, CombatStats, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side, AttackPreset } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
 import { applyFallDamage, jumpDistance } from './combatMovement.ts';
@@ -2853,6 +2853,7 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
   const defense = defenseOf(actor, type);
   const terrain = terrainDefense(battle, type);
   const adjusted = Math.floor(amount * defense.multiplier * terrain.multiplier);
+  statsOf(state).damageTaken += adjusted;
   const absorbed = Math.min(state.tempHp, adjusted);
   state.tempHp -= absorbed;
   const remaining = adjusted - absorbed;
@@ -2885,6 +2886,12 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
   }
   return { damage: adjusted, tempAbsorbed: absorbed, status: state.status };
 }
+/** 取（或初始化）某个单位的战斗统计。 */
+function statsOf(state: CombatantState): CombatStats {
+  state.stats = state.stats ?? { attacks: 0, hits: 0, crits: 0, misses: 0, damageDealt: 0, damageTaken: 0, healing: 0 };
+  return state.stats;
+}
+
 /** 单位死亡后的收尾：中断专注并驱散召唤物、清除自身持续效果与回合标记、移除其产生的灵光。 */
 function settleDeath(battle: Battle, actor: Actor, deps: CombatDeps = {}): void {
   const state = actor.combat;
@@ -2951,6 +2958,7 @@ export function healActor(battle: Battle, actorId: string, amount: number, deps:
   if (state.status === 'dead') throw new Error('已死亡的单位无法通过治疗恢复。');
   const wasDown = state.status === 'down';
   const healed = Math.min(actor.maxHp - actor.currentHp, amount);
+  statsOf(state).healing += healed;
   actor.currentHp += healed;
   if (wasDown && actor.currentHp > 0) {
     state.status = 'active';
@@ -3583,6 +3591,15 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     }
   }
   addLog(battle, `${actorLabel(battle, attacker)} 攻击 ${actorLabel(battle, target)}：${hit ? `命中，造成 ${damage} 点伤害${extraDamage > 0 ? `（含额外 ${extraDamage} 点${options.extraDamageType}伤害）` : ''}` : '未命中'}。`, deps, detail);
+  const attackStats = statsOf(combatantOf(attacker));
+  attackStats.attacks += 1;
+  if (hit) {
+    attackStats.hits += 1;
+    if (critical) attackStats.crits += 1;
+  } else {
+    attackStats.misses += 1;
+  }
+  attackStats.damageDealt += damage;
   return { natural, total, targetAc, hit, critical, damage, tempAbsorbed, targetHp: target.currentHp, status, defense, mode, notes, extraDamage };
 }
 

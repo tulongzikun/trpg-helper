@@ -153,6 +153,8 @@ export type CombatantState = {
   riderId?: string;
   /** 骑乘时继承的坐骑速度（尺）。 */
   mountSpeedFt?: number;
+  /** 本场战斗的统计（攻击、命中、伤害与治疗）。 */
+  stats?: CombatStats;
   aimed?: boolean;
   /** 变形术：剩余轮数（变成小兽：失能、AC 10、速度上限 25 尺）。 */
   polymorphed?: number;
@@ -162,6 +164,16 @@ export type CombatantState = {
   poisoned?: number;
   /** 护盾术：AC 加值，直到自己下个回合开始。 */
   shield?: number;
+};
+/** 单个单位在本场战斗中的统计（攻击次数、命中、伤害与治疗）。 */
+export type CombatStats = {
+  attacks: number;
+  hits: number;
+  crits: number;
+  misses: number;
+  damageDealt: number;
+  damageTaken: number;
+  healing: number;
 };
 export type CombatLogEntry = { id: string; round: number; text: string; detail?: string };
 export type CombatState = {
@@ -312,6 +324,13 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.mountedOn !== undefined && (typeof value.mountedOn !== 'string' || value.mountedOn.length === 0 || value.mountedOn.length > 64)) return false;
   if (value.riderId !== undefined && (typeof value.riderId !== 'string' || value.riderId.length === 0 || value.riderId.length > 64)) return false;
   if (value.mountSpeedFt !== undefined && !isInteger(value.mountSpeedFt, 0, 500)) return false;
+  if (value.stats !== undefined) {
+    if (typeof value.stats !== 'object' || value.stats === null) return false;
+    for (const key of ['attacks', 'hits', 'crits', 'misses', 'damageDealt', 'damageTaken', 'healing']) {
+      const entry = (value.stats as Record<string, unknown>)[key];
+      if (entry !== undefined && !isInteger(entry, 0, 1000000)) return false;
+    }
+  }
   if (value.polymorphed !== undefined && !isInteger(value.polymorphed, 0, 100)) return false;
   if (value.polymorphedBy !== undefined && (typeof value.polymorphedBy !== 'string' || value.polymorphedBy.length === 0 || value.polymorphedBy.length > 64)) return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
