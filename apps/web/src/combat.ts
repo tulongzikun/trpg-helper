@@ -1271,6 +1271,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const sapped = combatantOf(attacker).sapped === true;
   const vexed = combatantOf(attacker).vexTargetId === target.id;
   const hiddenAttacker = combatantOf(attacker).hidden === true;
+  const engagedInMelee = context.range === 'ranged' && !!attacker.position && battle.actors.some(item => item.id !== attacker.id && item.side !== attacker.side && item.side !== '中立' && item.combat?.status === 'active' && !!item.position && cellDistance(item.position, attacker.position!) <= 1);
+  const engagedAdjustment: ModeAdjustment | null = engagedInMelee ? { mode: 'disadvantage', notes: ['远程攻击时敌人贴身：攻击检定劣势'] } : null;
   const hiddenTarget = combatantOf(target).hidden === true;
   const dodgeAdjustment: ModeAdjustment | null = dodging ? { mode: 'disadvantage', notes: ['目标在使用闪避：攻击检定劣势'] } : null;
   const helpAdjustment: ModeAdjustment | null = helped ? { mode: 'advantage', notes: ['得到协助：攻击检定优势'] } : null;
@@ -1281,7 +1283,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const obscuredAdjustment: ModeAdjustment | null = battle.obscured === 'heavy' ? { mode: 'disadvantage', notes: ['重度遮蔽：攻击检定劣势'] } : null;
   const hideAdjustment: ModeAdjustment | null = hiddenAttacker ? { mode: 'advantage', notes: ['攻击者处于躲藏：攻击检定优势'] } : null;
   const unseenAdjustment: ModeAdjustment | null = hiddenTarget ? { mode: 'disadvantage', notes: ['目标处于躲藏：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
