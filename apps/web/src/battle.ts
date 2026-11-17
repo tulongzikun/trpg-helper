@@ -139,6 +139,10 @@ export type CombatantState = {
   deafened?: number;
   /** 耳聋术的施法者。 */
   deafenedBy?: string;
+  /** 短休可用的生命骰数量（未登记时按等级推算）。 */
+  hitDice?: number;
+  /** 生命骰面数，默认 d8。 */
+  hitDieSize?: number;
   /** 撤离战场：仍留在战斗记录里，但不再行动、不计入胜负判定。 */
   fled?: boolean;
   /** 投降：退出战斗但仍留在战场上，可被搜刮，也计入击败经验。 */

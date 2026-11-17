@@ -4936,6 +4936,65 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
   return next;
 }
 
+/** 生命骰面数：优先读角色卡，缺省 d8。 */
+function hitDieOf(actor: Actor): number {
+  const sheet = actor.characterSnapshot?.sheet;
+  const declared = (sheet?.details as Record<string, unknown> | undefined)?.hitDie;
+  if (typeof declared === 'number' && declared >= 4 && declared <= 12) return declared;
+  return actor.combat?.hitDieSize ?? 8;
+}
+
+/** 可用生命骰：已登记就用登记值，否则按等级推算。 */
+export function hitDiceRemaining(actor: Actor): number {
+  const tracked = actor.combat?.hitDice;
+  if (typeof tracked === 'number') return Math.max(0, tracked);
+  const level = actor.characterSnapshot?.sheet?.level;
+  return typeof level === 'number' && level > 0 ? level : 0;
+}
+
+/**
+ * 短休：花掉若干生命骰恢复生命值（每颗骰子加上体质调整值，最低 1 点）。
+ * 短休不进战斗回合，也不消耗动作——它是场外的休整。
+ */
+export function shortRest(battle: Battle, actorId: string, count = 1, deps: CombatDeps = {}): { battle: Battle; healed: number; spent: number; rolls: number[] } {
+  const next = structuredClone(battle);
+  const actor = next.actors.find(item => item.id === actorId);
+  if (!actor) throw new Error('施法者不存在。');
+  const state = actor.combat;
+  if (!state) throw new Error('该单位还没有开始战斗。');
+  if (state.status === 'dead') throw new Error('阵亡的单位无法短休。');
+  if (!Number.isInteger(count) || count < 1) throw new Error('花费的生命骰数量必须是正整数。');
+  const available = hitDiceRemaining(actor);
+  if (available < count) throw new Error(`生命骰不足（剩余 ${available} 个）。`);
+  const size = hitDieOf(actor);
+  const sheet = actor.characterSnapshot?.sheet;
+  const rawCon = sheet?.abilities?.con ?? (actor.template as { abilities?: Record<string, number> }).abilities?.con ?? 10;
+  const conMod = Math.floor((rawCon - 10) / 2);
+  const rolls: number[] = [];
+  let healed = 0;
+  for (let index = 0; index < count; index += 1) {
+    const roll = rollDie(size, randomOf(deps));
+    rolls.push(roll);
+    healed += Math.max(1, roll + conMod);
+  }
+  const room = Math.max(0, actor.maxHp - actor.currentHp);
+  const applied = Math.min(room, healed);
+  actor.currentHp += applied;
+  state.hitDice = available - count;
+  if (state.status === 'down' && actor.currentHp > 0) {
+    state.status = 'active';
+    state.stable = true;
+    state.deathSaves = { successes: 0, failures: 0 };
+    state.conditions = state.conditions.filter(condition => condition !== '倒地');
+  }
+  addLog(
+    next,
+    `${actorLabel(next, actor)} 短休：花费 ${count} 个生命骰（d${size}，掷出 ${rolls.join('、')}），恢复 ${applied} 点生命，剩余 ${state.hitDice} 个生命骰。`,
+    deps,
+  );
+  return { battle: next, healed: applied, spent: count, rolls };
+}
+
 export type SaveOptions = { actorId: string; ability: Ability; dc: number; bonus?: number; mode?: AttackMode; /** 掩体：仅对敏捷豁免提供 +2／+5。 */ cover?: CoverType };
 export type SaveOutcome = { natural: number; total: number; dc: number; success: boolean; mode: AttackMode; notes: string[]; automaticFailure: boolean; bless?: number };
 export type AreaSaveOptions = {
