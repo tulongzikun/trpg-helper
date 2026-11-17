@@ -3215,6 +3215,10 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   }
   syncSummonsInPlace(next, deps);
   tickSummonDurations(next, deps);
+  const stalePrompts = combat.pendingOpportunity ?? [];
+  if (stalePrompts.length) {
+    addLog(next, `${stalePrompts.length} 条未结算的反应提示随回合结束作废。`, deps);
+  }
   delete combat.pendingOpportunity;
   return next;
 }
