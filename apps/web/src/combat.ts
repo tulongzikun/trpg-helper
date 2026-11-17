@@ -749,6 +749,49 @@ export function wakeUp(battle: Battle, actorId: string, targetId: string, deps: 
   return next;
 }
 
+const DARKNESS_MAX_CELLS = 12;
+
+/** 该格是否处于魔法黑暗。 */
+export function darknessAt(battle: Battle, x: number, y: number): boolean {
+  return (battle.darkness ?? []).some(cell => cell.x === x && cell.y === y);
+}
+
+/** 该单位是否站在魔法黑暗中。 */
+export function inDarkness(battle: Battle, actorId: string): boolean {
+  const actor = battle.actors.find(item => item.id === actorId);
+  if (!actor?.position) return false;
+  return darknessAt(battle, actor.position.x, actor.position.y);
+}
+
+/** 黑暗术：动作施放 + 专注，1–12 格成为魔法黑暗；看不清对方时攻击检定劣势，也无法借机攻击。 */
+export function castDarkness(battle: Battle, casterId: string, cells: Position[], deps: CombatDeps = {}): Battle {
+  if (!battle.grid) throw new Error('请先启用方格战场。');
+  const unique = new Map<string, Position>();
+  for (const cell of cells) {
+    if (!Number.isInteger(cell.x) || !Number.isInteger(cell.y)) throw new Error('黑暗术的格子坐标须为整数。');
+    if (cell.x < 0 || cell.y < 0 || cell.x >= battle.grid.width || cell.y >= battle.grid.height) throw new Error('黑暗术的格子超出战场范围。');
+    unique.set(`${cell.x},${cell.y}`, { x: cell.x, y: cell.y });
+  }
+  if (!unique.size) throw new Error('请选择黑暗术覆盖的格子。');
+  if (unique.size > DARKNESS_MAX_CELLS) throw new Error('黑暗术最多覆盖 12 格。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const state = combatantOf(caster);
+  requireVoice(next, casterId);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放黑暗术。');
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (state.concentration) throw new Error('施法者已经在维持其他专注。');
+  state.actionUsed = true;
+  state.concentration = { spell: '黑暗术' };
+  next.darkness = [...unique.values()];
+  next.darknessBy = casterId;
+  addLog(next, `${actorLabel(next, caster)} 施放黑暗术：魔法黑暗覆盖 ${next.darkness.length} 格，持续 10 轮。`, deps);
+  return next;
+}
+
 const FOG_MAX_CELLS = 24;
 
 /** 雾云术：动作施放 + 专注，1–24 格内成为重度遮蔽；攻击者与目标分处雾内外时攻击检定劣势。 */
@@ -943,6 +986,11 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
     delete battle.fog;
     delete battle.fogBy;
     addLog(battle, `${reason}，迷雾消散了。`, deps);
+  }
+  if (battle.darkness && battle.darknessBy === casterId) {
+    delete battle.darkness;
+    delete battle.darknessBy;
+    addLog(battle, `${reason}，魔法黑暗消散了。`, deps);
   }
   const held = battle.actors.filter(item => item.combat?.paralyzedBy === casterId);
   if (held.length) {
@@ -1424,6 +1472,7 @@ export function opportunityAttack(battle: Battle, reactorId: string, overrides: 
   const combat = requireCombat(next);
   const prompt = (combat.pendingOpportunity ?? []).find(item => item.reactorId === reactorId);
   if (!prompt) throw new Error('该单位没有待结算的借机攻击。');
+  if (inDarkness(next, reactorId) !== inDarkness(next, prompt.targetId)) throw new Error('在魔法黑暗中看不清目标，无法进行借机攻击。');
   const reactor = actorOf(next, reactorId);
   const source = attackSources(reactor)[0];
   const merged: AttackOptions = {
@@ -2460,8 +2509,9 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const attackerFog = inFog(attacker);
   const targetFog = inFog(target);
   const fogAdjustment: ModeAdjustment | null = attackerFog !== targetFog ? { mode: 'disadvantage', notes: ['云雾遮蔽：攻击检定劣势'] } : null;
+  const darknessAdjustment: ModeAdjustment | null = inDarkness(battle, attacker.id) !== inDarkness(battle, target.id) ? { mode: 'disadvantage', notes: ['魔法黑暗：看不清目标'] } : null;
   const invisibleAdjustment: ModeAdjustment | null = invisibleAttacker ? { mode: 'advantage', notes: ['攻击者处于隐形：攻击检定优势'] } : invisibleTarget ? { mode: 'disadvantage', notes: ['目标处于隐形：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(darknessAdjustment ? [darknessAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
@@ -3105,6 +3155,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
   }
   delete next.fog;
   delete next.fogBy;
+  delete next.darkness;
+  delete next.darknessBy;
   delete next.silence;
   delete next.silenceBy;
   addLog(next, '长休：恢复全部生命值，法术位、动作如潮、回气与弹药全部恢复，力竭减 1，专注与每回合状态清除。', deps);
