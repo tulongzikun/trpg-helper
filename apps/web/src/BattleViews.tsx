@@ -2,7 +2,7 @@
 import type { Card } from './catalog';
 import type { BattleStore, Position, Side } from './battle';
 import type { CombatHandlers } from './CombatViews';
-import { BattleIo, CombatLog, CombatSetup, CombatToolbar, GridPanel, InitiativeRail, ReinforcePanel, TurnPanel } from './CombatViews';
+import { BattleIo, CombatLog, CombatSetup, CombatToolbar, GridPanel, InitiativeRail, ReinforcePanel, SettlementPanel, TurnPanel } from './CombatViews';
 import { rewardSummary } from './encounterReward';
 import { currentActorId } from './combat';
 
@@ -76,12 +76,14 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
           })}</div> : <div className="battle-empty"><span>✧</span><h3>战场还是空的</h3><p>从怪物图鉴添加单位，开始准备这场战斗。</p><button className="button-secondary" onClick={onCatalog}>浏览怪物图鉴</button></div>}
           {battle.combat && <p className="cmb-reward">{rewardSummary(battle)}</p>}
           {battle.combat && <CombatLog battle={battle} />}
+          <SettlementPanel battle={battle} />
           <BattleIo battle={battle} onImport={onImportBattle} />
         </> : <div className="battle-empty"><span>✧</span><h3>准备第一场战斗</h3><p>在怪物详情页选择“加入战斗”，即可创建战斗并安排阵营。</p><button className="button-primary" onClick={onCatalog}>浏览怪物图鉴</button></div>}
       </section>
     </div>
   </div>;
 }
+
 
 
 

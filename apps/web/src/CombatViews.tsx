@@ -13,6 +13,7 @@ import type { Ability } from './characters';
 import type { Card } from './catalog';
 import { fallAverageDamage, jumpDistance } from './combatMovement';
 import type { SpellCastOptions } from './combatSpells';
+import { settlementText } from './combatSettlement';
 
 const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
 
@@ -808,3 +809,30 @@ function SpellPanel({ battle, actor, onCast }: { battle: Battle; actor: Actor; o
   );
 }
 
+
+export function SettlementPanel({ battle }: { battle: Battle }) {
+  const [copied, setCopied] = useState('');
+  const text = settlementText(battle);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied('已复制结算摘要。');
+    } catch {
+      setCopied('当前环境不支持复制，请手动选中文本。');
+    }
+  };
+  return (
+    <details className="cmb-io">
+      <summary>战斗结算（可回写角色卡）</summary>
+      <div className="cmb-io-body">
+        <label>结算摘要
+          <textarea readOnly rows={8} value={text} onFocus={event => event.currentTarget.select()} aria-label="战斗结算摘要" />
+        </label>
+        <div className="cmb-io-actions">
+          <button type="button" className="button-secondary" onClick={copy}>复制结算摘要</button>
+        </div>
+        {copied && <p className="cmb-muted">{copied}</p>}
+      </div>
+    </details>
+  );
+}
