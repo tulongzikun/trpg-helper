@@ -21,6 +21,7 @@ export type CombatHandlers = {
   onStart: (initiatives: Record<string, number>) => void;
   onEndTurn: () => void;
   onTerrain: (terrain: 'normal' | 'underwater') => void;
+  onInitiative: (actorId: string, initiative: number) => void;
   onUndo: () => void;
   onReset: () => void;
   onAttack: (options: AttackOptions) => void;
@@ -116,7 +117,7 @@ export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain }:
   </div>;
 }
 
-export function InitiativeRail({ battle }: { battle: Battle }) {
+export function InitiativeRail({ battle, onInitiative }: { battle: Battle; onInitiative?: (actorId: string, initiative: number) => void }) {
   const combat = battle.combat;
   if (!combat) return null;
   const current = currentActorId(battle);
@@ -128,7 +129,9 @@ export function InitiativeRail({ battle }: { battle: Battle }) {
         if (!actor) return null;
         const active = id === current;
         return <li className={`cmb-turn${active ? ' active' : ''}${actor.combat?.status === 'dead' ? ' dead' : ''}`} key={id}>
-          <span className="cmb-init">{actor.combat?.initiative ?? '—'}</span>
+          {onInitiative
+            ? <input className="cmb-init-input" type="number" min={-20} max={60} defaultValue={actor.combat?.initiative ?? 0} aria-label={`${actorLabel(battle, actor)} 先攻`} onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value)) onInitiative(actor.id, value); }} />
+            : <span className="cmb-init">{actor.combat?.initiative ?? '—'}</span>}
           <div className="cmb-turn-body"><strong>{actorLabel(battle, actor)}</strong><small>{actor.side} · HP {actor.currentHp}/{actor.maxHp} · {combatantSummary(actor)}</small></div>
           {active && <em>当前</em>}
         </li>;

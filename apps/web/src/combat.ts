@@ -729,6 +729,26 @@ export function startCombat(battle: Battle, initiatives: Record<string, number> 
   addLog(next, `战斗开始：第 1 轮，${actorLabel(next, first)} 先攻 ${combatantOf(first).initiative}。`, deps);
   return next;
 }
+/** 战斗中调整某个单位的先攻值：重新排序，但保持当前行动者仍是同一人。 */
+export function setInitiative(battle: Battle, actorId: string, initiative: number, deps: CombatDeps = {}): Battle {
+  if (!Number.isInteger(initiative) || initiative < -20 || initiative > 60) throw new Error('先攻值须为 -20 至 60 的整数。');
+  const next = recordUndo(structuredClone(battle));
+  const combat = requireCombat(next);
+  const actor = next.actors.find(item => item.id === actorId);
+  if (!actor) throw new Error('该单位不在战斗中。');
+  if (!actor.combat) throw new Error('该单位还没有先攻值。');
+  const current = combat.order[combat.turnIndex];
+  const previous = actor.combat.initiative;
+  actor.combat.initiative = initiative;
+  const rank = new Map(combat.order.map((id, index) => [id, index]));
+  const initiativeOf = (id: string) => next.actors.find(item => item.id === id)?.combat?.initiative ?? 0;
+  combat.order = combat.order.slice().sort((left, right) => initiativeOf(right) - initiativeOf(left) || (rank.get(left) ?? 0) - (rank.get(right) ?? 0));
+  const index = combat.order.indexOf(current);
+  combat.turnIndex = index >= 0 ? index : 0;
+  if (previous !== initiative) addLog(next, `${actorLabel(next, actor)} 的先攻改为 ${initiative}。`, deps);
+  return next;
+}
+
 export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   requireCombat(battle);
   const next = recordUndo(structuredClone(battle));

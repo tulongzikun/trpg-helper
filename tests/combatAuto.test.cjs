@@ -120,7 +120,7 @@ test('自动回合：无法行动时待命并结束回合', () => {
   for (const [x, y] of [[1, 0], [0, 1], [1, 1]]) placed = toggleWallCell(placed, x, y);
   const result = autoTurn(placed, hero.id, { random: sequence(0.5) });
   assert.equal(result.kind, 'wait');
-  assert.ok(result.steps.some(text => text.includes('原地待命')));
+  assert.ok(result.steps.some(text => text.includes('待命') || text.includes('闪避')));
   assert.ok(result.steps.includes('自动行动：结束回合。'));
   assert.notEqual(currentActorId(result.battle), hero.id);
 });
@@ -238,4 +238,16 @@ test('倒下的单位自动行动只会原地待命', () => {
   assert.equal(result.kind, 'wait');
   assert.match(result.text, /无法行动/);
   assert.equal(result.battle, downed);
+});
+
+test('无法靠近目标时自动行动改为闪避', () => {
+  const { battle, hero, monsters } = setup(1, '长剑：+5 命中，1d8+3 挥砍伤害，触及 5 尺', '长剑');
+  let next = configureGrid(battle, { width: 10, height: 10, cellFt: 5 });
+  next = moveActorToCell(next, hero.id, 1, 1);
+  next = moveActorToCell(next, monsters[0].id, 6, 6);
+  for (const [x, y] of [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1], [0, 2], [1, 2], [2, 2]]) next = toggleWallCell(next, x, y);
+  const result = autoAct(next, hero.id);
+  assert.equal(result.kind, 'wait');
+  assert.match(result.text, /闪避/);
+  assert.equal(result.battle.actors.find(actor => actor.id === hero.id).combat.dodging, true);
 });

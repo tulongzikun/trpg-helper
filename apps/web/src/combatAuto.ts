@@ -1,4 +1,4 @@
-﻿import { actorDistance, attack, currentActorId, drinkHealingPotion, endTurn, moveActorToCell, offhandAttack, secondWind } from './combat.ts';
+﻿import { actorDistance, attack, currentActorId, dodge, drinkHealingPotion, endTurn, moveActorToCell, offhandAttack, secondWind } from './combat.ts';
 import { hasSecondWind } from './combatModifiers.ts';
 import { attackSources } from './attackSources.ts';
 import type { CombatDeps } from './combat.ts';
@@ -8,6 +8,20 @@ import type { Battle, Position, Side } from './battle';
 export type AutoActionKind = 'attack' | 'move' | 'wait';
 export type AutoAction = { battle: Battle; kind: AutoActionKind; text: string };
 export type AutoTurn = AutoAction & { steps: string[] };
+
+/** 无法接近目标时：还有动作就先闪避，否则原样待命。 */
+function defensiveFallback(battle: Battle, actorId: string, deps: CombatDeps, text: string): AutoAction {
+  const self = battle.actors.find(item => item.id === actorId);
+  if (self?.combat?.actionUsed !== true && self?.combat?.dodging !== true) {
+    try {
+      const dodged = dodge(battle, actorId, deps);
+      return { battle: dodged, kind: 'wait', text: text.replace('，原地待命。', '，改为使用闪避。').replace('。', '，改为使用闪避。') };
+    } catch {
+      // 闪避不可用时退回待命。
+    }
+  }
+  return { battle, kind: 'wait', text };
+}
 
 function neighbors(position: Position): Position[] {
   const list: Position[] = [];
@@ -116,7 +130,7 @@ export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}):
     .map(cell => ({ cell, distance: Math.max(Math.abs(cell.x - target.position!.x), Math.abs(cell.y - target.position!.y)) * battle.grid!.cellFt }))
     .filter(entry => entry.distance < current)
     .sort((a, b) => a.distance - b.distance);
-  if (!candidates.length) return { battle, kind: 'wait', text: `自动行动：无法靠近 ${best.targetName}，原地待命。` };
+  if (!candidates.length) return defensiveFallback(battle, actorId, deps, `自动行动：无法靠近 ${best.targetName}，原地待命。`);
   for (const candidate of candidates) {
     try {
       const moved = moveActorToCell(battle, actorId, candidate.cell.x, candidate.cell.y, deps);
@@ -125,7 +139,7 @@ export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}):
       continue;
     }
   }
-  return { battle, kind: 'wait', text: `自动行动：移动力不足，无法靠近 ${best.targetName}。` };
+  return defensiveFallback(battle, actorId, deps, `自动行动：移动力不足，无法靠近 ${best.targetName}。`);
 }
 
 export type AutoTurnOptions = { endTurn?: boolean; maxSteps?: number };
