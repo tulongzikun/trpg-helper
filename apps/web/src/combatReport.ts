@@ -66,16 +66,19 @@ export function effectsOf(actor: Actor): string[] {
 }
 
 /** 先攻顺序：按出手次序排列，标出当前行动者与本轮已行动的单位。 */
-export function initiativeOrder(battle: Battle): { name: string; initiative: number; current: boolean; acted: boolean }[] {
+export function initiativeOrder(battle: Battle): { name: string; initiative: number; current: boolean; acted: boolean; note: string }[] {
   const combat = battle.combat;
   if (!combat) return [];
   return combat.order.map((id, index) => {
     const actor = battle.actors.find(item => item.id === id);
+    const state = actor?.combat;
+    const note = !state ? '' : state.status === 'dead' ? '阵亡' : state.fled === true ? '已撤离' : state.surrendered === true ? '已投降' : state.status === 'down' ? '倒地' : '';
     return {
       name: actor?.name ?? id,
-      initiative: actor?.combat?.initiative ?? 0,
+      initiative: state?.initiative ?? 0,
       current: index === combat.turnIndex,
       acted: index < combat.turnIndex,
+      note,
     };
   });
 }
@@ -106,7 +109,7 @@ export function battleReport(battle: Battle): string {
     lines.push('## 先攻顺序');
     lines.push('');
     order.forEach((item, index) => {
-      const marks = [item.current ? '← 当前行动者' : '', item.acted ? '（已行动）' : ''].filter(Boolean).join(' ');
+      const marks = [item.current ? '← 当前行动者' : '', item.acted ? '（已行动）' : '', item.note ? `· ${item.note}` : ''].filter(Boolean).join(' ');
       lines.push(`${index + 1}. ${item.name}（先攻 ${item.initiative}）${marks ? ` ${marks}` : ''}`);
     });
   }
