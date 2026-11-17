@@ -97,6 +97,7 @@ export type CombatHandlers = {
   onIdentify: (actorId: string, name: string) => void;
   onUseItem: (actorId: string, name: string, targetId?: string) => void;
   onLoot: (looterId: string, targetId: string) => void;
+  onLootAll: (looterId: string) => void;
   onGive: (fromId: string, toId: string, name: string) => void;
   onStand: (actorId: string) => void;
   onReady: (actorId: string, input: { action: string; trigger: string }) => void;
@@ -1302,6 +1303,7 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
               搜刮 {corpse.name}（{(corpse.combat?.items ?? []).length} 种）
             </button>
           ))}
+          <button type="button" className="button-secondary" onClick={() => handlers.onLootAll(actor.id)} aria-label="搜刮附近全部尸体">全部搜刮</button>
         </div>
       ) : null}
       <label>名称<input value={name} onChange={event => setName(event.target.value)} /></label>

@@ -1542,6 +1542,40 @@ export function useItem(battle: Battle, actorId: string, name: string, targetId?
 }
 
 /** 搜刮：把阵亡单位身上的物品转移到存活单位（5 尺内），同名物品合并。 */
+
+/** 搜刮周围：一次性把 5 尺内所有尸体的物品收进背包，跳过会超过 20 种的尸体。 */
+export function lootAll(battle: Battle, looterId: string, deps: CombatDeps = {}): { battle: Battle; looted: string[] } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const looter = actorOf(next, looterId);
+  const looterState = combatantOf(looter);
+  if (looterState.status !== 'active') throw new Error('只有在场的单位可以搜刮。');
+  const near = (item: Actor) => !looter.position || !item.position || cellDistance(looter.position, item.position) <= 1;
+  const corpses = next.actors.filter(item => item.id !== looter.id && item.combat?.status === 'dead' && (item.combat?.items ?? []).length > 0 && near(item));
+  if (!corpses.length) throw new Error('5 尺内没有可搜刮的尸体。');
+  const owned = looterState.items ?? [];
+  const known = new Set(owned.map(entry => entry.name));
+  const looted: string[] = [];
+  const skipped: string[] = [];
+  for (const corpse of corpses) {
+    const loot = corpse.combat?.items ?? [];
+    const incoming = loot.filter(entry => !known.has(entry.name));
+    if (owned.length + incoming.length > 20) { skipped.push(actorLabel(next, corpse)); continue; }
+    for (const entry of loot) {
+      const existing = owned.find(item => item.name === entry.name);
+      if (existing) existing.quantity = Math.min(99, existing.quantity + entry.quantity);
+      else { owned.push({ ...entry, quantity: Math.min(99, entry.quantity) }); known.add(entry.name); }
+      looted.push(entry.name);
+    }
+    if (corpse.combat) delete corpse.combat.items;
+  }
+  if (owned.length) looterState.items = owned;
+  const summary = looted.length ? `搜刮了 ${Array.from(new Set(looted)).join('、')}` : '没有可搜刮的物品';
+  const note = skipped.length ? `；${skipped.join('、')} 身上的物品太多，背不下了` : '';
+  addLog(next, `${actorLabel(next, looter)} 从左近的尸体上${summary}${note}。`, deps);
+  return { battle: next, looted };
+}
+
 export function lootCorpse(battle: Battle, looterId: string, targetId: string, deps: CombatDeps = {}): { battle: Battle; looted: string[] } {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
