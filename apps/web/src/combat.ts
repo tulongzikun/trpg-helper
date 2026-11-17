@@ -1271,6 +1271,27 @@ export function secondWind(battle: Battle, actorId: string, deps: CombatDeps = {
   addLog(next, `${actorLabel(next, actor)} 使用回气，恢复 ${healed} 点生命值（d10 ${rolled} + ${level} 级），当前 ${actor.currentHp}/${actor.maxHp}。`, deps);
   return { battle: next, healed };
 }
+/** 使用治疗药水：消耗动作，恢复 2d4+2 点生命值，可唤醒倒地单位，对死亡单位无效。 */
+export function drinkHealingPotion(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; healed: number } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以使用治疗药水。');
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status === 'dead') throw new Error('已经死亡的单位无法使用治疗药水。');
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const random = randomOf(deps);
+  const rolled = rollDie(4, random) + rollDie(4, random) + 2;
+  const healed = Math.min(actor.maxHp - actor.currentHp, rolled);
+  actor.currentHp += healed;
+  if (state.status === 'down' && actor.currentHp > 0) {
+    state.status = 'active';
+    state.deathSaves = { successes: 0, failures: 0 };
+  }
+  state.actionUsed = true;
+  addLog(next, `${actorLabel(next, actor)} 饮下治疗药水，恢复 ${healed} 点生命值（2d4+2 掷出 ${rolled}），当前 ${actor.currentHp}/${actor.maxHp}。`, deps);
+  return { battle: next, healed };
+}
 export function recoverClassResources(battle: Battle, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
