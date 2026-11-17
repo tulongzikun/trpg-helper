@@ -1129,6 +1129,71 @@ function fearRecover(battle: Battle, actor: Actor, deps: CombatDeps = {}): void 
   addLog(battle, `${actorLabel(battle, actor)} 克服了恐惧术（感知 ${save.natural} → ${save.total}，DC ${FEAR_DC}）。`, deps);
 }
 
+const DISPEL_DC = 13;
+const DISPEL_RANGE_FT = 120;
+
+/** 驱散魔法用的施法属性加值：取智力、感知、魅力中最高者。 */
+function dispelBonus(actor: Actor): number {
+  const abilities = actor.characterSnapshot?.sheet.abilities ?? actor.template.abilities ?? { int: 10, wis: 10, cha: 10 };
+  const mod = (score: number) => Math.floor((score - 10) / 2);
+  return Math.max(mod(abilities.int ?? 10), mod(abilities.wis ?? 10), mod(abilities.cha ?? 10));
+}
+
+/**
+ * 驱散魔法：消耗动作，对 120 尺内一个单位做一次施法属性检定（DC 13）。
+ * 成功时解除该单位身上由法术带来的增益与减益（祝福术、加速术、隐形术、缓慢术、恐惧术、魅惑术、定身术）。
+ */
+export function castDispelMagic(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): {
+  battle: Battle;
+  outcome: { success: boolean; natural: number; total: number; dc: number; dispelled: string[] };
+} {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const casterState = combatantOf(caster);
+  if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放驱散魔法。');
+  requireVoice(next, casterId);
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (currentActorId(next) !== casterId) throw new Error('只有当前回合的单位可以施放驱散魔法。');
+  if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const target = actorOf(next, targetId);
+  if (target.combat?.status === 'dead') throw new Error('无法以已经死亡的单位为目标。');
+  const distance = actorDistance(next, casterId, targetId);
+  if (distance !== undefined && distance > DISPEL_RANGE_FT) throw new Error(`驱散魔法只能影响 ${DISPEL_RANGE_FT} 尺内的单位。`);
+
+  const targetState = combatantOf(target);
+  const dispelled: string[] = [];
+  const strip = (field: 'blessed' | 'hasted' | 'invisible' | 'slowed' | 'charmed' | 'frightened' | 'paralyzed', byField: 'blessedBy' | 'hastedBy' | 'invisibleBy' | 'slowedBy' | 'charmedBy' | 'frightenedBy' | 'paralyzedBy', name: string, condition?: string) => {
+    if (targetState[field] === undefined && targetState[byField] === undefined) return;
+    delete targetState[field];
+    delete targetState[byField];
+    if (condition) targetState.conditions = targetState.conditions.filter(item => item !== condition);
+    dispelled.push(name);
+  };
+
+  const random = randomOf(deps);
+  const natural = rollDie(20, random);
+  const bonus = dispelBonus(caster);
+  const total = natural + bonus;
+
+  casterState.actionUsed = true;
+  if (total < DISPEL_DC) {
+    addLog(next, `${actorLabel(next, caster)} 对 ${actorLabel(next, target)} 施放驱散魔法：施法属性检定 ${natural}+${bonus}=${total} vs DC ${DISPEL_DC}，未能驱散任何效果。`, deps);
+    return { battle: next, outcome: { success: false, natural, total, dc: DISPEL_DC, dispelled } };
+  }
+  strip('blessed', 'blessedBy', '祝福术');
+  strip('hasted', 'hastedBy', '加速术');
+  strip('invisible', 'invisibleBy', '隐形术');
+  strip('slowed', 'slowedBy', '缓慢术');
+  strip('frightened', 'frightenedBy', '恐惧术', '恐慌');
+  strip('charmed', 'charmedBy', '魅惑术', '魅惑');
+  strip('paralyzed', 'paralyzedBy', '定身术', '麻痹');
+  const detail = dispelled.length > 0 ? `驱散了${dispelled.join('、')}` : '目标身上没有可驱散的法术效果';
+  addLog(next, `${actorLabel(next, caster)} 对 ${actorLabel(next, target)} 施放驱散魔法：施法属性检定 ${natural}+${bonus}=${total} vs DC ${DISPEL_DC}，${detail}。`, deps);
+  return { battle: next, outcome: { success: true, natural, total, dc: DISPEL_DC, dispelled } };
+}
+
 /** 施法者失去专注（或改用别的专注法术）时，立即结束其施加的祝福。 */
 function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps: CombatDeps = {}): void {
   for (const [field, byField, name] of [['blessed', 'blessedBy', '祝福术'], ['hasted', 'hastedBy', '加速术'], ['invisible', 'invisibleBy', '隐形术'], ['slowed', 'slowedBy', '缓慢术'], ['frightened', 'frightenedBy', '恐惧术']] as const) {
