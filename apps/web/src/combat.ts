@@ -908,9 +908,11 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && measured > 600) throw new Error('目标距离超出远程攻击范围（600 尺）。');
   if (options.weaponId) {
     const source = attackSources(attacker).find(item => item.id === options.weaponId);
-    if (source?.longRangeFt && range === 'ranged') {
+    if (source && source.origin === 'weapon' && range === 'ranged') {
+      const maxRange = source.longRangeFt ?? source.thrownMaxRangeFt;
+      if (!maxRange) throw new Error('该武器不能进行远程攻击。');
       const distance = measured ?? options.distanceFt ?? 30;
-      if (distance > source.longRangeFt) throw new Error('目标距离超出该武器的最大射程（' + source.longRangeFt + ' 尺）。');
+      if (distance > maxRange) throw new Error('目标距离超出该武器的最大射程（' + maxRange + ' 尺）。');
     }
   }
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && attacker.position && target.position && !hasLineOfSight(battle, attacker.position, target.position)) throw new Error('视线被墙体阻挡，无法进行远程攻击。');
@@ -939,8 +941,9 @@ function effectiveDamageExpression(actor: Actor, options: AttackOptions): string
 function longRangeAdjustment(actor: Actor, options: AttackOptions, distanceFt: number): ModeAdjustment | null {
   if (!options.weaponId || options.range === 'melee') return null;
   const source = attackSources(actor).find(item => item.id === options.weaponId);
-  if (!source?.longRangeFt || distanceFt <= source.distanceFt) return null;
-  return { mode: 'disadvantage', notes: [`距离 ${distanceFt} 尺超出常规射程 ${source.distanceFt} 尺：攻击检定劣势`] };
+  const normalRange = source?.longRangeFt ? source.distanceFt : source?.thrownRangeFt;
+  if (!normalRange || distanceFt <= normalRange) return null;
+  return { mode: 'disadvantage', notes: [`距离 ${distanceFt} 尺超出常规射程 ${normalRange} 尺：攻击检定劣势`] };
 }
 
 function resolveOneAttack(battle: Battle, options: AttackOptions, context: AttackContext, deps: CombatDeps, consumeCost: boolean): AttackOutcome {
