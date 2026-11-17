@@ -51,6 +51,7 @@ export function attackerAdjustment(actor: Actor): ModeAdjustment {
   if (conditionOf(actor, '恐慌')) disadvantages.push('恐慌（能看到恐惧源）');
   if (conditionOf(actor, '束缚')) disadvantages.push('束缚');
   if (conditionOf(actor, '擒抱')) disadvantages.push('擒抱（目标不是擒抱者）');
+  if (conditionOf(actor, '倒地')) disadvantages.push('倒地');
   return summarize(advantages, disadvantages);
 }
 
