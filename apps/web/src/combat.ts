@@ -235,6 +235,10 @@ function actorDexModifier(actor: Actor): number {
   const abilities = actor.characterSnapshot?.sheet.abilities ?? actor.template.abilities;
   return typeof abilities?.dex === 'number' ? abilityModifier(abilities.dex) : 0;
 }
+/** 先攻相同时的稳定裁决：敏捷调整值高的在前，再按名称排序。 */
+function initiativeTiebreak(left: Actor, right: Actor): number {
+  return actorDexModifier(right) - actorDexModifier(left) || left.name.localeCompare(right.name, 'zh-CN');
+}
 export function actorLabel(battle: Battle, actor: Actor): string {
   const sameName = battle.actors.filter(item => item.name === actor.name);
   return sameName.length > 1 ? `${actor.name} #${sameName.indexOf(actor) + 1}` : actor.name;
@@ -1040,7 +1044,7 @@ export function startCombat(battle: Battle, initiatives: Record<string, number> 
   }
   combat.order = next.actors
     .filter(a => a.currentHp > 0)
-    .sort((a, b) => (combatantOf(b).initiative - combatantOf(a).initiative) || (actorDexModifier(b) - actorDexModifier(a)) || a.name.localeCompare(b.name, 'zh-CN'))
+    .sort((a, b) => (combatantOf(b).initiative - combatantOf(a).initiative) || initiativeTiebreak(a, b))
     .map(a => a.id);
   if (!combat.order.length) throw new Error('战场上没有可行动的单位，请先添加单位。');
   const first = actorOf(next, combat.order[0]);
@@ -1061,7 +1065,8 @@ export function setInitiative(battle: Battle, actorId: string, initiative: numbe
   actor.combat.initiative = initiative;
   const rank = new Map(combat.order.map((id, index) => [id, index]));
   const initiativeOf = (id: string) => next.actors.find(item => item.id === id)?.combat?.initiative ?? 0;
-  combat.order = combat.order.slice().sort((left, right) => initiativeOf(right) - initiativeOf(left) || (rank.get(left) ?? 0) - (rank.get(right) ?? 0));
+  const actorById = (id: string) => next.actors.find(item => item.id === id)!;
+  combat.order = combat.order.slice().sort((left, right) => initiativeOf(right) - initiativeOf(left) || initiativeTiebreak(actorById(left), actorById(right)) || (rank.get(left) ?? 0) - (rank.get(right) ?? 0));
   const index = combat.order.indexOf(current);
   combat.turnIndex = index >= 0 ? index : 0;
   if (previous !== initiative) addLog(next, `${actorLabel(next, actor)} 的先攻改为 ${initiative}。`, deps);
@@ -1083,7 +1088,8 @@ export function rerollInitiative(battle: Battle, deps: CombatDeps = {}): Battle 
   }
   const rank = new Map(combat.order.map((id, index) => [id, index]));
   const initiativeOf = (id: string) => next.actors.find(item => item.id === id)?.combat?.initiative ?? 0;
-  combat.order = combat.order.slice().sort((left, right) => initiativeOf(right) - initiativeOf(left) || (rank.get(left) ?? 0) - (rank.get(right) ?? 0));
+  const actorById = (id: string) => next.actors.find(item => item.id === id)!;
+  combat.order = combat.order.slice().sort((left, right) => initiativeOf(right) - initiativeOf(left) || initiativeTiebreak(actorById(left), actorById(right)) || (rank.get(left) ?? 0) - (rank.get(right) ?? 0));
   const index = combat.order.indexOf(current);
   combat.turnIndex = index >= 0 ? index : 0;
   addLog(next, `重新掷先攻：${combat.order.map(id => `${actorLabel(next, next.actors.find(item => item.id === id)!)} ${initiativeOf(id)}`).join('、')}。`, deps);
@@ -2742,7 +2748,13 @@ export function addReinforcement(battle: Battle, card: Card, input: Reinforcemen
   const initiative = input.initiative ?? rollDie(20, random) + actorInitiativeBonus(actor);
   actor.combat!.initiative = initiative;
   next.actors.push(actor);
-  const insertAt = combat.order.findIndex(id => (next.actors.find(a => a.id === id)?.combat?.initiative ?? 0) < initiative);
+  const insertAt = combat.order.findIndex(id => {
+    const other = next.actors.find(a => a.id === id);
+    if (!other?.combat) return false;
+    if (other.combat.initiative < initiative) return true;
+    if (other.combat.initiative > initiative) return false;
+    return initiativeTiebreak(other, actor) > 0;
+  });
   const index = insertAt < 0 ? combat.order.length : insertAt;
   combat.order.splice(index, 0, actor.id);
   if (index <= combat.turnIndex) combat.turnIndex += 1;
