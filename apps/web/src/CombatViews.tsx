@@ -74,6 +74,7 @@ export type CombatHandlers = {
   onSurrender: (actorId: string) => void;
   onShortRest: (actorId: string) => void;
   onRemoveActor: (actorId: string) => void;
+  onShiftInitiative: (actorId: string, offset: number) => void;
   onSuppress: (actorId: string, targetId: string) => void;
   onMount: (actorId: string, mountId: string) => void;
   onDismount: (actorId: string) => void;
@@ -357,6 +358,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       {state.status === 'active' && !state.fled && !state.surrendered ? <button type="button" className="button-secondary" onClick={() => handlers.onMorale(actor.id)} aria-label="士气检定">士气检定（DC 12 感知，失败投降）</button> : null}
       {state.surrendered ? <span className="cmb-hint">已投降：不再占回合，可被搜刮，并计入击败经验</span> : <button type="button" className="button-secondary" onClick={() => handlers.onSurrender(actor.id)} aria-label="投降">投降</button>}
       <button type="button" className="button-secondary" onClick={() => handlers.onShortRest(actor.id)} aria-label="短休" title="花费 1 个生命骰恢复生命值（场外休整）">短休（花生命骰回血）</button>
+      <button type="button" className="button-secondary" onClick={() => handlers.onShiftInitiative(actor.id, -1)} aria-label="先攻前移">先攻前移</button>
+      <button type="button" className="button-secondary" onClick={() => handlers.onShiftInitiative(actor.id, 1)} aria-label="先攻后移">先攻后移</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onRemoveActor(actor.id)} aria-label="移除单位">移除单位（DM 清理离场）</button>
       {aidTargets(battle, actor.id).length ? <button type="button" className="button-secondary" onClick={() => handlers.onAid(actor.id)} aria-label="援助术">援助术（动作，30 尺内至多 3 个友方，生命上限 +5）</button> : null}
       {state.aided ? <span className="cmb-hint">援助术：生命上限 +{state.aided}</span> : null}

@@ -3201,6 +3201,27 @@ export function setInitiative(battle: Battle, actorId: string, initiative: numbe
 }
 
 /** 为所有在场单位重掷先攻（d20 + 先攻加值），并按新顺序重排；当前行动者保持不变。 */
+/** 调整先攻顺序：把某个单位前移或后移一位，当前行动者保持不变。 */
+export function shiftInitiative(battle: Battle, actorId: string, offset: number, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const order = next.combat!.order;
+  const from = order.indexOf(actorId);
+  if (from < 0) throw new Error('该单位不在先攻顺序中。');
+  if (offset === 0) throw new Error('调整方向无效。');
+  const to = from + (offset > 0 ? 1 : -1);
+  if (to < 0) throw new Error('已经排在先攻顺序的第一位。');
+  if (to >= order.length) throw new Error('已经排在先攻顺序的最后一位。');
+  const current = currentActorId(next);
+  order.splice(from, 1);
+  order.splice(to, 0, actorId);
+  const keep = current ? order.indexOf(current) : -1;
+  next.combat!.turnIndex = keep >= 0 ? keep : Math.min(next.combat!.turnIndex, order.length - 1);
+  const actor = actorOf(next, actorId);
+  addLog(next, `${actorLabel(next, actor)} 的先攻顺序${offset > 0 ? '后移' : '前移'}一位。`, deps);
+  return next;
+}
+
 export function rerollInitiative(battle: Battle, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   const combat = requireCombat(next);
