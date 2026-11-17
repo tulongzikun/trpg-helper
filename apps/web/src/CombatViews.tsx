@@ -53,6 +53,7 @@ export type CombatHandlers = {
   onEscapeWeb: (actorId: string) => void;
   onFog: (actorId: string, cells: { x: number; y: number }[]) => void;
   onHold: (actorId: string, targetId: string) => void;
+  onCommand: (actorId: string, targetId: string, command: 'drop' | 'halt') => void;
   onSilence: (actorId: string, cells: { x: number; y: number }[]) => void;
   onSleep: (actorId: string) => void;
   onWake: (actorId: string, targetId: string) => void;
@@ -284,6 +285,9 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onInvisible(actor.id)} aria-label="隐形术">隐形术（动作，10 轮）</button>
       <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onSleep(actor.id)} aria-label="沉睡术">沉睡术（动作，5d8 生命值池）</button>
                 <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onHold(actor.id, hostileTargets(battle, actor.id, 60)[0]?.id ?? '')} aria-label="定身术">定身术（动作，DC 13 感知，60 尺内敌人）</button>
+      <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onCommand(actor.id, hostileTargets(battle, actor.id, 60)[0]?.id ?? '', 'drop')} aria-label="命令术·落地">命令术·落地（动作，DC 13 感知）</button>
+      <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed || !hostileTargets(battle, actor.id, 60).length} onClick={() => handlers.onCommand(actor.id, hostileTargets(battle, actor.id, 60)[0]?.id ?? '', 'halt')} aria-label="命令术·停止">命令术·停止（动作，DC 13 感知）</button>
+      {state.commanded === 'halt' ? <span className="cmb-hint">命令术：下个回合无法行动</span> : null}
       {state.sleeping ? <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onWake(actor.id, actor.id)} aria-label="唤醒">唤醒（动作，移除沉睡）</button> : null}
       {state.blessed ? <span className="cmb-hint">祝福：剩余 {state.blessed} 轮</span> : null}
       {state.shield ? <span className="cmb-hint">护盾术：AC +{state.shield}</span> : null}

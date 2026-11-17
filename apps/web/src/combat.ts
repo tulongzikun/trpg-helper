@@ -588,6 +588,49 @@ export function castHoldPerson(battle: Battle, casterId: string, targetId: strin
   return next;
 }
 
+export type CommandKind = 'drop' | 'halt';
+
+const COMMAND_DC = 13;
+const COMMAND_RANGE_FT = 60;
+const COMMAND_LABEL: Record<CommandKind, string> = { drop: '落地', halt: '停止' };
+
+/** 命令术：动作施放，60 尺内单体感知豁免 DC 13；失败则立刻倒地或失去下一个回合。 */
+export function castCommand(battle: Battle, casterId: string, targetId: string, command: CommandKind, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
+  const state = combatantOf(caster);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放命令术。');
+  if (command !== 'drop' && command !== 'halt') throw new Error('命令术的指令无效，只能是「落地」或「停止」。');
+  const target = actorOf(next, targetId);
+  const targetState = combatantOf(target);
+  if (targetState.status !== 'active') throw new Error('只能对在场的单位施放命令术。');
+  if (target.id === casterId) throw new Error('命令术不能对自己施放。');
+  if (caster.position && target.position) {
+    const feet = actorDistance(next, casterId, targetId) ?? 0;
+    if (feet > COMMAND_RANGE_FT) throw new Error('命令术只能影响 60 尺内的单位。');
+  }
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  state.actionUsed = true;
+  const save = resolveSave(target, { actorId: target.id, ability: 'wis', dc: COMMAND_DC }, randomOf(deps));
+  const label = COMMAND_LABEL[command];
+  if (save.success) {
+    addLog(next, `${actorLabel(next, caster)} 施放命令术「${label}」，${actorLabel(next, target)} 抵抗住了（感知 ${save.natural} → ${save.total}，DC ${COMMAND_DC}）。`, deps);
+    return next;
+  }
+  if (command === 'drop') {
+    if (!targetState.conditions.includes('倒地')) targetState.conditions = [...targetState.conditions, '倒地'];
+    addLog(next, `${actorLabel(next, caster)} 施放命令术「落地」，${actorLabel(next, target)} 应声倒地（感知 ${save.natural} → ${save.total}，DC ${COMMAND_DC}）。`, deps);
+    return next;
+  }
+  targetState.commanded = 'halt';
+  addLog(next, `${actorLabel(next, caster)} 施放命令术「停止」，${actorLabel(next, target)} 的下一个回合无法行动（感知 ${save.natural} → ${save.total}，DC ${COMMAND_DC}）。`, deps);
+  return next;
+}
+
 const SILENCE_MAX_CELLS = 20;
 
 /** 该格是否被沉默术覆盖。 */
@@ -1726,6 +1769,11 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   const actor = nextTurnIndex(next);
   resetTurnResources(next, actor.id);
   addLog(next, `第 ${combat.round} 轮 · 轮到 ${actorLabel(next, actor)}（先攻 ${combatantOf(actor).initiative}）。`, deps);
+  if (actor.combat?.commanded === 'halt') {
+    delete actor.combat.commanded;
+    addLog(next, `${actorLabel(next, actor)} 受命令术影响，整个回合无法行动。`, deps);
+    return endTurn(next, deps);
+  }
   if (actor.combat?.ready) { delete actor.combat.ready; addLog(next, `${actorLabel(next, actor)} 的准备动作在回合开始时失效。`, deps); }
   applyOngoingDamage(next, deps);
   holdRecover(next, actor, deps);
@@ -3023,6 +3071,7 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.sleeping;
   delete actor.combat.paralyzed;
   delete actor.combat.paralyzedBy;
+    delete actor.combat.commanded;
     delete actor.combat.vexTargetId;
     delete actor.combat.helpedAttack;
     delete actor.combat.ready;
