@@ -1,6 +1,7 @@
 import type { Actor, Battle } from './battle';
 import { encounterXp, defeatedActors, encounterReward } from './encounterReward.ts';
 import { battleStatistics, statsText, typeText } from './combatStats.ts';
+import { battleOutcome, outcomeLabel } from './combatOutcome.ts';
 
 const statusLabels: Record<string, string> = { active: '在场', down: '倒地待救', dead: '阵亡' };
 
@@ -92,6 +93,7 @@ export function battleReport(battle: Battle): string {
   lines.push(`# 战斗记录：${battle.name}`);
   lines.push('');
   lines.push(`- 状态：${reward.completed ? '已结束' : `进行中（剩 ${reward.remaining} 个敌方单位）`}`);
+  lines.push(`- 结果：${outcomeLabel(battleOutcome(battle))}`);
   lines.push(`- 进度：${round}${current ? `，当前行动者 ${current.name}` : ''}`);
   lines.push(`- 经验：${encounterXp(battle)} 点，已击败 ${defeatedActors(battle).length} 个单位`);
   lines.push('');
