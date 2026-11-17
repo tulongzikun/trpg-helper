@@ -57,6 +57,7 @@ export type CombatHandlers = {
   onCommand: (actorId: string, targetId: string, command: 'drop' | 'halt') => void;
   onSlow: (actorId: string, targetIds: string[]) => void;
   onCharm: (actorId: string, targetId: string) => void;
+  onFear: (actorId: string, targetIds: string[]) => void;
   onSilence: (actorId: string, cells: { x: number; y: number }[]) => void;
   onSleep: (actorId: string) => void;
   onWake: (actorId: string, targetId: string) => void;
@@ -294,7 +295,9 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed || !hostileTargets(battle, actor.id, 40).length} onClick={() => handlers.onSlow(actor.id, hostileTargets(battle, actor.id, 40).slice(0, 6).map(item => item.id))} aria-label="缓慢术">缓慢术（动作，DC 13 感知，40 尺内敌人）</button>
       {state.slowed ? <span className="cmb-hint">缓慢术：剩余 {state.slowed} 轮（速度减半、AC -2、无反应）</span> : null}
       <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed || !hostileTargets(battle, actor.id, 30).length} onClick={() => handlers.onCharm(actor.id, hostileTargets(battle, actor.id, 30)[0]?.id ?? '')} aria-label="魅惑术">魅惑术（动作，DC 13 感知，30 尺内敌人）</button>
+{<button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed || !hostileTargets(battle, actor.id, 30).length} onClick={() => handlers.onFear(actor.id, hostileTargets(battle, actor.id, 30).slice(0, 3).map(item => item.id))} aria-label="恐惧术">恐惧术（动作，DC 13 感知，30 尺内 3 个敌人）</button>}
       {state.charmed ? <span className="cmb-hint">魅惑术：剩余 {state.charmed} 轮（无法攻击施法者）</span> : null}
+{state.frightened ? <span className="cmb-hint">恐惧术：剩余 {state.frightened} 轮（无法靠近恐惧源，对其攻击劣势）</span> : null}
       {state.sleeping ? <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onWake(actor.id, actor.id)} aria-label="唤醒">唤醒（动作，移除沉睡）</button> : null}
       {state.blessed ? <span className="cmb-hint">祝福：剩余 {state.blessed} 轮</span> : null}
       {state.shield ? <span className="cmb-hint">护盾术：AC +{state.shield}</span> : null}

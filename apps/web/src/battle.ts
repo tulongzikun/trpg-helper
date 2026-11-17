@@ -141,6 +141,10 @@ export type CombatantState = {
   charmed?: number;
   /** 施加魅惑术的施法者 id。 */
   charmedBy?: string;
+  /** 恐惧术：剩余轮数（无法靠近恐惧源，对其攻击劣势）。 */
+  frightened?: number;
+  /** 施加恐惧术的施法者 id。 */
+  frightenedBy?: string;
   /** 护盾术：AC 加值，直到自己下个回合开始。 */
   shield?: number;
 };
@@ -284,6 +288,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.slowedBy !== undefined && (typeof value.slowedBy !== 'string' || value.slowedBy.length === 0 || value.slowedBy.length > 64)) return false;
   if (value.charmed !== undefined && !isInteger(value.charmed, 0, 100)) return false;
   if (value.charmedBy !== undefined && (typeof value.charmedBy !== 'string' || value.charmedBy.length === 0 || value.charmedBy.length > 64)) return false;
+  if (value.frightened !== undefined && !isInteger(value.frightened, 0, 100)) return false;
+  if (value.frightenedBy !== undefined && (typeof value.frightenedBy !== 'string' || value.frightenedBy.length < 1 || value.frightenedBy.length > 64)) return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
   if (value.warCaster !== undefined && typeof value.warCaster !== 'boolean') return false;
   if (value.counterspell !== undefined && typeof value.counterspell !== 'boolean') return false;

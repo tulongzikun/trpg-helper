@@ -1069,9 +1069,69 @@ export function castSlow(battle: Battle, casterId: string, targetIds: string[], 
   return next;
 }
 
+const FEAR_DC = 13;
+const FEAR_RANGE_FT = 30;
+const FEAR_MAX_TARGETS = 3;
+/** 恐惧术：动作施放，30 尺内最多 3 个敌对单位各做一次感知豁免，失败者 10 轮内无法靠近施法者且对其攻击劣势。 */
+export function castFear(battle: Battle, casterId: string, targetIds: string[], deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
+  const casterState = combatantOf(caster);
+  if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放恐惧术。');
+  const wanted = [...new Set(targetIds)];
+  if (!wanted.length) throw new Error('请选择恐惧术的目标。');
+  if (wanted.length > FEAR_MAX_TARGETS) throw new Error('恐惧术最多影响 3 名单位。');
+  const targets = wanted.map(id => actorOf(next, id));
+  for (const target of targets) {
+    if (target.id === casterId) throw new Error('恐惧术不能对自己施放。');
+    if (combatantOf(target).status !== 'active') throw new Error('只能对在场的单位施放恐惧术。');
+    if (target.side === caster.side) throw new Error('恐惧术只能影响敌对单位。');
+    const distance = actorDistance(next, casterId, target.id);
+    if (distance !== undefined && distance > FEAR_RANGE_FT) throw new Error('恐惧术只能影响 30 尺内的单位。');
+  }
+  if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (casterState.concentration) throw new Error('施法者已经在维持其他专注。');
+  casterState.actionUsed = true;
+  casterState.concentration = { spell: '恐惧术' };
+  const affected: string[] = [];
+  for (const target of targets) {
+    const save = resolveSave(target, { actorId: target.id, ability: 'wis', dc: FEAR_DC }, randomOf(deps));
+    if (save.success) {
+      addLog(next, `${actorLabel(next, target)} 抵抗了恐惧术（感知 ${save.natural} → ${save.total}，DC ${FEAR_DC}）。`, deps);
+      continue;
+    }
+    const targetState = combatantOf(target);
+    targetState.frightened = 10;
+    targetState.frightenedBy = casterId;
+    if (!targetState.conditions.includes('恐慌')) targetState.conditions.push('恐慌');
+    affected.push(actorLabel(next, target));
+  }
+  addLog(next, affected.length
+    ? `${affected.join('、')} 陷入恐慌：无法靠近 ${actorLabel(next, caster)}，对其攻击劣势，持续 10 轮。`
+    : '恐惧术没有影响到任何单位。', deps);
+  return next;
+}
+
+/** 恐惧术的每轮解除：受影响单位在自己回合开始时做感知豁免，成功即摆脱。 */
+function fearRecover(battle: Battle, actor: Actor, deps: CombatDeps = {}): void {
+  const state = actor.combat;
+  if (!state || state.frightened === undefined || state.frightened <= 0) return;
+  const save = resolveSave(actor, { actorId: actor.id, ability: 'wis', dc: FEAR_DC }, randomOf(deps));
+  if (!save.success) {
+    addLog(battle, `${actorLabel(battle, actor)} 仍处于恐慌（感知 ${save.natural} → ${save.total}，DC ${FEAR_DC}）。`, deps);
+    return;
+  }
+  delete state.frightened;
+  delete state.frightenedBy;
+  state.conditions = state.conditions.filter(condition => condition !== '恐慌');
+  addLog(battle, `${actorLabel(battle, actor)} 克服了恐惧术（感知 ${save.natural} → ${save.total}，DC ${FEAR_DC}）。`, deps);
+}
+
 /** 施法者失去专注（或改用别的专注法术）时，立即结束其施加的祝福。 */
 function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps: CombatDeps = {}): void {
-  for (const [field, byField, name] of [['blessed', 'blessedBy', '祝福术'], ['hasted', 'hastedBy', '加速术'], ['invisible', 'invisibleBy', '隐形术'], ['slowed', 'slowedBy', '缓慢术']] as const) {
+  for (const [field, byField, name] of [['blessed', 'blessedBy', '祝福术'], ['hasted', 'hastedBy', '加速术'], ['invisible', 'invisibleBy', '隐形术'], ['slowed', 'slowedBy', '缓慢术'], ['frightened', 'frightenedBy', '恐惧术']] as const) {
     const affected = battle.actors.filter(item => item.combat?.[byField] === casterId);
     if (!affected.length) continue;
     for (const item of affected) {
@@ -1503,6 +1563,8 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法移动。');
   if (actor.combat?.conditions.includes('束缚')) throw new Error('被蛛网束缚的单位无法移动，需先用动作挣脱。');
   if (actor.combat?.conditions.includes('麻痹')) throw new Error('处于麻痹状态的单位无法移动。');
+  const fearSource = actor.combat?.frightenedBy ? next.actors.find(item => item.id === actor.combat!.frightenedBy) : undefined;
+  if ((actor.combat?.frightened ?? 0) > 0 && fearSource?.position && cellDistance({ x, y }, fearSource.position) < cellDistance(from, fearSource.position)) throw new Error('处于恐慌状态，无法朝恐惧源移动。');
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
   if (lineCells(from, { x, y }).some(cell => isWallCell(next, cell.x, cell.y))) throw new Error('移动路径被墙体阻挡。');
@@ -1816,6 +1878,15 @@ function resetTurnResources(battle: Battle, actorId: string) {
       addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 摆脱了魅惑术。`, {});
     }
   }
+  if (typeof combat.frightened === 'number') {
+    combat.frightened -= 1;
+    if (combat.frightened <= 0) {
+      delete combat.frightened;
+      delete combat.frightenedBy;
+      combat.conditions = combat.conditions.filter(condition => condition !== '恐慌');
+      addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 摆脱了恐惧术。`, {});
+    }
+  }
   combat.sneakUsed = false;
   combat.reckless = false;
   for (const other of battle.actors) {
@@ -1944,6 +2015,7 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   applyOngoingDamage(next, deps);
   holdRecover(next, actor, deps);
   charmRecover(next, actor, deps);
+  fearRecover(next, actor, deps);
   if (actor.position) {
     applyHazardAt(next, actor, actor.position.x, actor.position.y, deps, '回合开始');
     applyLavaAt(next, actor, deps, '回合开始');
@@ -2591,6 +2663,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const target = actorOf(battle, options.targetId);
   const state = combatantOf(attacker);
   if (state.conditions.includes('魅惑') && state.charmedBy === target.id) throw new Error('被魅惑的单位无法攻击魅惑它的施法者。');
+  const frightenedAdjustment: ModeAdjustment | null = (state.frightened ?? 0) > 0 && state.frightenedBy === target.id ? { mode: 'disadvantage', notes: ['处于恐慌：对恐惧源攻击检定劣势'] } : null;
   const targetWasDown = combatantOf(target).status === 'down';
   const ammoWeapon = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
   if (ammoWeapon?.properties?.includes('弹药')) state.ammo = Math.max(0, (state.ammo ?? defaultAmmo) - 1);
@@ -2633,7 +2706,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const fogAdjustment: ModeAdjustment | null = attackerFog !== targetFog ? { mode: 'disadvantage', notes: ['云雾遮蔽：攻击检定劣势'] } : null;
   const darknessAdjustment: ModeAdjustment | null = inDarkness(battle, attacker.id) !== inDarkness(battle, target.id) ? { mode: 'disadvantage', notes: ['魔法黑暗：看不清目标'] } : null;
   const invisibleAdjustment: ModeAdjustment | null = invisibleAttacker ? { mode: 'advantage', notes: ['攻击者处于隐形：攻击检定优势'] } : invisibleTarget ? { mode: 'disadvantage', notes: ['目标处于隐形：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(darknessAdjustment ? [darknessAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(darknessAdjustment ? [darknessAdjustment] : []), ...(frightenedAdjustment ? [frightenedAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
@@ -3256,6 +3329,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.slowedBy;
     delete actor.combat.charmed;
     delete actor.combat.charmedBy;
+    delete actor.combat.frightened;
+    delete actor.combat.frightenedBy;
     delete actor.combat.invisible;
     delete actor.combat.invisibleBy;
     delete actor.combat.shield;
