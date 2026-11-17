@@ -33,6 +33,8 @@ export type AttackOptions = {
   autoCover?: boolean;
   /** 借机攻击等场合：跳过方格距离与触及校验（触发时机在离开触及范围的瞬间）。 */
   ignoreDistanceCheck?: boolean;
+  /** 使用的攻击来源 id（来自 attackSources），用于武器特性等规则。 */
+  weaponId?: string;
   /** 附带的额外伤害骰（如猎人印记、至圣斩），随重击一起翻倍。 */
   extraDamageExpression?: string;
   extraDamageType?: DamageType;
@@ -730,6 +732,7 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   const reachFt = options.reachFt ?? 5;
   if (!Number.isInteger(reachFt) || reachFt < 5 || reachFt > 30) throw new Error('近战触及范围须为 5 至 30 尺的整数。');
   if (options.cover !== undefined && !coverTypes.includes(options.cover)) throw new Error('掩体取值无效。');
+  if (options.weaponId !== undefined && !attackSources(attacker).some(item => item.id === options.weaponId)) throw new Error('攻击来源无效。');
   const measured = actorDistance(battle, attacker.id, target.id);
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'melee' && measured > reachFt) throw new Error(`目标距离 ${measured} 尺，超出近战触及范围（${reachFt} 尺）。`);
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && measured > 600) throw new Error('目标距离超出远程攻击范围（600 尺）。');
@@ -740,13 +743,23 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   return { attacker, target, cost, criticalRange, range, distanceFt, measured: measured !== undefined, cover };
 }
 
+function heavyWeaponAdjustment(actor: Actor, weaponId?: string): ModeAdjustment | null {
+  if (!weaponId) return null;
+  const source = attackSources(actor).find(item => item.id === weaponId);
+  if (!source?.properties?.includes('重型')) return null;
+  const strength = actor.characterSnapshot?.sheet.abilities.str ?? actor.template.abilities?.str ?? 10;
+  if (strength >= 13) return null;
+  return { mode: 'disadvantage', notes: [`力量 ${strength} 低于重型武器要求的 13：攻击检定劣势`] };
+}
+
 function resolveOneAttack(battle: Battle, options: AttackOptions, context: AttackContext, deps: CombatDeps, consumeCost: boolean): AttackOutcome {
   const attacker = actorOf(battle, options.attackerId);
   const target = actorOf(battle, options.targetId);
   const state = combatantOf(attacker);
   const targetWasDown = combatantOf(target).status === 'down';
   const random = randomOf(deps);
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range)]);
+  const heavy = heavyWeaponAdjustment(attacker, options.weaponId);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : [])]);
   const mode = combined.mode;
   const notes = [...combined.notes];
   const first = rollDie(20, random);
@@ -1343,3 +1356,6 @@ export function standUp(battle: Battle, actorId: string, deps: CombatDeps = {}):
   addLog(next, `${actorLabel(next, actor)} 起身，消耗 ${cost} 尺移动力。`, deps);
   return next;
 }
+
+
+

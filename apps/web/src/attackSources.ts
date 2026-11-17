@@ -14,6 +14,8 @@ export type AttackSource = {
   range: AttackRange;
   distanceFt: number;
   origin: AttackOrigin;
+  /** 武器特性（重型、灵巧、双手等），仅装备武器来源有值。 */
+  properties?: string[];
 };
 export type ParsedAttackText = {
   attackBonus?: number;
@@ -91,7 +93,7 @@ export function monsterAttackSources(actor: Actor): AttackSource[] {
   return sources;
 }
 
-type Weapon = { name: string; aliases: string[]; damage: string; damageType: DamageType; ability: 'str' | 'dex' | 'best'; range: AttackRange; distanceFt: number };
+type Weapon = { name: string; aliases: string[]; damage: string; damageType: DamageType; ability: 'str' | 'dex' | 'best'; range: AttackRange; distanceFt: number; properties?: string[] };
 
 /** 2024 常用武器表；命中加值 = 属性调整值 + 熟练加值，武器熟练未建模时按已熟练处理。 */
 export const weapons: Weapon[] = [
@@ -99,12 +101,12 @@ export const weapons: Weapon[] = [
   { name: '短剑', aliases: ['shortsword'], damage: '1d6', damageType: '穿刺', ability: 'best', range: 'melee', distanceFt: 5 },
   { name: '匕首', aliases: ['dagger'], damage: '1d4', damageType: '穿刺', ability: 'best', range: 'melee', distanceFt: 5 },
   { name: '刺剑', aliases: ['rapier'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'melee', distanceFt: 5 },
-  { name: '巨剑', aliases: ['greatsword'], damage: '2d6', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5 },
-  { name: '巨斧', aliases: ['greataxe'], damage: '1d12', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5 },
-  { name: '战锤', aliases: ['warhammer'], damage: '1d8', damageType: '钝击', ability: 'str', range: 'melee', distanceFt: 5 },
-  { name: '长棍', aliases: ['quarterstaff'], damage: '1d6', damageType: '钝击', ability: 'best', range: 'melee', distanceFt: 5 },
+  { name: '巨剑', aliases: ['greatsword'], damage: '2d6', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5, properties: ['重型', '双手'] },
+  { name: '巨斧', aliases: ['greataxe'], damage: '1d12', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5, properties: ['重型', '双手'] },
+  { name: '战锤', aliases: ['warhammer'], damage: '1d8', damageType: '钝击', ability: 'str', range: 'melee', distanceFt: 5, properties: ['重型'] },
+  { name: '长棍', aliases: ['quarterstaff'], damage: '1d6', damageType: '钝击', ability: 'best', range: 'melee', distanceFt: 5, properties: ['重型'] },
   { name: '长矛', aliases: ['spear'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'melee', distanceFt: 5 },
-  { name: '戟', aliases: ['halberd'], damage: '1d10', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 10 },
+  { name: '戟', aliases: ['halberd'], damage: '1d10', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 10, properties: ['重型', '双手'] },
   { name: '长弓', aliases: ['longbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 150 },
   { name: '短弓', aliases: ['shortbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80 },
   { name: '轻弩', aliases: ['light crossbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80 },
@@ -140,6 +142,7 @@ function weaponSource(actor: Actor, weapon: Weapon): AttackSource {
     range: weapon.range,
     distanceFt: weapon.distanceFt,
     origin: 'weapon',
+    ...(weapon.properties ? { properties: weapon.properties } : {}),
   };
 }
 
@@ -211,3 +214,7 @@ export const originLabels: Record<AttackOrigin, string> = {
   weapon: '装备武器',
   estimate: '属性估算',
 };
+
+
+
+
