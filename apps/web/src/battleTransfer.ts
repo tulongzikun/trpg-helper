@@ -5,6 +5,35 @@ import { validateBattle } from './battle.ts';
 export const battleExportSchema = 'trpg-helper.battle-export/v1';
 
 export type BattleExport = { schema: string; exportedAt: string; battle: Battle };
+/** 把旧版本档案补齐为当前结构：缺失的撤销栈、日志、轮次、行动顺序与单位状态字段会被填成默认值。 */
+export function upgradeBattlePayload(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  const battle = (record.combat || record.actors ? record : record.battle) as Record<string, unknown> | undefined;
+  if (!battle || typeof battle !== 'object') return value;
+  const actors = Array.isArray(battle.actors) ? (battle.actors as Record<string, unknown>[]) : [];
+  for (const actor of actors) {
+    const state = actor.combat as Record<string, unknown> | undefined;
+    if (!state || typeof state !== 'object') continue;
+    if (!Array.isArray(state.conditions)) state.conditions = [];
+    if (state.movementUsed === undefined) state.movementUsed = 0;
+    if (state.actionUsed === undefined) state.actionUsed = false;
+    if (state.bonusUsed === undefined) state.bonusUsed = false;
+    if (state.reactionUsed === undefined) state.reactionUsed = false;
+    if (state.status === undefined) state.status = 'active';
+  }
+  const combat = battle.combat as Record<string, unknown> | undefined;
+  if (combat && typeof combat === 'object') {
+    if (!Array.isArray(combat.undo)) combat.undo = [];
+    if (!Array.isArray(combat.log)) combat.log = [];
+    if (!Number.isInteger(combat.round)) combat.round = 1;
+    if (!Number.isInteger(combat.turnIndex)) combat.turnIndex = 0;
+    if (!Array.isArray(combat.order)) combat.order = actors.map(actor => actor.id).filter((id): id is string => typeof id === 'string');
+  }
+  return value;
+}
+
+
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -37,7 +66,7 @@ export function importBattle(text: string, takenIds: readonly string[] = []): Ba
     if (record.schema !== battleExportSchema) throw new Error('战斗档案的格式或版本不受支持。');
     battleValue = record.battle;
   }
-  const battle = validateBattle(clone(battleValue));
+  const battle = validateBattle(clone(upgradeBattlePayload(battleValue)));
   if (takenIds.includes(battle.id)) {
     let suffix = 2;
     while (takenIds.includes(`${battle.id}-${suffix}`)) suffix += 1;

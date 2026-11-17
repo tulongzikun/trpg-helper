@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { emptyStore, addMonsters, validateBattle } = require('../apps/web/src/battle.ts');
 const { startCombat, attack, currentActorId, configureGrid, setTerrain, setObscured, toggleWallCell, addAura } = require('../apps/web/src/combat.ts');
 const { setSpellSlots } = require('../apps/web/src/combatSpells.ts');
-const { battleExportSchema, exportBattle, importBattle, battleTranscript } = require('../apps/web/src/battleTransfer.ts');
+const { battleExportSchema, exportBattle, importBattle, battleTranscript, upgradeBattlePayload } = require('../apps/web/src/battleTransfer.ts');
 const entry = require('../packages/contracts/examples/monster-entry.json');
 const card = { entry, block: entry.statBlocks[0] };
 let counter = 0;
@@ -110,4 +110,47 @@ test('记录了法术位时战报会显示剩余法术位', () => {
   const next = setSpellSlots(battle, actorId, [2, 1]);
   const text = battleTranscript(next);
   assert.match(text, /法术位：2\/1/);
+});
+
+test('旧版档案缺少撤销栈、日志与行动顺序时会被补齐', () => {
+  const battle = setup();
+  const legacy = JSON.parse(JSON.stringify(battle));
+  delete legacy.combat.undo;
+  delete legacy.combat.log;
+  delete legacy.combat.order;
+  delete legacy.combat.round;
+  delete legacy.combat.turnIndex;
+  legacy.actors.forEach(actor => { if (actor.combat) delete actor.combat.conditions; });
+  const upgraded = upgradeBattlePayload(legacy);
+  assert.deepEqual(upgraded.combat.undo, []);
+  assert.deepEqual(upgraded.combat.log, []);
+  assert.equal(upgraded.combat.round, 1);
+  assert.equal(upgraded.combat.turnIndex, 0);
+  assert.deepEqual(upgraded.combat.order, upgraded.actors.map(actor => actor.id));
+  assert.deepEqual(upgraded.actors[0].combat.conditions, []);
+});
+
+test('升级后的旧档案可以正常导入', () => {
+  const battle = setup();
+  const legacy = JSON.parse(JSON.stringify(battle));
+  delete legacy.combat.undo;
+  delete legacy.combat.log;
+  const imported = importBattle(JSON.stringify(legacy));
+  assert.equal(imported.id, battle.id);
+  assert.deepEqual(imported.combat.log, []);
+});
+
+test('升级不会破坏当前格式的档案', () => {
+  const battle = setup();
+  const upgraded = upgradeBattlePayload(JSON.parse(JSON.stringify(battle)));
+  assert.deepEqual(upgraded.combat.order, battle.combat.order);
+  assert.equal(upgraded.combat.round, battle.combat.round);
+  assert.deepEqual(upgraded.actors[0].combat.conditions, battle.actors[0].combat.conditions);
+});
+
+test('升级后仍然拒绝损坏的数据', () => {
+  const battle = setup();
+  const broken = JSON.parse(JSON.stringify(battle));
+  broken.actors[0].combat.status = '不知道';
+  assert.throws(() => importBattle(JSON.stringify(broken)), /战斗数据格式无效，无法导入。/);
 });
