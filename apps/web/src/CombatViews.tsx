@@ -369,6 +369,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
   const [cover, setCover] = useState<CoverType>('无');
   const [autoCover, setAutoCover] = useState(true);
   const [twoHanded, setTwoHanded] = useState(false);
+  const [nick, setNick] = useState(false);
   const [extraDamage, setExtraDamage] = useState('');
   const [extraType, setExtraType] = useState<DamageType | '无'>('无');
   const [extraCritical, setExtraCritical] = useState(true);
@@ -392,6 +393,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
     const source = sources.find(item => item.id === id);
     setSourceId(id);
     setTwoHanded(false);
+    setNick(false);
     if (!source) return;
     setBonus(String(source.attackBonus));
     setDamage(source.damageExpression);
@@ -424,7 +426,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
     if (!target) { setMessage('请选择攻击目标。'); return; }
     if (!sourceId) { setMessage('请选择副手武器。'); return; }
     setMessage('');
-    onOffhand({ attackerId: attacker.id, targetId: target.id, attackBonus, damageExpression: damage, damageType: type, mode, range, distanceFt, weaponId: sourceId, cost: 'bonus' });
+    onOffhand({ attackerId: attacker.id, targetId: target.id, attackBonus, damageExpression: damage, damageType: type, mode, range, distanceFt, weaponId: sourceId, cost: 'bonus', ...(nick ? { nick: true } : {}) });
   };
   return <form className="cmb-attack" onSubmit={submit}>
     <div className="cmb-attack-head"><h4>攻击</h4><small>目标 AC {target?.template.armorClass ?? '—'}</small></div>
@@ -439,6 +441,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
       <label>目标掩体<select value={cover} onChange={event => setCover(event.target.value as CoverType)} aria-label="目标掩体">{coverTypes.map(item => <option key={item}>{item}</option>)}</select></label>
       <label className="cmb-check"><input type="checkbox" checked={autoCover} onChange={event => setAutoCover(event.target.checked)} aria-label="自动判定掩体" />按墙体自动判定掩体</label>
       {sources.find(item => item.id === sourceId)?.versatileDamage ? <label className="cmb-check"><input type="checkbox" checked={twoHanded} onChange={event => setTwoHanded(event.target.checked)} aria-label="双手持用" />双手持用（{sources.find(item => item.id === sourceId)?.versatileDamage}）</label> : null}
+      {sources.find(item => item.id === sourceId)?.mastery === '迅击' ? <label className="cmb-check"><input type="checkbox" checked={nick} onChange={event => setNick(event.target.checked)} aria-label="迅击" />迅击（副手攻击并入攻击动作，不消耗附赠动作）</label> : null}
       <label>额外伤害<input value={extraDamage} onChange={event => setExtraDamage(event.target.value)} aria-label="额外伤害骰" placeholder="如 1d6（可留空）" /></label>
       <label>额外伤害类型<select value={extraType} onChange={event => setExtraType(event.target.value as DamageType | '无')} aria-label="额外伤害类型"><option value="无">无</option>{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
       <label className="cmb-check"><input type="checkbox" checked={extraCritical} onChange={event => setExtraCritical(event.target.checked)} aria-label="额外伤害随重击翻倍" />额外伤害随重击翻倍</label>

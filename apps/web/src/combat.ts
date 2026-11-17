@@ -37,6 +37,8 @@ export type AttackOptions = {
   weaponId?: string;
   /** 两用武器改用双手持用时的伤害骰（需要 weaponId 指向一把两用武器）。 */
   twoHanded?: boolean;
+  nick?: boolean;
+  ignoreCostCheck?: boolean;
   /** 附带的额外伤害骰（如猎人印记、至圣斩），随重击一起翻倍。 */
   extraDamageExpression?: string;
   extraDamageType?: DamageType;
@@ -590,6 +592,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.movementUsed = 0;
   combat.disengaged = false;
   combat.dodging = false;
+  combat.nickUsed = false;
   for (const other of battle.actors) {
     if (other.combat?.slowSourceId === actorId) {
       other.combat.speedPenaltyFt = 0;
@@ -885,9 +888,11 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   const cost: AttackCost = options.cost ?? 'action';
   if (cost !== 'reaction' && currentActorId(battle) !== attacker.id) throw new Error('只有当前回合的单位可以攻击。');
   const state = combatantOf(attacker);
-  if (cost === 'action' && state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
-  if (cost === 'bonus' && state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
-  if (cost === 'reaction' && state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
+  if (!options.ignoreCostCheck) {
+    if (cost === 'action' && state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+    if (cost === 'bonus' && state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
+    if (cost === 'reaction' && state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
+  }
   const criticalRange = options.criticalRange ?? 20;
   if (!Number.isInteger(criticalRange) || criticalRange < 15 || criticalRange > 20) throw new Error('重击范围须为 15 至 20。');
   const range: AttackRange = options.range ?? 'melee';
@@ -1021,7 +1026,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     }
     concentration = concentrationCheck(battle, target, damage, random, deps)?.text ?? '';
     const mastery = weaponSource?.mastery;
-    if (mastery && combatantOf(target).status === 'active') {
+    if (mastery && (combatantOf(target).status === 'active' || mastery === '顺劈')) {
       const targetState = combatantOf(target);
       if (mastery === '迟滞') {
         targetState.speedPenaltyFt = Math.min(50, (targetState.speedPenaltyFt ?? 0) + 10);
@@ -1033,6 +1038,25 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
       } else if (mastery === '破绽') {
         state.vexTargetId = target.id;
         masteryNote = '精通·破绽：攻击者对目标的下一次攻击检定优势';
+      } else if (mastery === '顺劈') {
+        const targetPosition = target.position;
+        if (!battle.grid || !targetPosition) {
+          masteryNote = '精通·顺劈：未启用方格，无法判定邻近目标';
+        } else {
+          const neighbor = battle.actors.find(item => item.id !== target.id && item.id !== attacker.id
+            && item.combat?.status === 'active' && item.side !== attacker.side && item.side !== '中立'
+            && item.position !== undefined && cellDistance(targetPosition, item.position) <= 1);
+          const abilities = attacker.characterSnapshot?.sheet.abilities ?? attacker.template.abilities ?? { str: 10 };
+          const splash = Math.max(0, abilityModifier(abilities.str ?? 10));
+          if (!neighbor) {
+            masteryNote = '精通·顺劈：5 尺内没有其他敌对单位';
+          } else if (splash > 0) {
+            const result = applyDamageToActor(neighbor, splash, options.damageType);
+            masteryNote = `精通·顺劈：邻近的 ${actorLabel(battle, neighbor)} 受到 ${result.damage} 点${options.damageType}伤害`;
+          } else {
+            masteryNote = '精通·顺劈：力量调整值不足以造成额外伤害';
+          }
+        }
       } else if (mastery === '倾覆') {
         const abilities = attacker.characterSnapshot?.sheet.abilities ?? attacker.template.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
         const level = attacker.characterSnapshot?.sheet.level;
@@ -1153,16 +1177,25 @@ export function offhandAttack(battle: Battle, options: AttackOptions, deps: Comb
   const blocker = actionBlocker(attacker);
   if (blocker) throw new Error(blocker);
   if (currentActorId(next) !== options.attackerId) throw new Error('只有当前回合的单位可以副手攻击。');
-  if (state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
   if (!state.actionUsed) throw new Error('副手攻击需要在用动作攻击之后进行。');
   const source = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
   if (!source) throw new Error('请选择副手武器。');
   if (!lightProperty(source)) throw new Error('只有轻型武器可以进行副手攻击。');
   const style = hasTwoWeaponFighting(attacker);
-  const offhandOptions: AttackOptions = { ...options, weaponId: source.id, damageExpression: style ? source.damageExpression : offhandDamageExpression(source), cost: 'bonus', range: source.range };
+  const nick = options.nick === true;
+  if (nick) {
+    if (source.mastery !== '迅击') throw new Error('该武器没有迅击精通，无法把副手攻击并入攻击动作。');
+    if (state.nickUsed === true) throw new Error('本回合已经使用过迅击。');
+  } else if (state.bonusUsed) {
+    throw new Error('该单位本回合已经使用过附赠动作。');
+  }
+  const offhandOptions: AttackOptions = { ...options, nick: undefined, weaponId: source.id, damageExpression: style ? source.damageExpression : offhandDamageExpression(source), cost: 'bonus', range: source.range, ...(nick ? { ignoreCostCheck: true } : {}) };
   const context = validateAttackOptions(next, offhandOptions);
-  const outcome = resolveOneAttack(next, offhandOptions, context, deps, true);
-  addLog(next, style
+  const outcome = resolveOneAttack(next, offhandOptions, context, deps, !nick);
+  if (nick) state.nickUsed = true;
+  addLog(next, nick
+    ? `${actorLabel(next, attacker)} 用副手武器「${source.label}」以迅击并入攻击动作（不消耗附赠动作）。`
+    : style
     ? `${actorLabel(next, attacker)} 用副手武器「${source.label}」进行附赠动作攻击，双武器战斗风格把属性调整值加入伤害。`
     : `${actorLabel(next, attacker)} 用副手武器「${source.label}」进行附赠动作攻击，伤害不使用属性调整值。`, deps);
   return { battle: next, outcome };
