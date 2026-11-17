@@ -247,6 +247,17 @@ function exhaustionSpeedPenalty(actor: Actor): number {
 function movementAllowance(actor: Actor): number {
   return Math.max(0, actorSpeed(actor) - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
 }
+/** 切换「双持战斗者」专长：AC +1，且副手攻击不再要求轻型武器。 */
+export function setDualWielder(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (enabled) state.dualWielder = true;
+  else delete state.dualWielder;
+  addLog(next, enabled ? `${actorLabel(next, actor)} 使用双持战斗者：AC +1，副手可用非轻型武器。` : `${actorLabel(next, actor)} 不再享受双持战斗者的加值。`, deps);
+  return next;
+}
+
 /** 设置某单位的力竭等级（0 表示没有力竭）。 */
 export function setExhaustion(battle: Battle, actorId: string, level: number, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -1327,7 +1338,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const second = mode === 'normal' ? first : rollDie(20, random);
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
   const total = natural + options.attackBonus - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
-  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac');
+  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0);
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
   const automaticCritical = hit && isAutomaticCritical(target, context.range, context.distanceFt);
@@ -1536,7 +1547,7 @@ export function offhandAttack(battle: Battle, options: AttackOptions, deps: Comb
   if (!state.actionUsed) throw new Error('副手攻击需要在用动作攻击之后进行。');
   const source = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
   if (!source) throw new Error('请选择副手武器。');
-  if (!lightProperty(source)) throw new Error('只有轻型武器可以进行副手攻击。');
+  if (!lightProperty(source) && state.dualWielder !== true) throw new Error('只有轻型武器可以进行副手攻击。');
   const style = hasTwoWeaponFighting(attacker);
   const nick = options.nick === true;
   if (nick) {
