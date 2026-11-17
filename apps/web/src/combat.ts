@@ -2973,6 +2973,29 @@ export function executeCaptive(battle: Battle, actorId: string, targetId: string
   return next;
 }
 
+const MORALE_DC = 12;
+
+/** 士气检定：感知豁免失败则放下武器投降，成功则稳住阵脚。 */
+export function moraleCheck(battle: Battle, actorId: string, deps: CombatDeps = {}, dc = MORALE_DC): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位需要做士气检定。');
+  if (state.fled === true || state.surrendered === true) throw new Error('已经退出战斗的单位不需要士气检定。');
+  const save = resolveSave(actor, { actorId, ability: 'wis', dc, bonus: defaultSaveBonus(actor, 'wis') + auraBonus(next, actorId, 'saves') }, randomOf(deps));
+  if (save.success) {
+    addLog(next, `${actorLabel(next, actor)} 稳住了士气（感知 ${save.total} ≥ DC ${dc}）。`, deps);
+    return next;
+  }
+  state.surrendered = true;
+  if (next.combat) {
+    next.combat.pendingOpportunity = (next.combat.pendingOpportunity ?? []).filter(item => item.reactorId !== actorId && item.targetId !== actorId);
+  }
+  addLog(next, `${actorLabel(next, actor)} 士气崩溃（感知 ${save.total} < DC ${dc}），放下武器投降。`, deps);
+  return next;
+}
+
 function nextTurnIndex(battle: Battle) {
   const combat = requireCombat(battle);
   combat.turnIndex += 1;

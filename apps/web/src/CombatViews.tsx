@@ -69,6 +69,7 @@ export type CombatHandlers = {
   onDeafen: (actorId: string, targetId: string) => void;
   onFlee: (actorId: string) => void;
   onExecute: (actorId: string, targetId: string) => void;
+  onMorale: (actorId: string) => void;
   onSurrender: (actorId: string) => void;
   onSuppress: (actorId: string, targetId: string) => void;
   onMount: (actorId: string, mountId: string) => void;
@@ -349,6 +350,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       {state.deafened ? <span className="cmb-hint">耳聋术：剩余 {state.deafened} 轮（听不见命令与协助）</span> : null}
       {state.fled ? <span className="cmb-hint">已撤离战场：不再占回合，也不计入胜负</span> : <button type="button" className="button-secondary" onClick={() => handlers.onFlee(actor.id)} aria-label="撤离战场">撤离战场</button>}
       {captiveTargets(battle, actor.id).length ? <button type="button" className="button-secondary" onClick={() => handlers.onExecute(actor.id, captiveTargets(battle, actor.id)[0]?.id ?? '')} aria-label="处决俘虏">处决俘虏（动作，5 尺内投降者）</button> : null}
+      {state.status === 'active' && !state.fled && !state.surrendered ? <button type="button" className="button-secondary" onClick={() => handlers.onMorale(actor.id)} aria-label="士气检定">士气检定（DC 12 感知，失败投降）</button> : null}
       {state.surrendered ? <span className="cmb-hint">已投降：不再占回合，可被搜刮，并计入击败经验</span> : <button type="button" className="button-secondary" onClick={() => handlers.onSurrender(actor.id)} aria-label="投降">投降</button>}
       {aidTargets(battle, actor.id).length ? <button type="button" className="button-secondary" onClick={() => handlers.onAid(actor.id)} aria-label="援助术">援助术（动作，30 尺内至多 3 个友方，生命上限 +5）</button> : null}
       {state.aided ? <span className="cmb-hint">援助术：生命上限 +{state.aided}</span> : null}
