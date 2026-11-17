@@ -2585,12 +2585,13 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const webbed = webAt(next, x, y);
   const entwined = entangleAt(next, x, y);
   const flying = state.flying === true;
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava || brambles || muddy || webbed || entwined ? 2 : 1);
+  const crawling = !flying && state.conditions.includes('倒地');
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava || brambles || muddy || webbed || entwined || crawling ? 2 : 1);
   const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && muddy ? '，泥沼使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}${!flying && entwined ? '，藤蔓使消耗翻倍' : ''}。`, deps);
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && muddy ? '，泥沼使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}${!flying && entwined ? '，藤蔓使消耗翻倍' : ''}${crawling ? '，倒地爬行使消耗翻倍' : ''}。`, deps);
   if (greaseAt(next, x, y) && !flying) greaseFall(next, actor, deps);
   if (sleepCloudAt(next, x, y)) sleepDust(next, actor, deps);
   if (webbed && !flying) webStuck(next, actor, deps);
