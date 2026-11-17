@@ -894,6 +894,13 @@ function offhandDamageExpression(source: AttackSource): string {
   return source.damageExpression.replace(/\s*([+-])\s*(\d+)\s*$/, (_match: string, sign: string, value: string) => (sign === '-' ? `-${value}` : ''));
 }
 
+function hasTwoWeaponFighting(actor: Actor): boolean {
+  const details = actor.characterSnapshot?.sheet?.details as { fighterCalculator?: { fightingStyle?: string; fightingStyles?: string[] } } | undefined;
+  const config = details?.fighterCalculator;
+  if (!config) return false;
+  return config.fightingStyle === '双武器战斗' || (Array.isArray(config.fightingStyles) && config.fightingStyles.includes('双武器战斗'));
+}
+
 export function offhandAttack(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
   const next = recordUndo(structuredClone(battle));
   const attacker = actorOf(next, options.attackerId);
@@ -906,10 +913,13 @@ export function offhandAttack(battle: Battle, options: AttackOptions, deps: Comb
   const source = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
   if (!source) throw new Error('请选择副手武器。');
   if (!lightProperty(source)) throw new Error('只有轻型武器可以进行副手攻击。');
-  const offhandOptions: AttackOptions = { ...options, weaponId: source.id, damageExpression: offhandDamageExpression(source), cost: 'bonus', range: source.range };
+  const style = hasTwoWeaponFighting(attacker);
+  const offhandOptions: AttackOptions = { ...options, weaponId: source.id, damageExpression: style ? source.damageExpression : offhandDamageExpression(source), cost: 'bonus', range: source.range };
   const context = validateAttackOptions(next, offhandOptions);
   const outcome = resolveOneAttack(next, offhandOptions, context, deps, true);
-  addLog(next, `${actorLabel(next, attacker)} 用副手武器「${source.label}」进行附赠动作攻击，伤害不使用属性调整值。`, deps);
+  addLog(next, style
+    ? `${actorLabel(next, attacker)} 用副手武器「${source.label}」进行附赠动作攻击，双武器战斗风格把属性调整值加入伤害。`
+    : `${actorLabel(next, attacker)} 用副手武器「${source.label}」进行附赠动作攻击，伤害不使用属性调整值。`, deps);
   return { battle: next, outcome };
 }
 
