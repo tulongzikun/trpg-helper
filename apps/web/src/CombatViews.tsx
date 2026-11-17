@@ -6,7 +6,7 @@ import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, a
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
-import { suggestAttacks } from './combatAi';
+import { suggestAttacks, suggestTurn } from './combatAi';
 import { actionSurgeMax, attacksPerAction, coverTypes, hasCunningAction, hasRecklessAttack, hasSecondWind } from './combatModifiers';
 import { battleTranscript, exportBattle } from './battleTransfer';
 import { battleReport, reportFileName } from './combatReport';
@@ -441,6 +441,7 @@ function AiPanel({ battle, actor, onApply }: { battle: Battle; actor: Actor; onA
   };
   return <div className="cmb-ai">
     <div className="cmb-ai-head"><h4>战术建议</h4><small>按能否立即攻击、目标血量与平均伤害排序</small></div>
+    {(() => { const turn = suggestTurn(battle); return turn.action === 'hold' ? <p className="cmb-hint">本回合建议：{turn.note}</p> : <p className="cmb-hint">本回合建议：{turn.action === 'attack' ? '直接攻击' : '先靠近再攻击'} —— {turn.note}</p>; })()}
     <ul>
       {suggestions.map(item => <li key={`${item.targetId}:${item.source.id}`}>
         <span className={item.inRange ? 'cmb-ai-ready' : 'cmb-ai-wait'}>{nameOf(item.targetId)} · {item.source.label}</span>

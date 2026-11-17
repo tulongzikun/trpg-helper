@@ -1,7 +1,7 @@
 import type { Actor, Battle } from './battle.ts';
 import type { AttackSource } from './attackSources.ts';
 import { attackSources } from './attackSources.ts';
-import { actorDistance, cellDistance, hasLineOfSight } from './combat.ts';
+import { actorDistance, actorSpeed, cellDistance, currentActorId, hasLineOfSight } from './combat.ts';
 
 export type AttackSuggestion = {
   targetId: string;
@@ -78,3 +78,31 @@ export function hasImmediateAttack(battle: Battle, actorId: string): boolean {
 }
 
 export type { Actor };
+
+export type TurnSuggestion = {
+  actorId: string | null;
+  actorName: string | null;
+  action: 'attack' | 'approach' | 'hold';
+  targetId?: string;
+  note: string;
+};
+
+/** 给当前行动者一句「这回合该干什么」的建议：先打得到的，其次靠近，最后按兵不动。 */
+export function suggestTurn(battle: Battle): TurnSuggestion {
+  const actorId = currentActorId(battle);
+  if (!actorId) return { actorId: null, actorName: null, action: 'hold', note: '战斗尚未开始。' };
+  const actor = battle.actors.find(item => item.id === actorId);
+  if (!actor) return { actorId, actorName: null, action: 'hold', note: '找不到当前行动者。' };
+  const suggestions = suggestAttacks(battle, actorId, 5);
+  if (!suggestions.length) return { actorId, actorName: actor.name, action: 'hold', note: '没有可攻击的敌人。' };
+  const ready = suggestions.filter(item => item.inRange);
+  if (ready.length) return { actorId, actorName: actor.name, action: 'attack', targetId: ready[0].targetId, note: ready[0].reason };
+  const nearest = [...suggestions].sort((left, right) => (left.distanceFt ?? 0) - (right.distanceFt ?? 0))[0];
+  const reach = nearest.source.distanceFt;
+  const gap = Math.max(0, (nearest.distanceFt ?? 0) - reach);
+  const speed = actorSpeed(actor);
+  if (gap <= speed) {
+    return { actorId, actorName: actor.name, action: 'approach', targetId: nearest.targetId, note: `向 ${nearest.targetName} 靠近 ${gap} 尺，本回合移动力 ${speed} 尺足够。` };
+  }
+  return { actorId, actorName: actor.name, action: 'hold', note: `最近的 ${nearest.targetName} 还差 ${gap} 尺，本回合移动力 ${speed} 尺，够不到；建议准备动作或远程消耗。` };
+}
