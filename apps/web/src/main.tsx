@@ -11,7 +11,7 @@ import { importBattle } from './battleTransfer';
 import { autoAct, autoSide, autoTurn } from './combatAuto';
 import { applyFallDamage } from './combatMovement';
 import { castSpell } from './combatSpells';
-import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setTerrain, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, setInitiative, abilityCheck, healActor, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
+import { addHazard, addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setTerrain, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeHazard, hazardAt, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, setInitiative, abilityCheck, healActor, cunningAction, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -73,6 +73,7 @@ function App() {
   onDash:actorId=>tryBattle(()=>changeBattle(battleId,battle=>dash(battle,actorId))),
   onHide:actorId=>tryBattle(()=>changeBattle(battleId,battle=>hide(battle,actorId))),
   onPotion:actorId=>tryBattle(()=>changeBattle(battleId,battle=>drinkHealingPotion(battle,actorId).battle)),
+  onCunning:kind=>tryBattle(()=>changeBattle(battleId,battle=>cunningAction(battle,currentActorId(battle) ?? '',kind))),
   onHelp:(helperId,targetId)=>tryBattle(()=>changeBattle(battleId,battle=>help(battle,helperId,targetId))),
   onStand:actorId=>tryBattle(()=>changeBattle(battleId,battle=>standUp(battle,actorId))),
   onReady:(actorId,input)=>tryBattle(()=>changeBattle(battleId,battle=>readyAction(battle,actorId,input))),

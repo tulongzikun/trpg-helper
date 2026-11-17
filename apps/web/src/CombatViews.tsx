@@ -6,7 +6,7 @@ import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, a
 import { attackSources, originLabels } from './attackSources';
 import type { AttackSuggestion } from './combatAi';
 import { suggestAttacks } from './combatAi';
-import { actionSurgeMax, attacksPerAction, coverTypes, hasSecondWind } from './combatModifiers';
+import { actionSurgeMax, attacksPerAction, coverTypes, hasCunningAction, hasSecondWind } from './combatModifiers';
 import { battleTranscript, exportBattle } from './battleTransfer';
 import type { AttackRange, CoverType } from './combatModifiers';
 import type { Ability } from './characters';
@@ -57,6 +57,7 @@ export type CombatHandlers = {
   onDash: (actorId: string) => void;
   onHide: (actorId: string) => void;
   onPotion: (actorId: string) => void;
+  onCunning: (kind: 'dash' | 'disengage' | 'hide') => void;
   onHelp: (helperId: string, targetId: string) => void;
   onStand: (actorId: string) => void;
   onReady: (actorId: string, input: { action: string; trigger: string }) => void;
@@ -177,6 +178,13 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" disabled={state.actionUsed || state.hidden === true} onClick={() => handlers.onHide(actor.id)}>{state.hidden ? '躲藏中' : '躲藏（消耗动作，敏捷隐匿对抗被动察觉）'}</button>
       <button type="button" className="button-secondary" disabled={state.actionUsed} onClick={() => handlers.onPotion(actor.id)}>使用治疗药水（2d4+2）</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAuto(actor.id)}>自动行动（攻击或靠近）</button>
+      {hasCunningAction(actor) ? (
+        <>
+          <button type="button" className="button-secondary" disabled={state.bonusUsed === true} onClick={() => handlers.onCunning('dash')}>灵巧疾跑（附赠动作）</button>
+          <button type="button" className="button-secondary" disabled={state.bonusUsed === true} onClick={() => handlers.onCunning('disengage')}>灵巧撤离（附赠动作）</button>
+          <button type="button" className="button-secondary" disabled={state.bonusUsed === true} onClick={() => handlers.onCunning('hide')}>灵巧躲藏（附赠动作）</button>
+        </>
+      ) : null}
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoTurn(actor.id)}>自动回合（行动后结束）</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoSide(actor.side)}>本阵营整轮自动</button>
     </div>

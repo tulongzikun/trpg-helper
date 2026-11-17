@@ -3,10 +3,10 @@ import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Terrain } from './battle.ts';
 import type { Ability } from './characters';
-import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
+import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
-import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasEvasion, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
+import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasCunningAction, hasEvasion, hasSecondWind, isAutomaticCritical, sneakAttackDice, targetAdjustment } from './combatModifiers.ts';
 import { attackSources, type AttackSource } from './attackSources.ts';
 import type { AttackRange, CoverType, ModeAdjustment } from './combatModifiers.ts';
 
@@ -565,7 +565,7 @@ export function declineOpportunity(battle: Battle, reactorId: string, deps: Comb
 }
 
 /** 撤离：消耗动作，本回合移动不引发借机攻击。 */
-export function disengage(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+export function disengage(battle: Battle, actorId: string, deps: CombatDeps = {}, cost: 'action' | 'bonus' = 'action'): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
   if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以撤离。');
@@ -574,8 +574,7 @@ export function disengage(battle: Battle, actorId: string, deps: CombatDeps = {}
   if (state.status !== 'active') throw new Error('只有在场的单位可以撤离。');
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
-  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
-  state.actionUsed = true;
+  spendActionSlot(state, cost);
   state.disengaged = true;
   addLog(next, `${actorLabel(next, actor)} 使用撤离，本回合移动不会引发借机攻击。`, deps);
   return next;
@@ -599,7 +598,30 @@ export function dodge(battle: Battle, actorId: string, deps: CombatDeps = {}): B
 }
 
 /** 疾跑：消耗动作，本回合额外获得等同于速度的移动力。 */
-export function dash(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+/** 消耗动作或附赠动作；对应槽位已被占用时抛错。 */
+function spendActionSlot(state: CombatantState, cost: 'action' | 'bonus'): void {
+  if (cost === 'action') {
+    if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+    state.actionUsed = true;
+    return;
+  }
+  if (state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
+  state.bonusUsed = true;
+}
+
+export type CunningActionKind = 'dash' | 'disengage' | 'hide';
+
+/** 灵巧动作：游荡者 2 级起，用附赠动作疾跑、撤离或躲藏。 */
+export function cunningAction(battle: Battle, actorId: string, kind: CunningActionKind, deps: CombatDeps = {}, stealthTotal?: number): Battle {
+  const actor = actorOf(structuredClone(battle), actorId);
+  if (!hasCunningAction(actor)) throw new Error('只有 2 级以上的游荡者可以使用灵巧动作。');
+  if (kind === 'dash') return dash(battle, actorId, deps, 'bonus');
+  if (kind === 'disengage') return disengage(battle, actorId, deps, 'bonus');
+  if (kind === 'hide') return hide(battle, actorId, stealthTotal, deps, 'bonus');
+  throw new Error('灵巧动作类型无效。');
+}
+
+export function dash(battle: Battle, actorId: string, deps: CombatDeps = {}, cost: 'action' | 'bonus' = 'action'): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
   if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以疾跑。');
@@ -608,15 +630,14 @@ export function dash(battle: Battle, actorId: string, deps: CombatDeps = {}): Ba
   if (state.status !== 'active') throw new Error('只有在场的单位可以疾跑。');
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
-  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
-  state.actionUsed = true;
+  spendActionSlot(state, cost);
   state.dashMovement = actorSpeed(actor);
   addLog(next, `${actorLabel(next, actor)} 使用疾跑，本回合移动力增加 ${state.dashMovement} 尺。`, deps);
   return next;
 }
 
 /** 躲藏：消耗动作，用敏捷（隐匿）对抗敌人的被动察觉，成功则进入躲藏状态。 */
-export function hide(battle: Battle, actorId: string, stealthTotal?: number, deps: CombatDeps = {}): Battle {
+export function hide(battle: Battle, actorId: string, stealthTotal?: number, deps: CombatDeps = {}, cost: 'action' | 'bonus' = 'action'): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
   if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以躲藏。');
@@ -625,13 +646,13 @@ export function hide(battle: Battle, actorId: string, stealthTotal?: number, dep
   if (state.status !== 'active') throw new Error('只有在场的单位可以躲藏。');
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
-  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (cost === 'action' && state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
   if (stealthTotal !== undefined && (!Number.isInteger(stealthTotal) || stealthTotal < 0 || stealthTotal > 60)) throw new Error('隐匿检定结果须为 0 至 60 的整数。');
   const stealth = stealthTotal ?? abilityCheckBonus(actor, 'dex', '隐匿');
   const passive = next.actors
     .filter(item => item.id !== actor.id && item.side !== actor.side && item.combat?.status === 'active')
     .reduce((best, item) => Math.max(best, 10 + abilityCheckBonus(item, 'wis', '察觉')), 0);
-  state.actionUsed = true;
+  spendActionSlot(state, cost);
   const success = stealth > passive;
   state.hidden = success;
   addLog(next, `${actorLabel(next, actor)} 躲藏${success ? '成功' : '失败'}（隐匿 ${stealth} 对被动察觉 ${passive || '无'}）。`, deps);
@@ -669,6 +690,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.disengaged = false;
   combat.dodging = false;
   combat.nickUsed = false;
+  combat.sneakUsed = false;
   for (const other of battle.actors) {
     if (other.combat?.slowSourceId === actorId) {
       other.combat.speedPenaltyFt = 0;
@@ -1145,6 +1167,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   let concentration = '';
   let extraDamage = 0;
   let extraNote = '';
+  let sneakNote = '';
   let masteryNote = '';
   const damageExpression = effectiveDamageExpression(attacker, options);
   const weaponSource = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
@@ -1166,6 +1189,20 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
       tempAbsorbed += extraResult.tempAbsorbed;
       status = extraResult.status;
       extraNote = `额外 ${extraRoll.total} 点${options.extraDamageType}伤害${extraDefense.label ? `（${extraDefense.label}）` : ''}`;
+    }
+    const sneakDice = sneakAttackDice(attacker);
+    const targetPosition = target.position;
+    const allyAdjacent = !!targetPosition && battle.actors.some(item => item.id !== attacker.id && item.id !== target.id
+      && item.side !== target.side && item.side !== '中立' && item.combat?.status === 'active' && !!item.position
+      && cellDistance(item.position, targetPosition) <= 1);
+    if (sneakDice > 0 && combatantOf(attacker).sneakUsed !== true && (mode === 'advantage' || allyAdjacent)) {
+      const sneakRoll = rollDamage(`${sneakDice}d6`, random, critical);
+      const sneakResult = applyDamageToActor(target, sneakRoll.total, options.damageType, battle);
+      damage += sneakResult.damage;
+      tempAbsorbed += sneakResult.tempAbsorbed;
+      status = sneakResult.status;
+      combatantOf(attacker).sneakUsed = true;
+      sneakNote = `偷袭 ${sneakRoll.total} 点${options.damageType}伤害（${sneakDice}d6${critical ? '，重击翻倍' : ''}）`;
     }
     concentration = concentrationCheck(battle, target, damage, random, deps)?.text ?? '';
     const mastery = weaponSource?.mastery;
@@ -1258,6 +1295,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     damageText,
     options.twoHanded && damageExpression !== options.damageExpression ? `双手持用：${damageExpression}` : '',
     extraNote,
+    sneakNote,
     masteryNote,
     defense,
     `目标剩余 ${target.currentHp}/${target.maxHp}`,

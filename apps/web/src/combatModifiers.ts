@@ -130,6 +130,19 @@ export function hasEvasion(actor: Actor): boolean {
   return (cls === '游荡者' || cls === '武僧') && sheet.level >= 7;
 }
 
+/** 偷袭骰数：游荡者 1 级 1d6，之后每两级 +1d6（3 级 2d6 … 19 级 10d6）。 */
+export function sneakAttackDice(actor: Actor): number {
+  const sheet = sheetOf(actor);
+  if (!sheet || classOf(actor) !== '游荡者') return 0;
+  return Math.min(10, Math.ceil(sheet.level / 2));
+}
+
+/** 灵巧动作：游荡者 2 级起，可用附赠动作疾跑、撤离或躲藏。 */
+export function hasCunningAction(actor: Actor): boolean {
+  const sheet = sheetOf(actor);
+  return !!sheet && classOf(actor) === '游荡者' && sheet.level >= 2;
+}
+
 export function hasSecondWind(actor: Actor): boolean {
   const sheet = sheetOf(actor);
   return !!sheet && classOf(actor) === '战士' && sheet.level >= 1;
