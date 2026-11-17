@@ -1501,6 +1501,39 @@ export function useItem(battle: Battle, actorId: string, name: string, targetId?
   return { battle: next, healed };
 }
 
+/** 搜刮：把阵亡单位身上的物品转移到存活单位（5 尺内），同名物品合并。 */
+export function lootCorpse(battle: Battle, looterId: string, targetId: string, deps: CombatDeps = {}): { battle: Battle; looted: string[] } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const looter = actorOf(next, looterId);
+  const target = actorOf(next, targetId);
+  const looterState = combatantOf(looter);
+  const targetState = combatantOf(target);
+  if (looterState.status !== 'active') throw new Error('只有在场的单位可以搜刮。');
+  if (targetState.status !== 'dead') throw new Error('只能搜刮已经死亡的单位。');
+  if (looter.position && target.position && cellDistance(looter.position, target.position) > 1) throw new Error('只能搜刮 5 尺内的尸体。');
+  const loot = targetState.items ?? [];
+  if (!loot.length) throw new Error('该单位身上没有可搜刮的物品。');
+  const owned = looterState.items ?? [];
+  const known = new Set(owned.map(entry => entry.name));
+  const incoming = loot.filter(entry => !known.has(entry.name));
+  if (owned.length + incoming.length > 20) throw new Error('每名单位最多记录 20 种物品，无法再拾取。');
+  for (const entry of loot) {
+    const existing = owned.find(item => item.name === entry.name);
+    if (existing) {
+      existing.quantity = Math.min(99, existing.quantity + entry.quantity);
+      if (entry.healExpression) existing.healExpression = existing.healExpression ?? entry.healExpression;
+    } else {
+      owned.push({ name: entry.name, quantity: Math.min(99, entry.quantity), ...(entry.healExpression ? { healExpression: entry.healExpression } : {}) });
+    }
+  }
+  looterState.items = owned;
+  delete targetState.items;
+  const summary = loot.map(entry => `「${entry.name}」×${entry.quantity}`).join('、');
+  addLog(next, `${actorLabel(next, looter)} 从 ${actorLabel(next, target)} 身上搜刮了 ${summary}。`, deps);
+  return { battle: next, looted: loot.map(entry => entry.name) };
+}
+
 export function setActorHp(battle: Battle, actorId: string, hp: number, deps: CombatDeps = {}): Battle {
   if (!battle.combat) {
     const next = structuredClone(battle);
