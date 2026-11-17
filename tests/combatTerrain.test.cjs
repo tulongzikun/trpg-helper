@@ -132,3 +132,23 @@ test('攀爬地形不影响火焰伤害', () => {
   const after = result.battle.actors.find(actor => actor.id === monster.id).currentHp;
   assert.equal(before - after, 6);
 });
+
+test('冰面移动消耗翻倍并在豁免失败时滑倒', () => {
+  const { battle, friend } = setup('长剑', 3);
+  const icy = setTerrain(battle, 'ice');
+  assert.match(icy.combat.log.at(-1).text, /战场进入冰面/);
+  const moved = moveActorToCell(icy, friend.id, 1, 2, { random: sequence(0) });
+  const state = moved.actors.find(actor => actor.id === friend.id).combat;
+  assert.equal(state.movementUsed, 10);
+  assert.ok(state.conditions.includes('倒地'));
+  assert.match(moved.combat.log.at(-1).text, /在冰面上滑倒/);
+});
+
+test('冰面豁免成功时不会滑倒', () => {
+  const { battle, friend } = setup('长剑', 3);
+  const icy = setTerrain(battle, 'ice');
+  const moved = moveActorToCell(icy, friend.id, 1, 2, { random: sequence(0.9) });
+  const state = moved.actors.find(actor => actor.id === friend.id).combat;
+  assert.equal(state.movementUsed, 10);
+  assert.equal(state.conditions.includes('倒地'), false);
+});

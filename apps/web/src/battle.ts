@@ -87,7 +87,7 @@ export type ActorTemplate = Partial<Block> & Pick<Block, 'armorClass'>;
 /** 方格战场：宽高以格为单位，cellFt 是每格代表的尺数。 */
 export type GridConfig = { width: number; height: number; cellFt: number };
 /** 战场环境：水下会让远程攻击变得困难。 */
-export type Terrain = 'normal' | 'underwater' | 'climbing';
+export type Terrain = 'normal' | 'underwater' | 'climbing' | 'ice';
 /** 危险地形格：单位进入该格时立即受到伤害。 */
 export type Hazard = { x: number; y: number; damageExpression: string; damageType: DamageType };
 /** 单位在方格上的位置，左上角为 (0,0)。 */
@@ -187,7 +187,7 @@ function isGrid(value: unknown): value is GridConfig {
   return isObject(value) && isInteger(value.width, 1, 60) && isInteger(value.height, 1, 60) && isInteger(value.cellFt, 5, 30);
 }
 function isTerrain(value: unknown): value is Terrain {
-  return value === 'normal' || value === 'underwater' || value === 'climbing';
+  return value === 'normal' || value === 'underwater' || value === 'climbing' || value === 'ice';
 }
 function isHazard(value: unknown): value is Hazard {
   return isObject(value) && isInteger(value.x, 0, 59) && isInteger(value.y, 0, 59)

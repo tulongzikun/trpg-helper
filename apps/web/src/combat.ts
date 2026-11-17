@@ -428,14 +428,16 @@ function applyHazardAt(battle: Battle, actor: Actor, x: number, y: number, deps:
 export function setTerrain(battle: Battle, terrain: Terrain, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
-  if (terrain !== 'normal' && terrain !== 'underwater' && terrain !== 'climbing') throw new Error('战场地形取值无效。');
+  if (terrain !== 'normal' && terrain !== 'underwater' && terrain !== 'climbing' && terrain !== 'ice') throw new Error('战场地形取值无效。');
   if (terrain === 'normal') delete next.terrain;
   else next.terrain = terrain;
   addLog(next, terrain === 'underwater'
     ? '战场进入水下环境：远程攻击检定劣势，超出常规射程自动失手。'
     : terrain === 'climbing'
       ? '战场进入攀爬环境：移动消耗翻倍。'
-      : '战场恢复为普通地形。', deps);
+      : terrain === 'ice'
+        ? '战场进入冰面：移动消耗翻倍，移动后需通过敏捷豁免（DC 10），失败倒地。'
+        : '战场恢复为普通地形。', deps);
   return next;
 }
 
@@ -502,12 +504,21 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const rough = isDifficultCell(next, x, y);
   const swimming = next.terrain === 'underwater';
   const climbing = next.terrain === 'climbing';
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1) * (swimming || climbing ? 2 : 1);
+  const icy = next.terrain === 'ice';
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1) * (swimming || climbing || icy ? 2 : 1);
   const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}${swimming ? '，水下游泳使消耗翻倍' : ''}${climbing ? '，攀爬使消耗翻倍' : ''}。`, deps);
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}${swimming ? '，水下游泳使消耗翻倍' : ''}${climbing ? '，攀爬使消耗翻倍' : ''}${icy ? '，冰面使消耗翻倍' : ''}。`, deps);
+  if (icy) {
+    const stumble = resolveSave(actor, { actorId: actor.id, ability: 'dex', dc: 10, bonus: defaultSaveBonus(actor, 'dex') + auraBonus(next, actor.id, 'saves') }, randomOf(deps));
+    if (!stumble.success) {
+      const slipState = combatantOf(actor);
+      if (!slipState.conditions.includes('倒地')) slipState.conditions.push('倒地');
+      addLog(next, `${actorLabel(next, actor)} 在冰面上滑倒，倒地。`, deps);
+    }
+  }
   applyHazardAt(next, actor, x, y, deps);
   const triggered = threatPrompts(next, actor, from, { x, y });
   if (triggered.length) {
