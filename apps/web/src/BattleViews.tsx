@@ -1,8 +1,8 @@
 ﻿import { useEffect, useRef, useState } from 'react';
 import type { Card } from './catalog';
-import type { BattleStore, Side } from './battle';
+import type { BattleStore, Position, Side } from './battle';
 import type { CombatHandlers } from './CombatViews';
-import { BattleIo, CombatLog, CombatSetup, CombatToolbar, GridPanel, InitiativeRail, TurnPanel } from './CombatViews';
+import { BattleIo, CombatLog, CombatSetup, CombatToolbar, GridPanel, InitiativeRail, ReinforcePanel, TurnPanel } from './CombatViews';
 import { currentActorId } from './combat';
 
 export function AddMonsterDialog({ card, store, onClose, onAdd }: { card: Card; store: BattleStore; onClose: () => void; onAdd: (options: { battleId?: string; newBattleName?: string; side: Side; count: number }) => string | null }) {
@@ -20,7 +20,7 @@ export function AddMonsterDialog({ card, store, onClose, onAdd }: { card: Card; 
 
 const sideClass = (side: Side) => side === '敌方' ? 'enemy' : side === '友方' ? 'ally' : 'neutral';
 
-export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRemove, bindCombat, onImportBattle, error }: {
+export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRemove, bindCombat, onImportBattle, onReinforce, cards, error }: {
   store: BattleStore;
   selectedId: string;
   onSelect: (id: string) => void;
@@ -29,6 +29,8 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
   onRemove: (battleId: string, actorId: string) => void;
   bindCombat: (battleId: string) => CombatHandlers;
   onImportBattle: (text: string) => void;
+  onReinforce: (battleId: string, card: Card, input: { side: Side; initiative?: number; position?: Position; name?: string }) => void;
+  cards: Card[];
   error: string;
 }) {
   const battle = store.battles.find(b => b.id === selectedId) ?? store.battles[0];
@@ -56,6 +58,7 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
             {handlers && <TurnPanel battle={battle} handlers={handlers} />}
           </div>}
           {handlers && battle.actors.length ? <GridPanel battle={battle} handlers={handlers} /> : null}
+          {battle.combat && <ReinforcePanel battle={battle} cards={cards} onReinforce={(card, input) => onReinforce(battle.id, card, input)} />}
           {battle.actors.length ? <div className="actor-list">{battle.actors.map((actor, index) => {
             const state = actor.combat;
             return <article className={`actor${activeId === actor.id ? ' actor-active' : ''}${state?.status === 'dead' ? ' actor-dead' : ''}`} key={actor.id}>
@@ -77,4 +80,6 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
     </div>
   </div>;
 }
+
+
 

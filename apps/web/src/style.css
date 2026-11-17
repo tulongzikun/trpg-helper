@@ -144,3 +144,12 @@
 .cmb-ready { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; background: #fbfcfe; }
 .cmb-ready label { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); }
 .cmb-ready input { font-size: 0.9rem; padding: 4px 6px; }
+
+.cmb-reinforce { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 12px 0; background: #fbfcfe; }
+.cmb-reinforce-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.cmb-reinforce-head h4 { margin: 0; font-size: 0.95rem; }
+.cmb-reinforce-head small { color: var(--muted); }
+.cmb-reinforce-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.cmb-reinforce-grid label { display: grid; gap: 4px; font-size: 0.8rem; color: var(--muted); }
+.cmb-reinforce-grid input, .cmb-reinforce-grid select { font-size: 0.88rem; padding: 4px 6px; }
+.cmb-reinforce-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; }

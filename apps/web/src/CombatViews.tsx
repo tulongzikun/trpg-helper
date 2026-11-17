@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react';
-import type { Actor, Battle, DamageType, GridConfig } from './battle';
+import type { Actor, Battle, DamageType, GridConfig, Position, Side } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
 import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
@@ -10,6 +10,7 @@ import { actionSurgeMax, attacksPerAction, coverTypes, hasSecondWind } from './c
 import { battleTranscript, exportBattle } from './battleTransfer';
 import type { AttackRange, CoverType } from './combatModifiers';
 import type { Ability } from './characters';
+import type { Card } from './catalog';
 
 const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
 
@@ -625,3 +626,50 @@ export function BattleIo({ battle, onImport }: { battle: Battle; onImport: (text
 
 
 
+
+
+export function ReinforcePanel({ battle, cards, onReinforce }: { battle: Battle; cards: Card[]; onReinforce: (card: Card, input: { side: Side; initiative?: number; position?: Position; name?: string }) => void }) {
+  const [key, setKey] = useState('');
+  const [side, setSide] = useState<Side>('敌方');
+  const [name, setName] = useState('');
+  const [initiative, setInitiative] = useState('');
+  const [x, setX] = useState('');
+  const [y, setY] = useState('');
+  const [message, setMessage] = useState('');
+  if (!cards.length) return null;
+  const cardOf = (value: string) => cards.find(item => `${item.entry.id}|${item.block.id}` === value);
+  const selected = cardOf(key) ?? cards[0];
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const card = cardOf(key) ?? cards[0];
+    if (!card) { setMessage('请选择要加入的怪物卡。'); return; }
+    let manual: number | undefined;
+    if (initiative.trim()) {
+      manual = Number(initiative);
+      if (!Number.isInteger(manual) || manual < -20 || manual > 60) { setMessage('先攻须为 -20 至 60 的整数。'); return; }
+    }
+    let position: Position | undefined;
+    if (x.trim() || y.trim()) {
+      const px = Number(x); const py = Number(y);
+      if (!Number.isInteger(px) || !Number.isInteger(py) || px < 0 || py < 0) { setMessage('格子坐标须为非负整数。'); return; }
+      position = { x: px, y: py };
+    }
+    setMessage('');
+    onReinforce(card, { side, ...(manual === undefined ? {} : { initiative: manual }), ...(position ? { position } : {}), ...(name.trim() ? { name: name.trim() } : {}) });
+    setName(''); setInitiative(''); setX(''); setY('');
+  };
+  return <form className="cmb-reinforce" onSubmit={submit}>
+    <div className="cmb-reinforce-head"><h4>增援</h4><small>战斗中插入新单位，按先攻排序，不打断当前回合</small></div>
+    <div className="cmb-reinforce-grid">
+      <label>怪物卡<select value={key || (selected ? `${selected.entry.id}|${selected.block.id}` : '')} onChange={event => setKey(event.target.value)} aria-label="增援怪物卡">{cards.map(item => <option key={`${item.entry.id}|${item.block.id}`} value={`${item.entry.id}|${item.block.id}`}>{item.entry.name}</option>)}</select></label>
+      <label>阵营<select value={side} onChange={event => setSide(event.target.value as Side)} aria-label="增援阵营">{['友方', '敌方', '中立'].map(item => <option key={item}>{item}</option>)}</select></label>
+      <label>名称<input value={name} onChange={event => setName(event.target.value)} placeholder="留空用怪物名" aria-label="增援名称" /></label>
+      <label>先攻<input type="number" step={1} value={initiative} onChange={event => setInitiative(event.target.value)} placeholder="留空自动掷" aria-label="增援先攻" /></label>
+      {battle.grid ? <>
+        <label>格子 X<input type="number" min={0} step={1} value={x} onChange={event => setX(event.target.value)} placeholder="可选" aria-label="增援格子 X" /></label>
+        <label>格子 Y<input type="number" min={0} step={1} value={y} onChange={event => setY(event.target.value)} placeholder="可选" aria-label="增援格子 Y" /></label>
+      </> : null}
+    </div>
+    <div className="cmb-reinforce-actions"><button type="submit" className="button-secondary">加入增援</button>{message && <span className="cmb-muted">{message}</span>}</div>
+  </form>;
+}
