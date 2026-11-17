@@ -824,6 +824,7 @@ export function castSleep(battle: Battle, casterId: string, targetIds: string[],
   const blocker = actionBlocker(caster);
   if (blocker) throw new Error(blocker);
   if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (state.concentration) throw new Error('施法者已经在维持其他专注。');
   const ids = [...new Set(targetIds)].filter(id => id !== casterId);
   if (!ids.length) throw new Error('请选择沉睡术的目标。');
   for (const id of ids) {
@@ -838,6 +839,7 @@ export function castSleep(battle: Battle, casterId: string, targetIds: string[],
   let pool = rolled.total;
   state.actionUsed = true;
   const slept: string[] = [];
+  state.concentration = { spell: '沉睡术' };
   const ordered = [...ids].sort((left, right) => actorOf(next, left).currentHp - actorOf(next, right).currentHp);
   for (const id of ordered) {
     const target = actorOf(next, id);
@@ -846,6 +848,7 @@ export function castSleep(battle: Battle, casterId: string, targetIds: string[],
     if (target.currentHp > pool) continue;
     pool -= target.currentHp;
     targetState.sleeping = true;
+    targetState.sleepingBy = casterId;
     if (!targetState.conditions.includes('失能')) targetState.conditions.push('失能');
     if (!targetState.conditions.includes('倒地')) targetState.conditions.push('倒地');
     dropConcentration(next, target, '陷入沉睡', deps);
@@ -1979,6 +1982,15 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
       item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '失能');
     }
     addLog(battle, `${reason}，${shaped.map(item => actorLabel(battle, item)).join('、')} 的变形术结束了。`, deps);
+  }
+  const sleepers = battle.actors.filter(item => item.combat?.sleepingBy === casterId);
+  if (sleepers.length) {
+    for (const item of sleepers) {
+      delete item.combat!.sleeping;
+      delete item.combat!.sleepingBy;
+      item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '失能' && condition !== '倒地');
+    }
+    addLog(battle, `${reason}，${sleepers.map(item => actorLabel(battle, item)).join('、')} 从沉睡中醒来。`, deps);
   }
   if (battle.silence && battle.silenceBy === casterId) {
     delete battle.silence;
