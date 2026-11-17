@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Position, Side } from './battle';
 import { damageTypes } from './battle';
-import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, SaveOptions, OngoingInput } from './combat';
+import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput } from './combat';
 import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import type { AttackSuggestion } from './combatAi';
@@ -22,6 +22,8 @@ export type CombatHandlers = {
   onEndTurn: () => void;
   onTerrain: (terrain: 'normal' | 'underwater') => void;
   onInitiative: (actorId: string, initiative: number) => void;
+  onCheck: (options: CheckOptions) => void;
+  onHeal: (targetId: string, amount: number) => void;
   onUndo: () => void;
   onReset: () => void;
   onAttack: (options: AttackOptions) => void;
@@ -191,6 +193,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <SummonPanel key={`summon-${actor.id}`} battle={battle} handlers={handlers} />
     <AuraPanel key={`aura-${actor.id}`} battle={battle} handlers={handlers} />
     <HelpPanel key={`help-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
+    <CheckPanel key={`check-${actor.id}`} actor={actor} handlers={handlers} />
+    <HealPanel key={`heal-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <OpportunityPanel key={`opportunity-${actor.id}`} battle={battle} handlers={handlers} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
@@ -669,6 +673,54 @@ function SummonPanel({ battle, handlers }: { battle: Battle; handlers: CombatHan
       </form>
       : <p className="cmb-hint">先开始专注，才能把单位标记为召唤物。</p>}
   </div>;
+}
+
+export function CheckPanel({ actor, handlers }: { actor: Actor; handlers: CombatHandlers }) {
+  const [ability, setAbility] = useState<Ability>('str');
+  const [skill, setSkill] = useState('');
+  const [dc, setDc] = useState(15);
+  const [notice, setNotice] = useState('');
+  const checkNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
+  return <section className="cmb-ready">
+    <div className="section-label">属性检定</div>
+    <label>属性
+      <select value={ability} onChange={event => setAbility(event.target.value as Ability)} aria-label="检定属性">
+        {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as Ability[]).map(key => <option key={key} value={key}>{checkNames[key]}</option>)}
+      </select>
+    </label>
+    <label>技能（可留空）
+      <input value={skill} onChange={event => setSkill(event.target.value)} placeholder="运动 / 隐匿 / 察觉" aria-label="检定技能" />
+    </label>
+    <label>DC
+      <input type="number" min={1} max={40} value={dc} onChange={event => setDc(Number(event.target.value))} aria-label="检定 DC" />
+    </label>
+    <button type="button" className="button-secondary" onClick={() => {
+      if (!Number.isInteger(dc) || dc < 1 || dc > 40) { setNotice('DC 须为 1 至 40 的整数。'); return; }
+      setNotice('');
+      handlers.onCheck({ actorId: actor.id, ability, skill: skill.trim() || undefined, dc });
+    }}>{checkNames[ability]}检定</button>
+    {notice ? <small className="cmb-muted">{notice}</small> : null}
+  </section>;
+}
+
+export function HealPanel({ battle, actor, handlers }: { battle: Battle; actor: Actor; handlers: CombatHandlers }) {
+  const candidates = battle.actors.filter(item => item.combat?.status !== 'dead');
+  const [targetId, setTargetId] = useState(candidates[0]?.id ?? '');
+  const [amount, setAmount] = useState(5);
+  if (!candidates.length) return null;
+  return <section className="cmb-ready">
+    <div className="section-label">治疗</div>
+    <label>目标
+      <select value={targetId} onChange={event => setTargetId(event.target.value)} aria-label="治疗目标">
+        {candidates.map(item => <option key={item.id} value={item.id}>{actorLabel(battle, item)}（{item.currentHp}/{item.maxHp}）</option>)}
+      </select>
+    </label>
+    <label>治疗量
+      <input type="number" min={1} max={999} value={amount} onChange={event => setAmount(Number(event.target.value))} aria-label="治疗量" />
+    </label>
+    <button type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => { if (Number.isInteger(amount) && amount > 0) handlers.onHeal(targetId, amount); }}>治疗（消耗动作）</button>
+    <small className="cmb-muted">治疗倒地单位会让其重新站起并清空死亡豁免。</small>
+  </section>;
 }
 
 export function HelpPanel({ battle, actor, handlers }: { battle: Battle; actor: Actor; handlers: CombatHandlers }) {

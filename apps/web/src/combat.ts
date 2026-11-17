@@ -915,13 +915,16 @@ export function healActor(battle: Battle, actorId: string, amount: number, deps:
   const actor = actorOf(next, actorId);
   const state = combatantOf(actor);
   if (state.status === 'dead') throw new Error('已死亡的单位无法通过治疗恢复。');
+  const wasDown = state.status === 'down';
   const healed = Math.min(actor.maxHp - actor.currentHp, amount);
   actor.currentHp += healed;
-  if (state.status === 'down' && actor.currentHp > 0) {
+  if (wasDown && actor.currentHp > 0) {
     state.status = 'active';
     state.deathSaves = { successes: 0, failures: 0 };
   }
-  addLog(next, `${actorLabel(next, actor)} 恢复 ${healed} 点生命值，当前 ${actor.currentHp}/${actor.maxHp}。`, deps);
+  addLog(next, wasDown && actor.currentHp > 0
+    ? `${actorLabel(next, actor)} 被治疗，恢复 ${healed} 点生命值并重新站起，当前 ${actor.currentHp}/${actor.maxHp}。`
+    : `${actorLabel(next, actor)} 恢复 ${healed} 点生命值，当前 ${actor.currentHp}/${actor.maxHp}。`, deps);
   return next;
 }
 export function setActorHp(battle: Battle, actorId: string, hp: number, deps: CombatDeps = {}): Battle {
@@ -1319,6 +1322,44 @@ function abilityCheckBonus(actor: Actor, ability: Ability, skill: string): numbe
   const proficient = (sheet?.details?.skillProficiencies ?? []).includes(skill);
   const level = sheet?.level ?? 1;
   return abilityModifier(score) + (proficient ? proficiencyBonus(level) : 0);
+}
+
+export type CheckOptions = { actorId: string; ability: Ability; skill?: string; dc: number; bonus?: number; mode?: AttackMode };
+export type CheckOutcome = { natural: number; total: number; dc: number; success: boolean; mode: AttackMode; notes: string[] };
+
+function checkAdjustment(actor: Actor, ability: Ability): ModeAdjustment | null {
+  const conditions = combatantOf(actor).conditions;
+  const notes: string[] = [];
+  if (conditions.includes('中毒')) notes.push('中毒：属性检定劣势');
+  if (conditions.includes('恐慌')) notes.push('恐慌：属性检定劣势');
+  if (ability === 'dex' && (conditions.includes('束缚') || conditions.includes('目盲'))) notes.push('敏捷检定劣势');
+  return notes.length ? { mode: 'disadvantage', notes } : null;
+}
+
+/** 通用属性检定：可指定技能（用于熟练加值）与 DC。 */
+export function abilityCheck(battle: Battle, options: CheckOptions, deps: CombatDeps = {}): { battle: Battle; outcome: CheckOutcome } {
+  if (!Number.isInteger(options.dc) || options.dc < 1 || options.dc > 40) throw new Error('DC 须为 1 至 40 的整数。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, options.actorId);
+  if (combatantOf(actor).status !== 'active') throw new Error('只有在场的单位可以进行检定。');
+  const bonus = options.bonus ?? abilityCheckBonus(actor, options.ability, options.skill ?? '');
+  const adjustment = checkAdjustment(actor, options.ability);
+  const combined = combineAttackModes(options.mode ?? 'normal', adjustment ? [adjustment] : []);
+  const random = randomOf(deps);
+  let natural = rollDie(20, random);
+  if (combined.mode === 'advantage') natural = Math.max(natural, rollDie(20, random));
+  if (combined.mode === 'disadvantage') natural = Math.min(natural, rollDie(20, random));
+  const total = natural + bonus;
+  const success = natural === 20 ? true : natural === 1 ? false : total >= options.dc;
+  const label = options.skill ? `${saveNames[options.ability]}（${options.skill}）` : saveNames[options.ability];
+  addLog(
+    next,
+    `${actorLabel(next, actor)} 的${label}检定${success ? '成功' : '失败'}（DC ${options.dc}）。`,
+    deps,
+    `d20(${natural}) + ${bonus} = ${total} · ${success ? '成功' : '失败'}${combined.notes.length ? ` · ${combined.notes.join('；')}` : ''}`,
+  );
+  return { battle: next, outcome: { natural, total, dc: options.dc, success, mode: combined.mode, notes: combined.notes } };
 }
 
 function contestRoll(bonus: number, random: Random): { natural: number; total: number } {
