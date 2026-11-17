@@ -40,6 +40,8 @@ export type AttackOptions = {
   twoHanded?: boolean;
   /** 强力攻击（重武器专长）：攻击检定 -5，命中伤害 +10；需要 weaponId 指向带「重型」的武器。 */
   powerAttack?: boolean;
+  /** 神射手：忽略半掩体／四分之三掩体，且远程超出常规射程时不承受劣势；需要 weaponId 指向远程或投掷武器。 */
+  sharpshooter?: boolean;
   nick?: boolean;
   ignoreCostCheck?: boolean;
   /** 附带的额外伤害骰（如猎人印记、至圣斩），随重击一起翻倍。 */
@@ -1121,8 +1123,14 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && attacker.position && target.position && !hasLineOfSight(battle, attacker.position, target.position)) throw new Error('视线被墙体阻挡，无法进行远程攻击。');
   const distanceFt = options.ignoreDistanceCheck ? (options.distanceFt ?? reachFt) : (measured ?? options.distanceFt ?? (range === 'melee' ? reachFt : 30));
   if (!Number.isInteger(distanceFt) || distanceFt < 0 || distanceFt > 600) throw new Error('距离须为 0 至 600 尺的整数。');
-  const cover = options.cover ?? (options.autoCover && attacker.position && target.position ? coverFromWalls(battle, attacker.position, target.position) : undefined);
+  let cover = options.cover ?? (options.autoCover && attacker.position && target.position ? coverFromWalls(battle, attacker.position, target.position) : undefined);
   if (cover === '全掩体') throw new Error('目标处于全掩体，无法被直接攻击。');
+  if (options.sharpshooter) {
+    const weapon = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
+    const shootable = weapon && (weapon.range === 'ranged' || weapon.properties?.includes('投掷'));
+    if (!shootable) throw new Error('只有远程或投掷武器可以使用神射手。');
+    cover = undefined;
+  }
   return { attacker, target, cost, criticalRange, range, distanceFt, measured: measured !== undefined, cover };
 }
 
@@ -1143,7 +1151,7 @@ function effectiveDamageExpression(actor: Actor, options: AttackOptions): string
 }
 
 function longRangeAdjustment(actor: Actor, options: AttackOptions, distanceFt: number): ModeAdjustment | null {
-  if (!options.weaponId || options.range === 'melee') return null;
+  if (!options.weaponId || options.range === 'melee' || options.sharpshooter) return null;
   const source = attackSources(actor).find(item => item.id === options.weaponId);
   const normalRange = source?.longRangeFt ? source.distanceFt : source?.thrownRangeFt;
   if (!normalRange || distanceFt <= normalRange) return null;
@@ -1330,6 +1338,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     damageText,
     options.twoHanded && damageExpression !== options.damageExpression ? `双手持用：${damageExpression}` : '',
     options.powerAttack ? '强力攻击：攻击检定 -5，伤害 +10' : '',
+    options.sharpshooter ? '神射手：忽略掩体与远程射程劣势' : '',
     extraNote,
     sneakNote,
     masteryNote,
