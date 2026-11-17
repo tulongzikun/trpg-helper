@@ -6,7 +6,7 @@ import type { Ability } from './characters';
 import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
-import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasCunningAction, hasEvasion, hasRecklessAttack, hasSecondWind, isAutomaticCritical, sneakAttackDice, targetAdjustment } from './combatModifiers.ts';
+import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, criticalThreshold, hasCunningAction, hasEvasion, hasRecklessAttack, hasSecondWind, isAutomaticCritical, sneakAttackDice, targetAdjustment } from './combatModifiers.ts';
 import { attackSources, type AttackSource } from './attackSources.ts';
 import type { AttackRange, CoverType, ModeAdjustment } from './combatModifiers.ts';
 
@@ -1178,7 +1178,7 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
     if (cost === 'bonus' && state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
     if (cost === 'reaction' && state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
   }
-  const criticalRange = options.criticalRange ?? 20;
+  const criticalRange = options.criticalRange ?? criticalThreshold(attacker);
   if (!Number.isInteger(criticalRange) || criticalRange < 15 || criticalRange > 20) throw new Error('重击范围须为 15 至 20。');
   const range: AttackRange = options.range ?? 'melee';
   if (range !== 'melee' && range !== 'ranged') throw new Error('请选择近战或远程攻击。');

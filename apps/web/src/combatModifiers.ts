@@ -122,6 +122,15 @@ export function actionSurgeMax(actor: Actor): number {
 }
 
 /** 回气：战士 1 级起可用，附赠动作恢复 1d10 + 战士等级，短休或长休恢复。 */
+/** 重击范围：勇士冠军 3 级起 19–20、15 级起 18–20，其余 20。 */
+export function criticalThreshold(actor: Actor): number {
+  const sheet = sheetOf(actor);
+  if (!sheet || classOf(actor) !== '战士') return 20;
+  const subclass = sheet.details?.fighterCalculator?.subclass;
+  if (subclass !== 'champion') return 20;
+  return sheet.level >= 15 ? 18 : sheet.level >= 3 ? 19 : 20;
+}
+
 /** 反射闪避：游荡者／武僧 7 级起，敏捷豁免成功时完全不受范围伤害。 */
 export function hasEvasion(actor: Actor): boolean {
   const sheet = sheetOf(actor);

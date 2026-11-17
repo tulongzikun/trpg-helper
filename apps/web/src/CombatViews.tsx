@@ -418,6 +418,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
   const [autoCover, setAutoCover] = useState(true);
   const [twoHanded, setTwoHanded] = useState(false);
   const [powerAttack, setPowerAttack] = useState(false);
+  const [criticalRange, setCriticalRange] = useState('');
   const [sharpshooter, setSharpshooter] = useState(false);
   const [nick, setNick] = useState(false);
   const [extraDamage, setExtraDamage] = useState('');
@@ -467,7 +468,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
     if (!Number.isInteger(count) || count < 1 || count > maxAttacks) { setMessage(`本回合的攻击次数须为 1 至 ${maxAttacks} 次。`); return; }
     setMessage('');
     const reachFt = range === 'melee' ? sources.find(item => item.id === sourceId)?.distanceFt : undefined;
-    const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count, ...(reachFt === undefined ? {} : { reachFt }), ...(cover === '无' ? {} : { cover }), ...(autoCover ? { autoCover: true } : {}), ...(extra ? { extraDamageExpression: extra, extraDamageType: extraType === '无' ? undefined : extraType, extraDamageCritical: extraCritical } : {}), ...(sourceId ? { weaponId: sourceId } : {}), ...(twoHanded ? { twoHanded: true } : {}), ...(powerAttack ? { powerAttack: true } : {}), ...(sharpshooter ? { sharpshooter: true } : {}) };
+    const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count, ...(reachFt === undefined ? {} : { reachFt }), ...(cover === '无' ? {} : { cover }), ...(autoCover ? { autoCover: true } : {}), ...(extra ? { extraDamageExpression: extra, extraDamageType: extraType === '无' ? undefined : extraType, extraDamageCritical: extraCritical } : {}), ...(sourceId ? { weaponId: sourceId } : {}), ...(twoHanded ? { twoHanded: true } : {}), ...(powerAttack ? { powerAttack: true } : {}), ...(sharpshooter ? { sharpshooter: true } : {}), ...(criticalRange.trim() && Number.isInteger(Number(criticalRange)) ? { criticalRange: Number(criticalRange) } : {}) };
     if (count > 1) onAttackSequence(options); else onAttack(options);
   };
   const submitOffhand = () => {
@@ -492,6 +493,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
       <label>距离（尺）<input type="number" min={0} max={600} step={5} value={distance} onChange={event => setDistance(event.target.value)} aria-label="与目标距离" /></label>
       <label>目标掩体<select value={cover} onChange={event => setCover(event.target.value as CoverType)} aria-label="目标掩体">{coverTypes.map(item => <option key={item}>{item}</option>)}</select></label>
       <label className="cmb-check"><input type="checkbox" checked={autoCover} onChange={event => setAutoCover(event.target.checked)} aria-label="自动判定掩体" />按墙体自动判定掩体</label>
+      <label>重击范围<input type="number" min={15} max={20} step={1} value={criticalRange} placeholder="自动" title="留空时按职业与等级自动判定（勇士冠军 19–20／18–20）" onChange={event => setCriticalRange(event.target.value)} aria-label="重击范围" /></label>
       {sources.find(item => item.id === sourceId)?.versatileDamage ? <label className="cmb-check"><input type="checkbox" checked={twoHanded} onChange={event => setTwoHanded(event.target.checked)} aria-label="双手持用" />双手持用（{sources.find(item => item.id === sourceId)?.versatileDamage}）</label> : null}
       {(() => { const picked = sources.find(item => item.id === sourceId); return picked && (picked.range === 'ranged' || picked.properties?.includes('投掷')) ? <label className="cmb-check"><input type="checkbox" checked={sharpshooter} onChange={event => setSharpshooter(event.target.checked)} aria-label="神射手" />神射手（忽略半掩体／四分之三掩体与远程射程劣势）</label> : null; })()}
       {sources.find(item => item.id === sourceId)?.properties?.includes('重型') ? <label className="cmb-check"><input type="checkbox" checked={powerAttack} onChange={event => setPowerAttack(event.target.checked)} aria-label="强力攻击" />强力攻击（攻击 -5，伤害 +10）</label> : null}
