@@ -120,6 +120,14 @@ export function actionSurgeMax(actor: Actor): number {
 }
 
 /** 回气：战士 1 级起可用，附赠动作恢复 1d10 + 战士等级，短休或长休恢复。 */
+/** 反射闪避：游荡者／武僧 7 级起，敏捷豁免成功时完全不受范围伤害。 */
+export function hasEvasion(actor: Actor): boolean {
+  const sheet = sheetOf(actor);
+  if (!sheet) return false;
+  const cls = classOf(actor);
+  return (cls === '游荡者' || cls === '武僧') && sheet.level >= 7;
+}
+
 export function hasSecondWind(actor: Actor): boolean {
   const sheet = sheetOf(actor);
   return !!sheet && classOf(actor) === '战士' && sheet.level >= 1;

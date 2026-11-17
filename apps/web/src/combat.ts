@@ -6,7 +6,7 @@ import type { Ability } from './characters';
 import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
-import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
+import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasEvasion, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
 import { attackSources, type AttackSource } from './attackSources.ts';
 import type { AttackRange, CoverType, ModeAdjustment } from './combatModifiers.ts';
 
@@ -1686,13 +1686,14 @@ export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatD
     const targetCover = options.ability === 'dex' ? options.covers?.[targetId] : undefined;
     const targetBonus = (options.bonuses?.[targetId] ?? (defaultSaveBonus(actor, options.ability) + auraBonus(next, targetId, 'saves'))) + (targetCover ? coverAcBonus(targetCover) : 0);
     const save = resolveSave(actor, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: targetBonus, mode: options.mode }, random);
-    const amount = save.success ? (options.halfOnSuccess === false ? 0 : Math.floor(raw.total / 2)) : raw.total;
+    const evasion = save.success && options.ability === 'dex' && hasEvasion(actor);
+    const amount = evasion ? 0 : save.success ? (options.halfOnSuccess === false ? 0 : Math.floor(raw.total / 2)) : raw.total;
     const defense = defenseOf(actor, options.damageType);
-    const damage = amount > 0 ? applyDamageToActor(actor, amount, options.damageType, battle) : { damage: 0, tempAbsorbed: 0, status: actor.combat?.status ?? 'active' };
+    const damage = amount > 0 ? applyDamageToActor(actor, amount, options.damageType, next, deps) : { damage: 0, tempAbsorbed: 0, status: actor.combat?.status ?? 'active' };
     const concentration = damage.damage > 0 ? concentrationCheck(next, actor, damage.damage, random, deps) : null;
     results.push({ actorId: targetId, save, damage: damage.damage, tempAbsorbed: damage.tempAbsorbed, status: damage.status });
     addLog(next, `${actorLabel(next, actor)} 的${saveNames[options.ability]}豁免${save.success ? '成功' : '失败'}，承受 ${damage.damage} 点${options.damageType}伤害。`, deps,
-      [saveDetail(actor, next, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: targetBonus }, save), `伤害 ${raw.total}${save.success ? `（减半 ${amount}）` : ''}`, defense.label, `剩余 ${actor.currentHp}/${actor.maxHp}`, concentration?.text].filter(Boolean).join(' · '));
+      [saveDetail(actor, next, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: targetBonus }, save), `伤害 ${raw.total}${evasion ? '（反射闪避：不受伤害）' : save.success ? `（减半 ${amount}）` : ''}`, defense.label, `剩余 ${actor.currentHp}/${actor.maxHp}`, concentration?.text].filter(Boolean).join(' · '));
   }
   addLog(next, `范围效果结算：${results.length} 个目标，${results.filter(item => item.save.success).length} 个豁免成功。`, deps,
     `${saveNames[options.ability]}豁免 DC ${options.dc} · ${options.damageExpression} ${options.damageType}${options.halfOnSuccess === false ? '' : '（成功减半）'}`);
