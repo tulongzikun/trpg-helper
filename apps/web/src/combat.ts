@@ -255,10 +255,30 @@ export function removeAttackPreset(battle: Battle, presetId: string, deps: Comba
 }
 
 /** 用保存好的常用攻击直接结算一次攻击。 */
-export function attackWithPreset(battle: Battle, presetId: string, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
+export function attackWithPreset(battle: Battle, presetId: string, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome; targetId: string } {
   const preset = (battle.attackPresets ?? []).find(item => item.id === presetId);
   if (!preset) throw new Error('该常用攻击不存在。');
-  return attack(battle, { attackerId: preset.attackerId, targetId: preset.targetId, attackBonus: preset.attackBonus, damageExpression: preset.damageExpression, damageType: preset.damageType, range: preset.range }, deps);
+  const attacker = battle.actors.find(item => item.id === preset.attackerId);
+  if (!attacker) throw new Error('该常用攻击的攻击者不在战斗中。');
+  const targetId = presetTarget(battle, preset, attacker);
+  const result = attack(battle, { attackerId: preset.attackerId, targetId, attackBonus: preset.attackBonus, damageExpression: preset.damageExpression, damageType: preset.damageType, range: preset.range }, deps);
+  return { ...result, targetId };
+}
+
+/** 常用攻击的目标已倒下或离场时，改打最近的敌对单位。 */
+function presetTarget(battle: Battle, preset: AttackPreset, attacker: Actor): string {
+  const original = battle.actors.find(item => item.id === preset.targetId);
+  const usable = !!original && original.combat?.status === 'active' && original.side !== attacker.side;
+  if (usable) return preset.targetId;
+  const candidates = battle.actors.filter(item => item.id !== attacker.id && item.side !== attacker.side && item.side !== '中立' && item.combat?.status === 'active');
+  if (!candidates.length) throw new Error('没有可以攻击的目标。');
+  if (!battle.grid || !attacker.position) return candidates[0].id;
+  const sorted = candidates.slice().sort((left, right) => {
+    const leftDistance = left.position ? cellDistance(attacker.position!, left.position) : Number.MAX_SAFE_INTEGER;
+    const rightDistance = right.position ? cellDistance(attacker.position!, right.position) : Number.MAX_SAFE_INTEGER;
+    return leftDistance - rightDistance;
+  });
+  return sorted[0].id;
 }
 
 export function appendLog(battle: Battle, text: string, deps: CombatDeps = {}, detail?: string): Battle {
