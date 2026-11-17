@@ -1,6 +1,7 @@
 import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
+import type { Terrain } from './battle.ts';
 import type { Ability } from './characters';
 import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
 import type { Card } from './catalog';
@@ -368,6 +369,18 @@ export function toggleWallCell(battle: Battle, x: number, y: number, deps: Comba
   return next;
 }
 /** 启用、调整或关闭方格战场；关闭时清除所有位置。 */
+export function setTerrain(battle: Battle, terrain: Terrain, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (terrain !== 'normal' && terrain !== 'underwater') throw new Error('战场地形取值无效。');
+  if (terrain === 'normal') delete next.terrain;
+  else next.terrain = terrain;
+  addLog(next, terrain === 'underwater'
+    ? '战场进入水下环境：远程攻击检定劣势，超出常规射程自动失手。'
+    : '战场恢复为普通地形。', deps);
+  return next;
+}
+
 export function configureGrid(battle: Battle, grid: GridConfig | null, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   if (grid === null) {
@@ -967,6 +980,9 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const random = randomOf(deps);
   const heavy = heavyWeaponAdjustment(attacker, options.weaponId);
   const far = longRangeAdjustment(attacker, options, context.distanceFt);
+  const underwaterRanged = battle.terrain === 'underwater' && context.range === 'ranged';
+  const underwaterAdjustment: ModeAdjustment | null = underwaterRanged ? { mode: 'disadvantage', notes: ['水下：远程攻击检定劣势'] } : null;
+  const underwaterMiss = underwaterRanged && context.distanceFt > 30;
   const dodging = combatantOf(target).dodging === true;
   const helped = combatantOf(attacker).helpedAttack === true;
   const sapped = combatantOf(attacker).sapped === true;
@@ -979,7 +995,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const vexAdjustment: ModeAdjustment | null = vexed ? { mode: 'advantage', notes: ['精通·破绽：攻击检定优势'] } : null;
   const hideAdjustment: ModeAdjustment | null = hiddenAttacker ? { mode: 'advantage', notes: ['攻击者处于躲藏：攻击检定优势'] } : null;
   const unseenAdjustment: ModeAdjustment | null = hiddenTarget ? { mode: 'disadvantage', notes: ['目标处于躲藏：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
@@ -992,7 +1008,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
   const total = natural + options.attackBonus;
   const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac');
-  const hit = natural === 20 || (natural !== 1 && total >= targetAc);
+  const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
+  if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
   const automaticCritical = hit && isAutomaticCritical(target, context.range, context.distanceFt);
   const critical = hit && (natural >= context.criticalRange || automaticCritical);
   if (automaticCritical) notes.push('目标麻痹或昏迷且在 5 尺内：命中即重击');

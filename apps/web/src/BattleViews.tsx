@@ -52,7 +52,7 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
         {battle ? <>
           <div className="board-heading"><div><div className="section-label">{battle.combat ? 'ENCOUNTER / 战斗中' : 'ENCOUNTER / 战斗准备'}</div><h2>{battle.name}</h2></div><span>{battle.actors.length} 个单位</span></div>
           {handlers && (battle.combat
-            ? <CombatToolbar battle={battle} onEndTurn={handlers.onEndTurn} onUndo={handlers.onUndo} onReset={handlers.onReset} />
+            ? <CombatToolbar battle={battle} onEndTurn={handlers.onEndTurn} onUndo={handlers.onUndo} onReset={handlers.onReset} onTerrain={handlers.onTerrain} />
             : <CombatSetup battle={battle} onStart={handlers.onStart} />)}
           {battle.combat && <div className="cmb-layout">
             <InitiativeRail battle={battle} />

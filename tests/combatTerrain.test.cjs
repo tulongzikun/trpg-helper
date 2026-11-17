@@ -1,64 +1,76 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { emptyStore, addMonsters } = require('../apps/web/src/battle.ts');
-const { configureGrid, difficultCells, isDifficultCell, moveActorToCell, startCombat, toggleDifficultCell } = require('../apps/web/src/combat.ts');
+const { emptyStore, addMonsters, addCharacter } = require('../apps/web/src/battle.ts');
+const { attack, configureGrid, moveActorToCell, setTerrain, startCombat } = require('../apps/web/src/combat.ts');
 const entry = require('../packages/contracts/examples/monster-entry.json');
 const card = { entry, block: entry.statBlocks[0] };
 let counter = 0;
 const ids = () => () => `id-${++counter}`;
+const sequence = (...values) => { let index = 0; return () => values[index++] ?? 0.5; };
 
-function setup(count = 2) {
-  const battle = addMonsters(emptyStore(), card, { newBattleName: '地形测试', side: '敌方', count }, ids(), () => '2026-01-01T00:00:00Z').store.battles[0];
-  const [first, second] = battle.actors.map(actor => actor.id);
-  const started = startCombat(battle, { [first]: 20, [second]: 10 });
-  const grid = configureGrid(started, { width: 8, height: 6, cellFt: 5 });
-  return { grid, first, second };
+const hero = (equipment) => ({
+  schemaVersion: 'manual-character-snapshot/v1', characterId: 'char-terrain', revision: 1, publishedAt: '2026-01-01T00:00:00Z',
+  sheet: {
+    name: '艾拉', species: '人类', characterClass: '战士', level: 5,
+    abilities: { str: 16, dex: 16, con: 14, int: 10, wis: 12, cha: 8 },
+    maxHp: 40, armorClass: 16, speedFt: 30, actions: '', notes: '', details: { equipment },
+  },
+});
+
+function setup(equipment, cellX = 2) {
+  const store = addMonsters(emptyStore(), card, { newBattleName: '地形', side: '敌方', count: 1 }, ids(), () => '2026-01-01T00:00:00Z').store;
+  const battle = store.battles[0];
+  const added = addCharacter(store, hero(equipment), { battleId: battle.id, side: '友方' }, ids());
+  const withHero = added.store.battles[0];
+  const friend = withHero.actors.find(actor => actor.side === '友方');
+  const monster = withHero.actors.find(actor => actor.side === '敌方');
+  let next = startCombat(withHero, { [friend.id]: 20, [monster.id]: 10 });
+  next = configureGrid(next, { width: Math.max(10, cellX + 2), height: 3, cellFt: 5 });
+  next = moveActorToCell(next, friend.id, 1, 1);
+  next = moveActorToCell(next, monster.id, cellX, 1);
+  return { battle: next, friend, monster };
 }
 
-test('可以标记与取消困难地形', () => {
-  const { grid } = setup();
-  const marked = toggleDifficultCell(grid, 2, 3);
-  assert.deepEqual(difficultCells(marked), [{ x: 2, y: 3 }]);
-  assert.equal(isDifficultCell(marked, 2, 3), true);
-  assert.match(marked.combat.log.at(-1).text, /\(2, 3\) 标为困难地形/);
-  const unmarked = toggleDifficultCell(marked, 2, 3);
-  assert.deepEqual(difficultCells(unmarked), []);
-  assert.equal(isDifficultCell(unmarked, 2, 3), false);
-  assert.match(unmarked.combat.log.at(-1).text, /取消 \(2, 3\) 的困难地形/);
+test('水下让远程攻击检定劣势', () => {
+  const { battle, friend, monster } = setup('短弓', 3);
+  const underwater = setTerrain(battle, 'underwater');
+  const result = attack(underwater, { attackerId: friend.id, targetId: monster.id, attackBonus: 5, damageExpression: '1d8+3', damageType: '穿刺', weaponId: 'weapon:短弓', range: 'ranged' }, { random: sequence(0.9, 0.1), makeId: ids() });
+  assert.equal(result.outcome.mode, 'disadvantage');
+  assert.ok(result.outcome.notes.some(note => note.includes('水下')));
+  assert.match(result.battle.combat.log.at(-1).detail, /水下：远程攻击检定劣势/);
 });
 
-test('困难地形需要先启用方格且坐标合法', () => {
-  const { grid } = setup();
-  const noGrid = configureGrid(grid, null);
-  assert.throws(() => toggleDifficultCell(noGrid, 0, 0), /请先启用方格战场。/);
-  assert.throws(() => toggleDifficultCell(grid, 1.5, 0), /格子坐标须为整数。/);
-  assert.throws(() => toggleDifficultCell(grid, 8, 0), /目标格子超出战场范围。/);
-  assert.throws(() => toggleDifficultCell(grid, 0, 6), /目标格子超出战场范围。/);
+test('水下不影响近战攻击', () => {
+  const { battle, friend, monster } = setup('长剑');
+  const underwater = setTerrain(battle, 'underwater');
+  const result = attack(underwater, { attackerId: friend.id, targetId: monster.id, attackBonus: 5, damageExpression: '1d8+3', damageType: '挥砍', weaponId: 'weapon:长剑' }, { random: sequence(0.5), makeId: ids() });
+  assert.equal(result.outcome.mode, 'normal');
 });
 
-test('进入困难地形时移动消耗翻倍', () => {
-  const { grid, first } = setup();
-  const marked = toggleDifficultCell(grid, 1, 0);
-  const placed = moveActorToCell(marked, first, 0, 0);
-  const moved = moveActorToCell(placed, first, 1, 0);
-  const actor = moved.actors.find(item => item.id === first);
-  assert.equal(actor.combat.movementUsed, 10);
-  assert.match(moved.combat.log.at(-1).text, /困难地形使消耗翻倍/);
+test('水下远程超出 30 尺自动失手', () => {
+  const { battle, friend, monster } = setup('短弓', 8);
+  const underwater = setTerrain(battle, 'underwater');
+  const result = attack(underwater, { attackerId: friend.id, targetId: monster.id, attackBonus: 20, damageExpression: '1d8+3', damageType: '穿刺', weaponId: 'weapon:短弓', range: 'ranged' }, { random: sequence(0.99), makeId: ids() });
+  assert.equal(result.outcome.hit, false);
+  assert.equal(result.outcome.damage, 0);
+  assert.ok(result.outcome.notes.some(note => note.includes('自动失手')));
 });
 
-test('普通地形保持每格 5 尺消耗', () => {
-  const { grid, first } = setup();
-  const placed = moveActorToCell(grid, first, 0, 0);
-  const moved = moveActorToCell(placed, first, 2, 0);
-  assert.equal(moved.actors.find(item => item.id === first).combat.movementUsed, 10);
+test('回到普通地形后远程恢复正常', () => {
+  const { battle, friend, monster } = setup('短弓', 3);
+  const underwater = setTerrain(battle, 'underwater');
+  const normal = setTerrain(underwater, 'normal');
+  assert.equal(normal.terrain, undefined);
+  const result = attack(normal, { attackerId: friend.id, targetId: monster.id, attackBonus: 5, damageExpression: '1d8+3', damageType: '穿刺', weaponId: 'weapon:短弓', range: 'ranged' }, { random: sequence(0.5), makeId: ids() });
+  assert.equal(result.outcome.mode, 'normal');
 });
 
-test('关闭方格或缩小方格会清理困难地形', () => {
-  const { grid } = setup();
-  let marked = toggleDifficultCell(grid, 7, 5);
-  marked = toggleDifficultCell(marked, 1, 1);
-  const shrunk = configureGrid(marked, { width: 4, height: 4, cellFt: 5 });
-  assert.deepEqual(difficultCells(shrunk), [{ x: 1, y: 1 }]);
-  const closed = configureGrid(shrunk, null);
-  assert.deepEqual(difficultCells(closed), []);
+test('地形日志与非法取值', () => {
+  const { battle } = setup('短弓', 3);
+  const underwater = setTerrain(battle, 'underwater');
+  assert.match(underwater.combat.log.at(-1).text, /水下环境/);
+  assert.equal(underwater.terrain, 'underwater');
+  const normal = setTerrain(underwater, 'normal');
+  assert.match(normal.combat.log.at(-1).text, /普通地形/);
+  assert.throws(() => setTerrain(battle, 'lava'), /战场地形取值无效/);
 });

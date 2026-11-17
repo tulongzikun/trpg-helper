@@ -20,6 +20,7 @@ const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', co
 export type CombatHandlers = {
   onStart: (initiatives: Record<string, number>) => void;
   onEndTurn: () => void;
+  onTerrain: (terrain: 'normal' | 'underwater') => void;
   onUndo: () => void;
   onReset: () => void;
   onAttack: (options: AttackOptions) => void;
@@ -99,7 +100,7 @@ export function CombatSetup({ battle, onStart }: { battle: Battle; onStart: (ini
   </section>;
 }
 
-export function CombatToolbar({ battle, onEndTurn, onUndo, onReset }: { battle: Battle; onEndTurn: () => void; onUndo: () => void; onReset: () => void }) {
+export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain }: { battle: Battle; onEndTurn: () => void; onUndo: () => void; onReset: () => void; onTerrain?: (terrain: 'normal' | 'underwater') => void }) {
   const combat = battle.combat;
   if (!combat) return null;
   const current = currentActor(battle);
@@ -109,6 +110,7 @@ export function CombatToolbar({ battle, onEndTurn, onUndo, onReset }: { battle: 
       <button className="button-primary" type="button" onClick={onEndTurn}>结束回合</button>
       <button className="button-secondary" type="button" onClick={onUndo} disabled={!combat.undo.length}>撤销上一步</button>
       <button className="button-secondary" type="button" onClick={onReset} title="清除先攻与回合记录；生命值不会恢复">重置战斗</button>
+      {onTerrain ? <label className="cmb-inline-action">地形<select value={battle.terrain ?? 'normal'} onChange={event => onTerrain(event.target.value as 'normal' | 'underwater')} aria-label="战场地形"><option value="normal">普通</option><option value="underwater">水下</option></select></label> : null}
     </div>
   </div>;
 }

@@ -11,7 +11,7 @@ import { importBattle } from './battleTransfer';
 import { autoAct, autoSide, autoTurn } from './combatAuto';
 import { applyFallDamage } from './combatMovement';
 import { castSpell } from './combatSpells';
-import { addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
+import { addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, setTerrain, declineOpportunity, standUp, disengage, dodge, dash, help, hide, drinkHealingPotion, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -64,6 +64,7 @@ function App() {
   onDifficult:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleDifficultCell(battle,x,y))),
   onWall:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleWallCell(battle,x,y))),
   onDisengage:actorId=>tryBattle(()=>changeBattle(battleId,battle=>disengage(battle,actorId))),
+    onTerrain:(terrain:'normal'|'underwater')=>tryBattle(()=>changeBattle(battleId,battle=>setTerrain(battle,terrain))),
   onDodge:actorId=>tryBattle(()=>changeBattle(battleId,battle=>dodge(battle,actorId))),
   onDash:actorId=>tryBattle(()=>changeBattle(battleId,battle=>dash(battle,actorId))),
   onHide:actorId=>tryBattle(()=>changeBattle(battleId,battle=>hide(battle,actorId))),
