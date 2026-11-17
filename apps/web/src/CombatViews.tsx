@@ -37,6 +37,7 @@ export type CombatHandlers = {
   onDefensiveDuelist: (actorId: string, enabled: boolean) => void;
   onParry: (actorId: string) => void;
   onInitiative: (actorId: string, initiative: number) => void;
+  onRerollInitiative: () => void;
   onCheck: (options: CheckOptions) => void;
   onHeal: (targetId: string, amount: number) => void;
   onStabilize: (targetId: string) => void;
@@ -145,12 +146,13 @@ export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain, o
   </div>;
 }
 
-export function InitiativeRail({ battle, onInitiative }: { battle: Battle; onInitiative?: (actorId: string, initiative: number) => void }) {
+export function InitiativeRail({ battle, onInitiative, onReroll }: { battle: Battle; onInitiative?: (actorId: string, initiative: number) => void; onReroll?: () => void }) {
   const combat = battle.combat;
   if (!combat) return null;
   const current = currentActorId(battle);
   return <section className="cmb-rail">
     <div className="cmb-rail-head"><div className="section-label">INITIATIVE ORDER</div><span>第 {combat.round} 轮</span></div>
+    {onReroll ? <button type="button" className="button-secondary cmb-reroll" onClick={onReroll} aria-label="重掷先攻" title="为所有在场单位重掷 d20 + 先攻加值，并按新顺序重排">重掷先攻</button> : null}
     <ol>
       {combat.order.map(id => {
         const actor = battle.actors.find(item => item.id === id);

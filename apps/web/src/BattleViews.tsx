@@ -55,7 +55,7 @@ export function BattleView({ store, selectedId, onSelect, onCatalog, onHp, onRem
             ? <CombatToolbar battle={battle} onEndTurn={handlers.onEndTurn} onUndo={handlers.onUndo} onReset={handlers.onReset} onTerrain={handlers.onTerrain} />
             : <CombatSetup battle={battle} onStart={handlers.onStart} />)}
           {battle.combat && <div className="cmb-layout">
-            <InitiativeRail battle={battle} onInitiative={handlers?.onInitiative} />
+            <InitiativeRail battle={battle} onInitiative={handlers?.onInitiative} onReroll={handlers?.onRerollInitiative} />
             {handlers && <TurnPanel battle={battle} handlers={handlers} />}
           </div>}
           {handlers && battle.actors.length ? <GridPanel battle={battle} handlers={handlers} /> : null}

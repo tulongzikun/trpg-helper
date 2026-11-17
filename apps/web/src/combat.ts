@@ -990,6 +990,28 @@ export function setInitiative(battle: Battle, actorId: string, initiative: numbe
   return next;
 }
 
+/** 为所有在场单位重掷先攻（d20 + 先攻加值），并按新顺序重排；当前行动者保持不变。 */
+export function rerollInitiative(battle: Battle, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const combat = requireCombat(next);
+  const current = combat.order[combat.turnIndex];
+  const random = randomOf(deps);
+  for (const actor of next.actors) {
+    if (!actor.combat) continue;
+    if (actor.combat.status === 'dead') continue;
+    const bonus = actorInitiativeBonus(actor);
+    const face = 1 + Math.floor(random() * 20);
+    actor.combat.initiative = face + bonus;
+  }
+  const rank = new Map(combat.order.map((id, index) => [id, index]));
+  const initiativeOf = (id: string) => next.actors.find(item => item.id === id)?.combat?.initiative ?? 0;
+  combat.order = combat.order.slice().sort((left, right) => initiativeOf(right) - initiativeOf(left) || (rank.get(left) ?? 0) - (rank.get(right) ?? 0));
+  const index = combat.order.indexOf(current);
+  combat.turnIndex = index >= 0 ? index : 0;
+  addLog(next, `重新掷先攻：${combat.order.map(id => `${actorLabel(next, next.actors.find(item => item.id === id)!)} ${initiativeOf(id)}`).join('、')}。`, deps);
+  return next;
+}
+
 export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   requireCombat(battle);
   const next = recordUndo(structuredClone(battle));
