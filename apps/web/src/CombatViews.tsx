@@ -11,6 +11,7 @@ import { battleTranscript, exportBattle } from './battleTransfer';
 import type { AttackRange, CoverType } from './combatModifiers';
 import type { Ability } from './characters';
 import type { Card } from './catalog';
+import { fallAverageDamage, jumpDistance } from './combatMovement';
 
 const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
 
@@ -28,6 +29,7 @@ export type CombatHandlers = {
   onAuto: (actorId: string) => void;
   onAutoTurn: (actorId: string) => void;
   onAutoSide: (side: Side) => void;
+  onFall: (actorId: string, feet: number) => void;
   onSave: (options: SaveOptions) => void;
   onAreaSave: (options: AreaSaveOptions) => void;
   onConcentration: (actorId: string, spell: string | null) => void;
@@ -154,6 +156,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" onClick={() => handlers.onAuto(actor.id)}>自动行动（攻击或靠近）</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoTurn(actor.id)}>自动回合（行动后结束）</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoSide(actor.side)}>本阵营整轮自动</button>
+      <FallPanel actor={actor} onFall={handlers.onFall} />
     </div>
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
     <ReadyPanel key={`ready-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
@@ -737,3 +740,17 @@ export function ReinforcePanel({ battle, cards, onReinforce }: { battle: Battle;
 
 
 
+
+function FallPanel({ actor, onFall }: { actor: Actor; onFall: (actorId: string, feet: number) => void }) {
+  const [feet, setFeet] = useState(10);
+  return (
+    <div className="cmb-fall">
+      <span className="cmb-muted">跳远 {jumpDistance(actor, 'long')} 尺 · 跳高 {jumpDistance(actor, 'high')} 尺</span>
+      <label className="cmb-temp">坠落高度（尺）
+        <input type="number" min={0} max={1000} step={5} value={feet} aria-label="坠落高度" onChange={event => setFeet(Number(event.target.value))} />
+      </label>
+      <span className="cmb-muted">预计 {fallAverageDamage(feet)} 点钝击伤害</span>
+      <button type="button" className="button-secondary" aria-label="结算坠落" onClick={() => onFall(actor.id, feet)}>结算坠落</button>
+    </div>
+  );
+}
