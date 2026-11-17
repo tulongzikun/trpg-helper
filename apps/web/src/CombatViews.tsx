@@ -461,6 +461,7 @@ export function AreaEffectForm({ battle, onSave, onAreaSave }: { battle: Battle;
   const [damage, setDamage] = useState('2d6');
   const [type, setType] = useState<DamageType>('火焰');
   const [halfOnSuccess, setHalfOnSuccess] = useState(true);
+  const [cover, setCover] = useState<CoverType>('无');
   const [message, setMessage] = useState('');
   if (!actors.length) return null;
   const toggle = (id: string) => setSelected(old => old.includes(id) ? old.filter(item => item !== id) : [...old, id]);
@@ -480,7 +481,7 @@ export function AreaEffectForm({ battle, onSave, onAreaSave }: { battle: Battle;
     if (parsedDc === null || parsedBonus === null) return;
     if (selected.length !== 1) { setMessage('单体豁免需要恰好选择一个目标。'); return; }
     setMessage('');
-    onSave({ actorId: selected[0], ability, dc: parsedDc, bonus: parsedBonus });
+    onSave({ actorId: selected[0], ability, dc: parsedDc, bonus: parsedBonus, ...(ability === 'dex' && cover !== '无' ? { cover } : {}) });
   };
   const area = (event: React.FormEvent) => {
     event.preventDefault();
@@ -489,7 +490,7 @@ export function AreaEffectForm({ battle, onSave, onAreaSave }: { battle: Battle;
     if (!selected.length) { setMessage('请至少选择一个目标。'); return; }
     if (!/^\s*\d{1,2}\s*d\s*\d{1,3}\s*([+-]\s*\d{1,3})?\s*$/i.test(damage)) { setMessage('伤害骰格式无效，请使用如 8d6 的写法。'); return; }
     setMessage('');
-    onAreaSave({ targetIds: selected, ability, dc: parsedDc, damageExpression: damage, damageType: type, halfOnSuccess });
+    onAreaSave({ targetIds: selected, ability, dc: parsedDc, damageExpression: damage, damageType: type, halfOnSuccess, ...(ability === 'dex' && cover !== '无' ? { covers: Object.fromEntries(selected.map(id => [id, cover])) } : {}) });
   };
   return <div className="cmb-area">
     <div className="cmb-attack-head"><h4>豁免与范围效果</h4><small>已选 {selected.length} / {actors.length}</small></div>
@@ -502,6 +503,7 @@ export function AreaEffectForm({ battle, onSave, onAreaSave }: { battle: Battle;
       <label>豁免加值（单体）<input type="number" min={-10} max={30} value={bonus} onChange={event => setBonus(event.target.value)} aria-label="豁免加值" /></label>
       <label>伤害骰<input value={damage} onChange={event => setDamage(event.target.value)} aria-label="范围伤害骰" placeholder="8d6" /></label>
       <label>伤害类型<select value={type} onChange={event => setType(event.target.value as DamageType)} aria-label="范围伤害类型">{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
+      <label>目标掩体<select value={cover} onChange={event => setCover(event.target.value as CoverType)} aria-label="目标掩体">{coverTypes.map(item => <option key={item}>{item}</option>)}</select></label>
       <label className="cmb-check"><input type="checkbox" checked={halfOnSuccess} onChange={event => setHalfOnSuccess(event.target.checked)} />豁免成功伤害减半</label>
     </div>
     {message && <p role="alert" className="battle-error">{message}</p>}

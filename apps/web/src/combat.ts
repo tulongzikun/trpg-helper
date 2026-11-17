@@ -1308,7 +1308,7 @@ export function recoverClassResources(battle: Battle, deps: CombatDeps = {}): Ba
   return next;
 }
 
-export type SaveOptions = { actorId: string; ability: Ability; dc: number; bonus?: number; mode?: AttackMode };
+export type SaveOptions = { actorId: string; ability: Ability; dc: number; bonus?: number; mode?: AttackMode; /** 掩体：仅对敏捷豁免提供 +2／+5。 */ cover?: CoverType };
 export type SaveOutcome = { natural: number; total: number; dc: number; success: boolean; mode: AttackMode; notes: string[]; automaticFailure: boolean };
 export type AreaSaveOptions = {
   targetIds: string[];
@@ -1316,6 +1316,8 @@ export type AreaSaveOptions = {
   dc: number;
   damageExpression: string;
   damageType: DamageType;
+  /** 每个目标各自的掩体（仅对敏捷豁免生效）。 */
+  covers?: Record<string, CoverType>;
   /** 豁免成功时伤害减半，默认 true。 */
   halfOnSuccess?: boolean;
   /** 逐目标的豁免加值，缺省为 0。 */
@@ -1376,7 +1378,8 @@ export function savingThrow(battle: Battle, options: SaveOptions, deps: CombatDe
   const bonus = options.bonus ?? 0;
   if (!Number.isInteger(bonus) || bonus < -10 || bonus > 30) throw new Error('豁免加值须为 -10 至 30 的整数。');
   const auraSave = auraBonus(next, actor.id, 'saves');
-  const withAura = { ...options, bonus: options.bonus ?? defaultSaveBonus(actor, options.ability) + auraSave };
+  const coverBonus = options.ability === 'dex' && options.cover ? coverAcBonus(options.cover) : 0;
+  const withAura = { ...options, bonus: (options.bonus ?? defaultSaveBonus(actor, options.ability) + auraSave) + coverBonus };
   const outcome = resolveSave(actor, withAura, randomOf(deps));
   addLog(next, `${actorLabel(next, actor)} 的${saveNames[options.ability]}豁免${outcome.success ? '成功' : '失败'}。`, deps, saveDetail(actor, next, withAura, outcome));
   return { battle: next, outcome };
@@ -1397,7 +1400,8 @@ export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatD
   for (const targetId of targetIds) {
     const actor = actorOf(next, targetId);
     if (actor.combat?.status === 'dead') continue;
-    const targetBonus = options.bonuses?.[targetId] ?? (defaultSaveBonus(actor, options.ability) + auraBonus(next, targetId, 'saves'));
+    const targetCover = options.ability === 'dex' ? options.covers?.[targetId] : undefined;
+    const targetBonus = (options.bonuses?.[targetId] ?? (defaultSaveBonus(actor, options.ability) + auraBonus(next, targetId, 'saves'))) + (targetCover ? coverAcBonus(targetCover) : 0);
     const save = resolveSave(actor, { actorId: targetId, ability: options.ability, dc: options.dc, bonus: targetBonus, mode: options.mode }, random);
     const amount = save.success ? (options.halfOnSuccess === false ? 0 : Math.floor(raw.total / 2)) : raw.total;
     const defense = defenseOf(actor, options.damageType);
