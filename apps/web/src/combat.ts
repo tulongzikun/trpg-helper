@@ -141,6 +141,12 @@ function combatantOf(actor: Actor) {
   if (!actor.combat) throw new Error('该单位还没有先攻记录，请先开始战斗。');
   return actor.combat;
 }
+/** 把一条说明写进战斗记录（自动行动等外部流程用）。 */
+export function appendCombatLog(battle: Battle, text: string, deps: CombatDeps = {}): Battle {
+  addLog(battle, text, deps);
+  return battle;
+}
+
 export function currentActorId(battle: Battle): string | null {
   const combat = battle.combat;
   if (!combat) return null;

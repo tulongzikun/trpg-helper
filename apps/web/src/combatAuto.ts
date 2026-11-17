@@ -1,4 +1,4 @@
-﻿import { actorDistance, attack, cellDistance, currentActorId, disengage, dodge, drinkHealingPotion, endTurn, moveActorToCell, offhandAttack, secondWind } from './combat.ts';
+﻿import { actorDistance, appendCombatLog, attack, cellDistance, currentActorId, disengage, dodge, drinkHealingPotion, endTurn, moveActorToCell, offhandAttack, secondWind } from './combat.ts';
 import { hasSecondWind } from './combatModifiers.ts';
 import { attackSources } from './attackSources.ts';
 import type { CombatDeps } from './combat.ts';
@@ -126,7 +126,7 @@ function retreat(battle: Battle, actorId: string, deps: CombatDeps): AutoAction 
   return { battle: next, kind: 'retreat', text: '自动行动：生命值过低，使用撤离拉开距离，但已无路可退。' };
 }
 
-export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): AutoAction {
+function decideAutoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): AutoAction {
   if (currentActorId(battle) !== actorId) throw new Error('只有当前回合的单位可以自动行动。');
   const self = battle.actors.find(item => item.id === actorId);
   if (!self || self.combat?.status !== 'active') {
@@ -187,6 +187,13 @@ export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}):
     }
   }
   return defensiveFallback(battle, actorId, deps, `自动行动：移动力不足，无法靠近 ${best.targetName}。`);
+}
+
+/** 自动行动：决策完成后把理由写进战报，方便回看 AI 为什么这样做。 */
+export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): AutoAction {
+  const action = decideAutoAct(battle, actorId, deps);
+  if (action.battle === battle) return action;
+  return { ...action, battle: appendCombatLog(action.battle, action.text, deps) };
 }
 
 export type AutoTurnOptions = { endTurn?: boolean; maxSteps?: number };
