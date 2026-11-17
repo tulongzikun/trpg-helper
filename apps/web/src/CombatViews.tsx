@@ -114,6 +114,7 @@ export type CombatHandlers = {
   onAddItem: (actorId: string, name: string, quantity: number, healExpression: string, identified: boolean) => void;
   onIdentify: (actorId: string, name: string) => void;
   onUseItem: (actorId: string, name: string, targetId?: string) => void;
+  onThrowFlask: (actorId: string, kind: 'holy-water' | 'alchemists-fire', targetId: string) => void;
   onLoot: (looterId: string, targetId: string) => void;
   onLootAll: (looterId: string) => void;
   onGive: (fromId: string, toId: string, name: string) => void;
@@ -242,6 +243,18 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" disabled={state.actionUsed} onClick={() => handlers.onDash(actor.id)}>疾跑（消耗动作，本回合移动力 +{actorSpeed(actor)} 尺）</button>
       <button type="button" className="button-secondary" disabled={state.actionUsed || state.hidden === true} onClick={() => handlers.onHide(actor.id)}>{state.hidden ? '躲藏中' : '躲藏（消耗动作，敏捷隐匿对抗被动察觉）'}</button>
       <button type="button" className="button-secondary" disabled={state.actionUsed} onClick={() => handlers.onPotion(actor.id)}>使用治疗药水（2d4+2）</button>
+      {(() => {
+        const items = state.items ?? [];
+        const water = items.find(item => item.name === '圣水' && item.quantity > 0);
+        const fire = items.find(item => item.name === '炽火胶' && item.quantity > 0);
+        const firstFoe = hostileTargets(battle, actor.id, 20)[0]?.id ?? '';
+        return (
+          <>
+            {water ? <button type="button" className="button-secondary" disabled={state.actionUsed} onClick={() => handlers.onThrowFlask(actor.id, 'holy-water', firstFoe)}>投掷圣水（×{water.quantity}，2d6 光耀）</button> : null}
+            {fire ? <button type="button" className="button-secondary" disabled={state.actionUsed} onClick={() => handlers.onThrowFlask(actor.id, 'alchemists-fire', firstFoe)}>投掷炽火胶（×{fire.quantity}，1d4 火焰 + 持续伤害）</button> : null}
+          </>
+        );
+      })()}
       <button type="button" className="button-secondary" onClick={() => handlers.onAuto(actor.id)}>自动行动（攻击或靠近）</button>
       {hasRecklessAttack(actor) ? (
         <button type="button" className="button-secondary" disabled={state.reckless === true} onClick={() => handlers.onReckless(actor.id)}>{state.reckless ? '鲁莽攻击中' : '鲁莽攻击（本回合攻击优势，敌人也对你优势）'}</button>

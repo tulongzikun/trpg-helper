@@ -3286,6 +3286,67 @@ export function drinkHealingPotion(battle: Battle, actorId: string, deps: Combat
   addLog(next, `${actorLabel(next, actor)} 饮下治疗药水，恢复 ${healed} 点生命值（2d4+2 掷出 ${rolled}），当前 ${actor.currentHp}/${actor.maxHp}。`, deps);
   return { battle: next, healed };
 }
+/** 投掷物：圣水与炽火胶。 */
+export type FlaskKind = 'holy-water' | 'alchemists-fire';
+const FLASK_RULES: Record<FlaskKind, { item: string; damage: string; damageType: DamageType; ongoing: boolean }> = {
+  'holy-water': { item: '圣水', damage: '2d6', damageType: '光耀', ongoing: false },
+  'alchemists-fire': { item: '炽火胶', damage: '1d4', damageType: '火焰', ongoing: true },
+};
+const FLASK_RANGE_FT = 20;
+const FLASK_ONGOING_DC = 10;
+
+/**
+ * 投掷圣水或炽火胶：消耗动作与背包里的一件物品，20 尺内做一次远程攻击。
+ * 圣水命中造成 2d6 光耀伤害；炽火胶命中造成 1d4 火焰伤害，并附加受敏捷豁免 DC 10 终止的持续火焰伤害。
+ */
+export function throwFlask(battle: Battle, actorId: string, targetId: string, kind: FlaskKind, deps: CombatDeps = {}): {
+  battle: Battle;
+  outcome: { hit: boolean; natural: number; total: number; targetAc: number; damage: number; ongoing: boolean };
+} {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const rule = FLASK_RULES[kind];
+  if (!rule) throw new Error('未知的投掷物。');
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status === 'dead') throw new Error('已经死亡的单位无法投掷物品。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以投掷物品。');
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const target = actorOf(next, targetId);
+  if (target.combat?.status === 'dead') throw new Error('无法以已经死亡的单位为目标。');
+  const distance = actorDistance(next, actorId, targetId);
+  if (distance !== undefined && distance > FLASK_RANGE_FT) throw new Error(`投掷距离超出 ${FLASK_RANGE_FT} 尺。`);
+  const items = state.items ?? [];
+  const index = items.findIndex(item => item.name === rule.item && item.quantity > 0);
+  if (index < 0) throw new Error(`背包里没有${rule.item}。`);
+  const picked = items[index];
+  if (picked.quantity > 1) picked.quantity -= 1;
+  else items.splice(index, 1);
+
+  const random = randomOf(deps);
+  const natural = rollDie(20, random);
+  const bonus = actorAttackProfile(actor).attackBonus;
+  const total = natural + bonus;
+  const targetAc = target.template.armorClass + auraBonus(next, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + (combatantOf(target).hasted ? 2 : 0) - (combatantOf(target).slowed ? 2 : 0) + defenseBonus(target);
+  const hit = natural === 20 || (natural !== 1 && total >= targetAc);
+  let damage = 0;
+  if (hit) {
+    damage = rollDamage(rule.damage, random).total;
+    applyDamageToActor(target, damage, rule.damageType, next, deps);
+  }
+  let ongoing = false;
+  if (hit && rule.ongoing) {
+    const targetState = combatantOf(target);
+    targetState.ongoing = [...(targetState.ongoing ?? []), { id: makeIdOf(deps)(), name: rule.item, damageExpression: '1d4', damageType: '火焰', saveEnds: { ability: 'dex', dc: FLASK_ONGOING_DC }, timing: 'start' }];
+    ongoing = true;
+    addLog(next, `${actorLabel(next, target)} 被炽火胶点燃，每回合开始受到 1d4 点火焰伤害（敏捷豁免 DC ${FLASK_ONGOING_DC} 终止）。`, deps);
+  }
+  state.actionUsed = true;
+  addLog(next, `${actorLabel(next, actor)} 向 ${actorLabel(next, target)} 投掷${rule.item}：攻击检定 ${natural}${bonus >= 0 ? '+' : ''}${bonus} = ${total} vs AC ${targetAc}，${hit ? `命中造成 ${damage} 点${rule.damageType}伤害` : '未命中'}。`, deps);
+  return { battle: next, outcome: { hit, natural, total, targetAc, damage, ongoing } };
+}
 export function recoverClassResources(battle: Battle, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
