@@ -1933,6 +1933,38 @@ export function scrollDc(name: string): number {
   return 10 + (Number.isInteger(level) && level > 0 ? level : 1);
 }
 
+/** 抄写卷轴需要的材料。 */
+export const SCRIBE_PAPER = '空白羊皮纸';
+/** 目前可以抄写的法术。 */
+export const SCRIBE_SPELLS: ScrollSpell[] = ['治疗术', '祝福术', '加速术', '群体治疗术'];
+
+/** 抄写卷轴：动作，消耗 1 张空白羊皮纸，把已知法术做成 1 环卷轴。 */
+export function scribeScroll(battle: Battle, actorId: string, spell: ScrollSpell, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以抄写卷轴。');
+  if (state.status !== 'active') throw new Error('只有在场的单位可以抄写卷轴。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (!SCRIBE_SPELLS.includes(spell)) throw new Error('目前只能抄写治疗术、祝福术、加速术或群体治疗术。');
+  const items = state.items ?? [];
+  const paper = items.find(item => item.name === SCRIBE_PAPER && item.quantity > 0);
+  if (!paper) throw new Error(`需要一张${SCRIBE_PAPER}才能抄写卷轴。`);
+  const name = `法术卷轴：${spell}（1 环）`;
+  const existing = items.find(item => item.name === name);
+  if (!existing && items.length >= 20) throw new Error('每名单位最多记录 20 种物品。');
+  state.actionUsed = true;
+  paper.quantity -= 1;
+  if (paper.quantity <= 0) state.items = items.filter(item => item.name !== SCRIBE_PAPER);
+  const target = (state.items ?? []).find(item => item.name === name);
+  if (target) target.quantity = Math.min(99, target.quantity + 1);
+  else state.items = [...(state.items ?? []), { name, quantity: 1 }];
+  addLog(next, `${actorLabel(next, actor)} 抄写了 ${name}（消耗 1 张${SCRIBE_PAPER}）。`, deps);
+  return next;
+}
 /** 阅读法术卷轴：动作，施法属性检定对抗 DC 10 + 环阶，成功则施放，失败则卷轴损毁。 */
 export function readScroll(battle: Battle, actorId: string, name: string, deps: CombatDeps = {}): { battle: Battle; spell: ScrollSpell; success: boolean; outcome: { natural: number; total: number; dc: number } } {
   const next = recordUndo(structuredClone(battle));

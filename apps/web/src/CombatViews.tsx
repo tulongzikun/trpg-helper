@@ -122,6 +122,7 @@ export type CombatHandlers = {
   onIdentify: (actorId: string, name: string) => void;
   onUseItem: (actorId: string, name: string, targetId?: string) => void;
   onReadScroll: (actorId: string, name: string) => void;
+  onScribe: (actorId: string, spell: '治疗术' | '祝福术' | '加速术' | '群体治疗术') => void;
   onThrowFlask: (actorId: string, kind: 'holy-water' | 'alchemists-fire', targetId: string) => void;
   onAntitoxin: (actorId: string) => void;
   onLoot: (looterId: string, targetId: string) => void;
@@ -1351,6 +1352,7 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
   const [quantity, setQuantity] = useState('1');
   const [unidentified, setUnidentified] = useState(false);
   const [notice, setNotice] = useState('');
+  const [scribeSpell, setScribeSpell] = useState<'治疗术' | '祝福术' | '加速术' | '群体治疗术'>('治疗术');
   const items = actor.combat?.items ?? [];
   const corpses = battle.actors.filter(item => item.combat?.status === 'dead' && (item.combat?.items ?? []).length > 0);
   const allies = battle.actors.filter(item => item.id !== actor.id && item.combat?.status === 'active' && item.side === actor.side && item.side !== '中立');
@@ -1365,6 +1367,14 @@ export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: 
   return (
     <div className="cmb-help">
       <div className="cmb-ai-head">物品</div>
+      {items.some(item => item.name === '空白羊皮纸' && item.quantity > 0) ? (
+        <span className="cmb-inline-action">
+          <select value={scribeSpell} onChange={event => setScribeSpell(event.target.value as '治疗术' | '祝福术' | '加速术' | '群体治疗术')} aria-label="抄写卷轴的法术">
+            {(['治疗术', '祝福术', '加速术', '群体治疗术'] as const).map(spell => <option key={spell} value={spell}>{spell}</option>)}
+          </select>
+          <button type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onScribe(actor.id, scribeSpell)} aria-label="抄写卷轴">抄写卷轴（动作，消耗 1 张空白羊皮纸）</button>
+        </span>
+      ) : null}
       {items.length ? (
         <div className="cmb-ai-actions">
           {items.map(item => (
