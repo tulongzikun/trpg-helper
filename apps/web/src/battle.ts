@@ -21,6 +21,12 @@ export type OngoingEffect = {
 };
 /** 正在维持的专注法术。 */
 export type Concentration = { spell: string };
+
+export type CombatItem = {
+  name: string;
+  quantity: number;
+  healExpression?: string;
+};
 /** 借机攻击：reactorId 用反应攻击离开其触及范围的 targetId。 */
 export type OpportunityPrompt = { reactorId: string; targetId: string };
 /** 召唤物绑定：失去专注、施法者倒地或倒计时结束时消散。 */
@@ -69,6 +75,7 @@ export type CombatantState = {
   /** 战地施法者专长：专注检定时具有优势。 */
   warCaster?: boolean;
   guarding?: string;
+  items?: CombatItem[];
   delayed?: boolean;
   flying?: boolean;
   /** 力竭等级（0–6）：每级使攻击、豁免、属性检定 -2，速度 -5 尺。 */
@@ -159,6 +166,15 @@ function isReadyAction(value: unknown): value is ReadyAction {
   const text = (item: unknown) => typeof item === 'string' && item.length > 0 && item.length <= 120;
   return text(value.action) && text(value.trigger);
 }
+function isCombatItem(value: unknown): value is CombatItem {
+  if (typeof value !== 'object' || value === null) return false;
+  const item = value as CombatItem;
+  if (typeof item.name !== 'string' || item.name.length === 0 || item.name.length > 40) return false;
+  if (!isInteger(item.quantity, 0, 99)) return false;
+  if (item.healExpression !== undefined && (typeof item.healExpression !== 'string' || item.healExpression.length === 0 || item.healExpression.length > 20)) return false;
+  return true;
+}
+
 function isCombatant(value: unknown): value is CombatantState {
   if (!isObject(value)) return false;
   if (!isInteger(value.initiative, -99, 99)) return false;
@@ -182,6 +198,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
   if (value.warCaster !== undefined && typeof value.warCaster !== 'boolean') return false;
   if (value.guarding !== undefined && (typeof value.guarding !== 'string' || value.guarding.length === 0 || value.guarding.length > 64)) return false;
+  if (value.items !== undefined && (!Array.isArray(value.items) || value.items.length > 20 || !value.items.every(isCombatItem))) return false;
   if (value.delayed !== undefined && typeof value.delayed !== 'boolean') return false;
   if (value.flying !== undefined && typeof value.flying !== 'boolean') return false;
 

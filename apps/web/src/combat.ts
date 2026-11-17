@@ -1324,6 +1324,68 @@ export function healActor(battle: Battle, actorId: string, amount: number, deps:
     : `${actorLabel(next, actor)} 恢复 ${healed} 点生命值，当前 ${actor.currentHp}/${actor.maxHp}。`, deps);
   return next;
 }
+/** 给战斗单位添加物品（同名合并，最多 99 个）。 */
+export function addItem(battle: Battle, actorId: string, name: string, quantity: number, healExpression?: string, deps: CombatDeps = {}): Battle {
+  const next = structuredClone(battle);
+  const actor = actorOf(next, actorId);
+  const label = name.trim();
+  if (!label) throw new Error('请填写物品名称。');
+  if (label.length > 40) throw new Error('物品名称不能超过 40 个字符。');
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) throw new Error('物品数量须为 1 至 99 的整数。');
+  if (healExpression !== undefined) parseDice(healExpression);
+  const state = combatantOf(actor);
+  const items = state.items ?? [];
+  const existing = items.find(item => item.name === label);
+  if (existing) {
+    existing.quantity = Math.min(99, existing.quantity + quantity);
+    if (healExpression) existing.healExpression = healExpression;
+  } else {
+    if (items.length >= 20) throw new Error('每名单位最多记录 20 种物品。');
+    items.push({ name: label, quantity, ...(healExpression ? { healExpression } : {}) });
+  }
+  state.items = items;
+  if (battle.combat) addLog(next, `${actorLabel(next, actor)} 获得物品「${label}」×${quantity}。`, deps);
+  return next;
+}
+
+/** 使用物品：默认消耗动作，可治疗自己或 5 尺内的同伴。 */
+export function useItem(battle: Battle, actorId: string, name: string, targetId?: string, deps: CombatDeps = {}): { battle: Battle; healed: number } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以使用物品。');
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const item = (state.items ?? []).find(entry => entry.name === name);
+  if (!item) throw new Error(`该单位没有「${name}」这个物品。`);
+  if (item.quantity <= 0) throw new Error(`「${name}」已经用完。`);
+  if (!item.healExpression) throw new Error(`「${name}」没有可结算的效果。`);
+  const target = actorOf(next, targetId ?? actorId);
+  const targetState = combatantOf(target);
+  if (targetState.status === 'dead') throw new Error('已死亡的单位无法通过物品恢复。');
+  if (target.id !== actor.id && actor.position && target.position && cellDistance(actor.position, target.position) > 1) throw new Error('只能对自己或 5 尺内的同伴使用物品。');
+  const rolled = rollDamage(item.healExpression, randomOf(deps), false);
+  const wasDown = targetState.status === 'down';
+  const healed = Math.min(target.maxHp - target.currentHp, rolled.total);
+  target.currentHp += healed;
+  if (wasDown && target.currentHp > 0) {
+    targetState.status = 'active';
+    targetState.deathSaves = { successes: 0, failures: 0 };
+    delete targetState.stable;
+  }
+  state.actionUsed = true;
+  item.quantity -= 1;
+  if (item.quantity <= 0) {
+    const rest = (state.items ?? []).filter(entry => entry !== item);
+    if (rest.length) state.items = rest;
+    else delete state.items;
+  }
+  addLog(next, `${actorLabel(next, actor)} 使用「${item.name}」${target.id === actor.id ? '' : `为 ${actorLabel(next, target)} `}恢复 ${healed} 点生命值${wasDown && target.currentHp > 0 ? '并重新站起' : ''}，当前 ${target.currentHp}/${target.maxHp}。`, deps);
+  return { battle: next, healed };
+}
+
 export function setActorHp(battle: Battle, actorId: string, hp: number, deps: CombatDeps = {}): Battle {
   if (!battle.combat) {
     const next = structuredClone(battle);

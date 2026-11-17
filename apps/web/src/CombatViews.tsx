@@ -84,6 +84,8 @@ export type CombatHandlers = {
   onReckless: (actorId: string) => void;
   onHelp: (helperId: string, targetId: string) => void;
   onProtect: (protectorId: string, targetId: string) => void;
+  onAddItem: (actorId: string, name: string, quantity: number, healExpression: string) => void;
+  onUseItem: (actorId: string, name: string, targetId?: string) => void;
   onStand: (actorId: string) => void;
   onReady: (actorId: string, input: { action: string; trigger: string }) => void;
   onTriggerReady: (actorId: string) => void;
@@ -236,6 +238,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <AuraPanel key={`aura-${actor.id}`} battle={battle} handlers={handlers} />
     <HelpPanel key={`help-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <ProtectionPanel key={`protect-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
+    <ItemPanel key={`item-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <CheckPanel key={`check-${actor.id}`} actor={actor} handlers={handlers} />
     <HealPanel key={`heal-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <StudyPanel key={`study-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
@@ -1143,3 +1146,38 @@ export function ProtectionPanel({ battle, actor, handlers }: { battle: Battle; a
   );
 }
 
+
+export function ItemPanel({ battle, actor, handlers }: { battle: Battle; actor: Actor; handlers: CombatHandlers }) {
+  const [name, setName] = useState('治疗药水');
+  const [dice, setDice] = useState('2d4+2');
+  const [quantity, setQuantity] = useState('1');
+  const [notice, setNotice] = useState('');
+  const items = actor.combat?.items ?? [];
+  const add = () => {
+    const count = Number(quantity);
+    if (!name.trim()) return setNotice('请填写物品名称。');
+    if (!Number.isInteger(count) || count < 1 || count > 99) return setNotice('物品数量须为 1 至 99 的整数。');
+    setNotice('');
+    handlers.onAddItem(actor.id, name.trim(), count, dice.trim());
+  };
+  return (
+    <div className="cmb-help">
+      <div className="cmb-ai-head">物品</div>
+      {items.length ? (
+        <div className="cmb-ai-actions">
+          {items.map(item => (
+            <button key={item.name} type="button" className="button-secondary" disabled={actor.combat?.actionUsed === true} onClick={() => handlers.onUseItem(actor.id, item.name)}>
+              使用 {item.name}（×{item.quantity}）
+            </button>
+          ))}
+        </div>
+      ) : <p className="cmb-muted">还没有记录物品。</p>}
+      <label>名称<input value={name} onChange={event => setName(event.target.value)} /></label>
+      <label>治疗骰<input value={dice} onChange={event => setDice(event.target.value)} placeholder="2d4+2" /></label>
+      <label>数量<input value={quantity} onChange={event => setQuantity(event.target.value)} inputMode="numeric" /></label>
+      <div className="cmb-ai-actions"><button type="button" className="button-secondary" onClick={add}>记录物品</button></div>
+      {notice ? <p className="cmb-muted">{notice}</p> : null}
+      <p className="cmb-muted">使用物品消耗动作；治疗骰按本地掷骰结算。</p>
+    </div>
+  );
+}
