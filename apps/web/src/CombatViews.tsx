@@ -4,6 +4,7 @@ import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput } from './combat';
 import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, pendingOpportunities, summonsOf } from './combat';
 import { attackSources, originLabels } from './attackSources';
+import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
 import { suggestAttacks } from './combatAi';
 import { actionSurgeMax, attacksPerAction, coverTypes, hasCunningAction, hasRecklessAttack, hasSecondWind } from './combatModifiers';
@@ -549,6 +550,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
       <label>消耗<select value={cost} onChange={event => setCost(event.target.value as AttackCost)} aria-label="消耗动作"><option value="action">动作</option><option value="bonus">附赠动作</option><option value="reaction">反应</option></select></label>
     </div>
     {message && <p role="alert" className="battle-error">{message}</p>}
+        {(() => { const accurate = bonus.trim() && Number.isInteger(Number(bonus)) && target; if (!accurate) return null; const value = expectedDamage(Number(bonus), target.template.armorClass, mode, damage); return <p className="cmb-hint">命中率 {hitChanceLabel(Number(bonus), target.template.armorClass, mode)}，期望伤害 {value}</p>; })()}
     <div className="cmb-attack-actions"><span className="cmb-hint">伤害由本地掷骰；状态（目盲、倒地、麻痹等）会自动修正检定并结算重击，抗性、易伤、免疫与临时生命照常处理。</span><button className="button-primary" type="submit">{Number(attacks) > 1 ? `投掷 ${attacks} 次攻击` : '投掷攻击'}</button><button className="button-secondary" type="button" onClick={submitOffhand} aria-label="副手攻击">副手攻击（附赠动作）</button>
         {attacker.combat?.flying === true && (attacker.elevation ?? 0) >= 10 ? <button type="button" className="button-secondary" onClick={submitDive} aria-label="俯冲攻击">俯冲攻击（优势，落地）</button> : null}
       {(() => { const picked = sources.find(item => item.id === sourceId); const polearm = picked ? picked.properties?.includes('长武器') || ['戟', '长棍', '长矛'].some(name => picked.label.includes(name)) : false; return polearm ? <button className="button-secondary" type="button" onClick={submitButtEnd} aria-label="柄端攻击">柄端攻击（附赠动作，1d4+力量钝击）</button> : null; })()}</div>
