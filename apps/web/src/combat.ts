@@ -687,6 +687,64 @@ export function castSilence(battle: Battle, casterId: string, cells: Position[],
   return next;
 }
 
+const SLEEP_CLOUD_DC = 13;
+const SLEEP_CLOUD_MAX_CELLS = 12;
+
+/** 该格是否在睡眠云范围内。 */
+export function sleepCloudAt(battle: Battle, x: number, y: number): boolean {
+  return (battle.sleepCloud ?? []).some(cell => cell.x === x && cell.y === y);
+}
+
+/** 站在睡眠云里：感知豁免 DC 13，失败立刻陷入沉睡（失能 + 倒地）。 */
+function sleepDust(battle: Battle, actor: Actor, deps: CombatDeps): boolean {
+  if (!battle.sleepCloud?.length || !actor.position) return false;
+  const state = combatantOf(actor);
+  if (state.status !== 'active' || state.sleeping === true) return false;
+  if (!sleepCloudAt(battle, actor.position.x, actor.position.y)) return false;
+  const save = resolveSave(actor, { actorId: actor.id, ability: 'wis', dc: SLEEP_CLOUD_DC, bonus: defaultSaveBonus(actor, 'wis') + auraBonus(battle, actor.id, 'saves') }, randomOf(deps));
+  if (save.success) {
+    addLog(battle, `${actorLabel(battle, actor)} 在睡眠云中屏住呼吸，没有陷入沉睡（感知 ${save.natural} → ${save.total}，DC ${SLEEP_CLOUD_DC}）。`, deps);
+    return false;
+  }
+  state.sleeping = true;
+  if (!state.conditions.includes('失能')) state.conditions.push('失能');
+  if (!state.conditions.includes('倒地')) state.conditions.push('倒地');
+  addLog(battle, `${actorLabel(battle, actor)} 吸入睡眠粉尘，陷入沉睡（感知 ${save.natural} → ${save.total}，DC ${SLEEP_CLOUD_DC}）。`, deps);
+  return true;
+}
+
+/** 睡眠云：动作 + 专注；区域内单位每回合开始或进入时做感知豁免 DC 13，失败即沉睡。 */
+export function castSleepCloud(battle: Battle, casterId: string, cells: Position[], deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
+  const state = combatantOf(caster);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放睡眠云。');
+  if (!next.grid) throw new Error('请先启用方格战场。');
+  const unique = new Map<string, Position>();
+  for (const cell of cells) {
+    if (!Number.isInteger(cell.x) || !Number.isInteger(cell.y)) throw new Error('睡眠云的格子坐标须为整数。');
+    if (cell.x < 0 || cell.y < 0 || cell.x >= next.grid.width || cell.y >= next.grid.height) throw new Error('睡眠云的格子超出战场范围。');
+    unique.set(`${cell.x},${cell.y}`, { x: cell.x, y: cell.y });
+  }
+  if (!unique.size) throw new Error('请选择睡眠云覆盖的格子。');
+  if (unique.size > SLEEP_CLOUD_MAX_CELLS) throw new Error(`睡眠云最多覆盖 ${SLEEP_CLOUD_MAX_CELLS} 格。`);
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (state.concentration) throw new Error('施法者已经在维持其他专注。');
+  state.actionUsed = true;
+  state.concentration = { spell: '睡眠云' };
+  next.sleepCloud = [...unique.values()];
+  next.sleepCloudBy = casterId;
+  addLog(next, `${actorLabel(next, caster)} 施放睡眠云：${next.sleepCloud.length} 格内每回合开始需做感知豁免 DC ${SLEEP_CLOUD_DC}，持续 10 轮。`, deps);
+  for (const target of [...next.actors]) {
+    if (target.id === casterId) continue;
+    sleepDust(next, target, deps);
+  }
+  return next;
+}
 const SLEEP_DICE = '5d8';
 const SLEEP_RANGE_FT = 20;
 
@@ -1264,6 +1322,11 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
     delete battle.darknessBy;
     addLog(battle, `${reason}，魔法黑暗消散了。`, deps);
   }
+  if (battle.sleepCloud && battle.sleepCloudBy === casterId) {
+    delete battle.sleepCloud;
+    delete battle.sleepCloudBy;
+    addLog(battle, `${reason}，睡眠粉尘消散了。`, deps);
+  }
   const charmedOnes = battle.actors.filter(item => item.combat?.charmedBy === casterId);
   if (charmedOnes.length) {
     for (const item of charmedOnes) {
@@ -1697,6 +1760,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   actor.position = { x, y };
   addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}。`, deps);
   if (greaseAt(next, x, y) && !flying) greaseFall(next, actor, deps);
+  if (sleepCloudAt(next, x, y)) sleepDust(next, actor, deps);
   if (webbed && !flying) webStuck(next, actor, deps);
   if (icy && !flying) {
     const stumble = resolveSave(actor, { actorId: actor.id, ability: 'dex', dc: 10, bonus: defaultSaveBonus(actor, 'dex') + auraBonus(next, actor.id, 'saves') }, randomOf(deps));
@@ -3563,6 +3627,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
   delete next.darknessBy;
   delete next.silence;
   delete next.silenceBy;
+  delete next.sleepCloud;
+  delete next.sleepCloudBy;
   addLog(next, '长休：恢复全部生命值，法术位、动作如潮、回气与弹药全部恢复，力竭减 1，专注与每回合状态清除。', deps);
   return next;
 }
@@ -3929,7 +3995,7 @@ export function tickTurnStart(battle: Battle, deps: CombatDeps = {}): Battle {
   const current = currentActorId(next);
   if (current) {
     const actor = next.actors.find(item => item.id === current);
-    if (actor && (actor.combat?.status ?? 'active') === 'active') { greaseFall(next, actor, deps); webStuck(next, actor, deps); holdRecover(next, actor, deps); }
+    if (actor && (actor.combat?.status ?? 'active') === 'active') { greaseFall(next, actor, deps); webStuck(next, actor, deps); holdRecover(next, actor, deps); sleepDust(next, actor, deps); }
   }
   return next;
 }

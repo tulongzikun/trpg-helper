@@ -203,7 +203,7 @@ export type AttackPreset = {
   powerAttack?: boolean;
   twoHanded?: boolean;
 };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; grease?: Position[]; fog?: Position[]; fogBy?: string; darkness?: Position[]; darknessBy?: string; silence?: Position[]; silenceBy?: string; webs?: Position[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; grease?: Position[]; fog?: Position[]; fogBy?: string; darkness?: Position[]; darknessBy?: string; silence?: Position[]; silenceBy?: string; sleepCloud?: Position[]; sleepCloudBy?: string; webs?: Position[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -417,6 +417,8 @@ function isBattle(value: unknown): boolean {
     && (value.darknessBy === undefined || (typeof value.darknessBy === 'string' && value.darknessBy.length > 0 && value.darknessBy.length <= 64))
     && (value.silence === undefined || (Array.isArray(value.silence) && value.silence.length <= 400 && value.silence.every(isPosition)))
     && (value.silenceBy === undefined || (typeof value.silenceBy === 'string' && value.silenceBy.length > 0 && value.silenceBy.length <= 64))
+    && (value.sleepCloud === undefined || (Array.isArray(value.sleepCloud) && value.sleepCloud.length <= 400 && value.sleepCloud.every(isPosition)))
+    && (value.sleepCloudBy === undefined || (typeof value.sleepCloudBy === 'string' && value.sleepCloudBy.length > 0 && value.sleepCloudBy.length <= 64))
     && (value.webs === undefined || (Array.isArray(value.webs) && value.webs.length <= 400 && value.webs.every(isPosition)))
     && (value.attackPresets === undefined || (Array.isArray(value.attackPresets) && value.attackPresets.length <= 10 && value.attackPresets.every(isAttackPreset)))
   && (value.pendingCast === undefined || isPendingCastPlan(value.pendingCast)) && (value.auras === undefined || (Array.isArray(value.auras) && value.auras.length <= 8 && value.auras.every(isAura)));
