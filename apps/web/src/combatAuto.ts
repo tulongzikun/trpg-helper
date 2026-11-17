@@ -241,7 +241,8 @@ export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {},
   }
   if (!stopped) stopped = { reason: 'limit', text: `自动回合达到 ${maxSteps} 步上限。` };
   if (battleOutcome(current) !== 'ongoing') stopped = { reason: 'finished', text: '战斗已经结束，自动回合停止。' };
-  return { battle: current, kind, text: steps.join(' '), steps, ...(stopped ? { stopped } : {}) };
+  const logged = stopped ? appendCombatLog(current, stopped.text, deps) : current;
+  return { battle: logged, kind, text: steps.join(' '), steps, ...(stopped ? { stopped } : {}) };
 }
 
 export type AutoSideOptions = { maxTurns?: number };

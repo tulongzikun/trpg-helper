@@ -64,3 +64,10 @@ test('战斗结束后说明已结束', () => {
   const result = autoTurn(wiped, hero.id, { random: sequence(0.5) });
   assert.equal(result.stopped.reason, 'finished');
 });
+
+test('停止原因也会写进战报', () => {
+  const { battle, hero } = setup();
+  const result = autoTurn(battle, hero.id, { random: sequence(0.9, 0.5, 0.5, 0.5) });
+  const text = result.battle.combat.log.map(item => item.text).join('\n');
+  assert.ok(text.includes(result.stopped.text), '战报里应当能看到停止原因');
+});
