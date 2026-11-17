@@ -37,7 +37,7 @@ export type CombatItem = {
   healExpression?: string;
 };
 /** 借机攻击：reactorId 用反应攻击离开其触及范围的 targetId。 */
-export type OpportunityPrompt = { reactorId: string; targetId: string };
+export type OpportunityPrompt = { reactorId: string; targetId: string; kind?: 'opportunity' | 'ready' };
 /** 召唤物绑定：失去专注、施法者倒地或倒计时结束时消散。 */
 export type Summon = { ownerId: string; spell: string; rounds?: number };
 /** 准备动作：把动作换成「满足触发条件时用反应执行」。 */
@@ -271,7 +271,12 @@ function isCombatState(value: unknown): value is CombatState {
   return value.undo.every(isBattleSnapshot);
 }
 function isOpportunityPrompt(value: unknown): value is OpportunityPrompt {
-  return isObject(value) && typeof value.reactorId === 'string' && value.reactorId.length > 0 && typeof value.targetId === 'string' && value.targetId.length > 0;
+  if (!isObject(value)) return false;
+  if (typeof value.reactorId !== 'string' || value.reactorId.length === 0) return false;
+  if (typeof value.targetId !== 'string' || value.targetId.length === 0) return false;
+  const kind = value.kind;
+  if (kind !== undefined && kind !== 'opportunity' && kind !== 'ready') return false;
+  return true;
 }
 function isSummon(value: unknown): value is Summon {
   if (!isObject(value)) return false;

@@ -95,6 +95,7 @@ export type CombatHandlers = {
   onCancelReady: (actorId: string) => void;
   onOpportunity: (reactorId: string) => void;
   onDeclineOpportunity: (reactorId: string) => void;
+  onReadyPrompt: (reactorId: string) => void;
   onActionSurge: (actorId: string) => void;
   onSecondWind: (actorId: string) => void;
   onDeathSave: (actorId: string) => void;
@@ -720,13 +721,14 @@ function OpportunityPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   const prompts = pendingOpportunities(battle);
   if (!prompts.length) return null;
   return <div className="cmb-attack">
-    <div className="cmb-attack-head"><h4>借机攻击</h4><small>{prompts.length} 个待结算</small></div>
+    <div className="cmb-attack-head"><h4>借机攻击与准备动作</h4><small>{prompts.length} 个待结算</small></div>
     <p className="cmb-hint">单位离开敌对单位的触及范围会触发借机攻击；结算时消耗反应，出刀按触发瞬间的触及关系计算。</p>
     <div className="cmb-ongoing-list">{prompts.map(prompt => {
       const reactor = battle.actors.find(actor => actor.id === prompt.reactorId);
       const target = battle.actors.find(actor => actor.id === prompt.targetId);
-      return <span className="cmb-chip" key={`${prompt.reactorId}-${prompt.targetId}`}>{reactor ? actorLabel(battle, reactor) : '—'} → {target ? actorLabel(battle, target) : '—'}
-        <button type="button" className="cmb-chip-remove" onClick={() => handlers.onOpportunity(prompt.reactorId)} aria-label={`${reactor ? reactor.name : ''} 借机攻击`}>⚔</button>
+      const prepared = prompt.kind === 'ready';
+      return <span className="cmb-chip" key={`${prompt.reactorId}-${prompt.targetId}`}>{reactor ? actorLabel(battle, reactor) : '—'} → {target ? actorLabel(battle, target) : '—'}{prepared ? '（准备）' : ''}
+        <button type="button" className="cmb-chip-remove" onClick={() => (prepared ? handlers.onReadyPrompt(prompt.reactorId) : handlers.onOpportunity(prompt.reactorId))} aria-label={prepared ? '执行准备好的动作' : `${reactor ? reactor.name : ''} 借机攻击`}>{prepared ? '✓' : '⚔'}</button>
         <button type="button" className="cmb-chip-remove" onClick={() => handlers.onDeclineOpportunity(prompt.reactorId)} aria-label="放弃借机攻击">×</button>
       </span>;
     })}</div>

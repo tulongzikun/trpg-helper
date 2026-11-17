@@ -11,7 +11,7 @@ const ids = () => () => `ao-${++counter}`;
 function setup() {
   let store = addMonsters(emptyStore(), card, { newBattleName: '收尾', side: '敌方', count: 1 }, ids(), () => '2026-01-01T00:00:00Z').store;
   const battle = store.battles[0];
-  const enemy = battle.actors[0];
+  const enemy = { ...battle.actors[0], currentHp: 200, maxHp: 200 };
   const ally = { ...enemy, id: 'ally', name: '艾拉', side: '友方' };
   return startCombat({ ...battle, actors: [ally, enemy] }, { ally: 20, [enemy.id]: 5 });
 }

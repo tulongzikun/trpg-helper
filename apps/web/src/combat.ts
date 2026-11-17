@@ -472,6 +472,22 @@ function enteringReachPrompts(battle: Battle, mover: Actor, from: Position, to: 
     })
     .map(other => ({ reactorId: other.id, targetId: mover.id }));
 }
+/** 准备好的「攻击」动作：敌对单位进入触及范围时自动排入待结算提示。 */
+function readyPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
+  const grid = battle.grid;
+  if (!grid || mover.side === '中立' || mover.combat?.disengaged) return [];
+  return battle.actors
+    .filter(other => other.id !== mover.id && other.side !== '中立' && other.side !== mover.side && other.position && other.combat?.status === 'active')
+    .filter(other => other.combat?.ready && other.combat.reactionUsed !== true)
+    .filter(other => /攻击/.test(other.combat?.ready?.action ?? ''))
+    .filter(other => {
+      const reach = actorReach(other);
+      const before = cellDistance(other.position!, from) * grid.cellFt;
+      const after = cellDistance(other.position!, to) * grid.cellFt;
+      return before > reach && after <= reach;
+    })
+    .map(other => ({ reactorId: other.id, targetId: mover.id, kind: 'ready' as const }));
+}
 /** 当前待结算的借机攻击。 */
 export function pendingOpportunities(battle: Battle): OpportunityPrompt[] {
   return battle.combat?.pendingOpportunity ?? [];
@@ -744,6 +760,18 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
     }
     combat.pendingOpportunity = list.slice(-8);
   }
+  const prepared = readyPrompts(next, actor, from, { x, y });
+  if (prepared.length) {
+    const combat = requireCombat(next);
+    const list = [...(combat.pendingOpportunity ?? [])];
+    for (const prompt of prepared) {
+      if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId)) continue;
+      list.push(prompt);
+      const reactor = actorOf(next, prompt.reactorId);
+      addLog(next, `${actorLabel(next, actor)} 触发了 ${actorLabel(next, reactor)} 准备好的「${reactor.combat?.ready?.action ?? ''}」。`, deps);
+    }
+    combat.pendingOpportunity = list.slice(-8);
+  }
   if (triggered.length) {
     const combat = requireCombat(next);
     const list = [...(combat.pendingOpportunity ?? [])];
@@ -794,8 +822,20 @@ export function declineOpportunity(battle: Battle, reactorId: string, deps: Comb
   const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
   if (rest.length) combat.pendingOpportunity = rest;
   else delete combat.pendingOpportunity;
-  addLog(next, `${actorLabel(next, actorOf(next, reactorId))} 放弃借机攻击。`, deps);
+  addLog(next, `${actorLabel(next, actorOf(next, reactorId))} 放弃${prompt.kind === 'ready' ? '准备好的动作' : '借机攻击'}。`, deps);
   return next;
+}
+
+/** 结算「准备动作」在敌人进入触及范围时生成的提示。 */
+export function resolveReadyPrompt(battle: Battle, reactorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const combat = requireCombat(next);
+  const prompt = (combat.pendingOpportunity ?? []).find(item => item.reactorId === reactorId && item.kind === 'ready');
+  if (!prompt) throw new Error('该单位没有待确认的准备动作。');
+  const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
+  if (rest.length) combat.pendingOpportunity = rest;
+  else delete combat.pendingOpportunity;
+  return triggerReadyAction(next, reactorId, deps);
 }
 
 /** 撤离：消耗动作，本回合移动不引发借机攻击。 */
