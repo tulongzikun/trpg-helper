@@ -3,11 +3,11 @@ import type { Battle, Side } from './battle.ts';
 export type BattleOutcome = 'ongoing' | 'victory' | 'defeat' | 'draw';
 
 function aliveOn(battle: Battle, side: Side): number {
-  return battle.actors.filter(actor => actor.side === side && (actor.combat?.status ?? 'active') !== 'dead' && actor.combat?.fled !== true && actor.currentHp > 0).length;
+  return battle.actors.filter(actor => actor.side === side && (actor.combat?.status ?? 'active') !== 'dead' && actor.combat?.fled !== true && actor.combat?.surrendered !== true && actor.currentHp > 0).length;
 }
 
 function standingOn(battle: Battle, side: Side): number {
-  return battle.actors.filter(actor => actor.side === side && (actor.combat?.status ?? 'active') === 'active' && actor.combat?.fled !== true && actor.currentHp > 0).length;
+  return battle.actors.filter(actor => actor.side === side && (actor.combat?.status ?? 'active') === 'active' && actor.combat?.fled !== true && actor.combat?.surrendered !== true && actor.currentHp > 0).length;
 }
 
 /** 判断战斗走向：一方全部阵亡即分出胜负；双方都在场视为进行中。 */

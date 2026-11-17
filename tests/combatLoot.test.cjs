@@ -39,7 +39,7 @@ test('搜刮阵亡单位把物品转移给自己并合并同名物品', () => {
 test('活着的单位不能被搜刮', () => {
   let battle = setup();
   battle = addItem(battle, 'foe', '治疗药水', 1, '2d4+2', ids());
-  assert.throws(() => lootCorpse(battle, 'hero', 'foe', ids()), /只能搜刮已经死亡的单位。/);
+  assert.throws(() => lootCorpse(battle, 'hero', 'foe', ids()), /只能搜刮已经死亡或投降的单位。/);
 });
 
 test('距离过远、身上没东西时报错', () => {

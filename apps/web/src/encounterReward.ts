@@ -63,7 +63,7 @@ export function crXp(cr: string | number | undefined): number {
 }
 
 export function defeatedActors(battle: Battle): Actor[] {
-  return battle.actors.filter(actor => actor.combat?.status === 'dead');
+  return battle.actors.filter(actor => actor.combat?.status === 'dead' || actor.combat?.surrendered === true);
 }
 
 /** 已击败单位的经验总和（同一怪物多只分别计算）。 */
@@ -73,7 +73,7 @@ export function encounterXp(battle: Battle): number {
 
 /** 敌方仍存活（未死亡）的单位。 */
 function survivors(battle: Battle): Actor[] {
-  return battle.actors.filter(actor => actor.side === '敌方' && actor.combat?.status !== 'dead' && actor.currentHp > 0);
+  return battle.actors.filter(actor => actor.side === '敌方' && actor.combat?.status !== 'dead' && actor.combat?.surrendered !== true && actor.combat?.fled !== true && actor.currentHp > 0);
 }
 
 export type EncounterReward = { xp: number; defeated: number; remaining: number; completed: boolean };

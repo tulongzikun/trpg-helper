@@ -2947,7 +2947,7 @@ function nextTurnIndex(battle: Battle) {
   }
   for (let guard = 0; guard <= combat.order.length; guard++) {
     const actor = battle.actors.find(a => a.id === combat.order[combat.turnIndex]);
-    if (actor && actor.combat?.status !== 'dead' && actor.combat?.fled !== true) return actor;
+    if (actor && actor.combat?.status !== 'dead' && actor.combat?.fled !== true && actor.combat?.surrendered !== true) return actor;
     combat.turnIndex += 1;
     if (combat.turnIndex >= combat.order.length) { combat.turnIndex = 0; combat.round += 1; }
   }
@@ -3035,6 +3035,22 @@ export function rerollInitiative(battle: Battle, deps: CombatDeps = {}): Battle 
   const index = combat.order.indexOf(current);
   combat.turnIndex = index >= 0 ? index : 0;
   addLog(next, `重新掷先攻：${combat.order.map(id => `${actorLabel(next, next.actors.find(item => item.id === id)!)} ${initiativeOf(id)}`).join('、')}。`, deps);
+  return next;
+}
+
+/** 投降：退出战斗但仍留在战场上，可被搜刮，也计入击败经验。 */
+export function surrender(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active' || state.fled === true) throw new Error('只有在场的单位可以投降。');
+  if (state.surrendered === true) throw new Error('该单位已经投降了。');
+  state.surrendered = true;
+  if (next.combat) {
+    next.combat.pendingOpportunity = (next.combat.pendingOpportunity ?? []).filter(item => item.reactorId !== actorId && item.targetId !== actorId);
+  }
+  addLog(next, `${actorLabel(next, actor)} 放下武器，投降。`, deps);
   return next;
 }
 
@@ -3491,7 +3507,7 @@ export function lootCorpse(battle: Battle, looterId: string, targetId: string, d
   const looterState = combatantOf(looter);
   const targetState = combatantOf(target);
   if (looterState.status !== 'active') throw new Error('只有在场的单位可以搜刮。');
-  if (targetState.status !== 'dead') throw new Error('只能搜刮已经死亡的单位。');
+  if (targetState.status !== 'dead' && targetState.surrendered !== true) throw new Error('只能搜刮已经死亡或投降的单位。');
   if (looter.position && target.position && cellDistance(looter.position, target.position) > 1) throw new Error('只能搜刮 5 尺内的尸体。');
   const loot = targetState.items ?? [];
   if (!loot.length) throw new Error('该单位身上没有可搜刮的物品。');
