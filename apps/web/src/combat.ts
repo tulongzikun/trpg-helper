@@ -1759,6 +1759,40 @@ function checkAdjustment(actor: Actor, ability: Ability): ModeAdjustment | null 
 }
 
 /** 通用属性检定：可指定技能（用于熟练加值）与 DC。 */
+/** 观察目标：消耗动作做一次智力（调查）检定，成功后在日志里列出它的防护与状态。 */
+export function studyTarget(battle: Battle, actorId: string, targetId: string, deps: CombatDeps = {}): { battle: Battle; success: boolean } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const target = actorOf(next, targetId);
+  if (actorId === targetId) throw new Error('不能观察自己。');
+  if (combatantOf(actor).status !== 'active') throw new Error('只有在场的单位可以观察。');
+  if (combatantOf(target).status === 'dead') throw new Error('无法观察已经死亡的单位。');
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以观察。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (combatantOf(actor).actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const bonus = abilityCheckBonus(actor, 'int', '调查') - exhaustionPenalty(actor);
+  const random = randomOf(deps);
+  const natural = rollDie(20, random);
+  const total = natural + bonus;
+  const success = natural === 20 ? true : natural === 1 ? false : total >= 10;
+  combatantOf(actor).actionUsed = true;
+  if (!success) {
+    addLog(next, `${actorLabel(next, actor)} 观察 ${actorLabel(next, target)} 失败（调查 DC 10）。`, deps, `d20(${natural}) + ${bonus} = ${total}`);
+    return { battle: next, success };
+  }
+  combatantOf(target).revealed = true;
+  const template = target.template;
+  const parts = [`AC ${template.armorClass}`, `HP ${target.currentHp}/${target.maxHp}`];
+  if (template.damageResistances?.length) parts.push(`抗性：${template.damageResistances.join('、')}`);
+  if (template.damageImmunities?.length) parts.push(`免疫：${template.damageImmunities.join('、')}`);
+  if (template.damageVulnerabilities?.length) parts.push(`易伤：${template.damageVulnerabilities.join('、')}`);
+  if (combatantOf(target).conditions.length) parts.push(`状态：${combatantOf(target).conditions.join('、')}`);
+  addLog(next, `${actorLabel(next, actor)} 观察 ${actorLabel(next, target)} 成功（调查 DC 10）。`, deps, parts.join(' · '));
+  return { battle: next, success };
+}
+
 export function abilityCheck(battle: Battle, options: CheckOptions, deps: CombatDeps = {}): { battle: Battle; outcome: CheckOutcome } {
   if (!Number.isInteger(options.dc) || options.dc < 1 || options.dc > 40) throw new Error('DC 须为 1 至 40 的整数。');
   const next = recordUndo(structuredClone(battle));

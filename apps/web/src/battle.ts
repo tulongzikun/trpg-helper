@@ -64,6 +64,8 @@ export type CombatantState = {
   dualWielder?: boolean;
   sentinel?: boolean;
   stable?: boolean;
+  /** 是否已被队友观察过（观察动作成功）。 */
+  revealed?: boolean;
   delayed?: boolean;
   flying?: boolean;
   /** 力竭等级（0–6）：每级使攻击、豁免、属性检定 -2，速度 -5 尺。 */
@@ -174,6 +176,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.dualWielder !== undefined && typeof value.dualWielder !== 'boolean') return false;
   if (value.sentinel !== undefined && typeof value.sentinel !== 'boolean') return false;
   if (value.stable !== undefined && typeof value.stable !== 'boolean') return false;
+  if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
   if (value.delayed !== undefined && typeof value.delayed !== 'boolean') return false;
   if (value.flying !== undefined && typeof value.flying !== 'boolean') return false;
 

@@ -39,6 +39,7 @@ export type CombatHandlers = {
   onInitiative: (actorId: string, initiative: number) => void;
   onRerollInitiative: () => void;
   onCheck: (options: CheckOptions) => void;
+  onStudy: (targetId: string) => void;
   onHeal: (targetId: string, amount: number) => void;
   onStabilize: (targetId: string) => void;
   onUndo: () => void;
@@ -234,6 +235,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <HelpPanel key={`help-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <CheckPanel key={`check-${actor.id}`} actor={actor} handlers={handlers} />
     <HealPanel key={`heal-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
+    <StudyPanel key={`study-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <OpportunityPanel key={`opportunity-${actor.id}`} battle={battle} handlers={handlers} />
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
@@ -1106,3 +1108,15 @@ export function SettlementPanel({ battle }: { battle: Battle }) {
   );
 }
 
+export function StudyPanel({ battle, actor, handlers }: { battle: Battle; actor: Actor; handlers: CombatHandlers }) {
+  const enemies = battle.actors.filter(item => item.id !== actor.id && item.side !== actor.side && item.side !== '中立' && item.combat?.status === 'active');
+  const [targetId, setTargetId] = useState(enemies[0]?.id ?? '');
+  if (!enemies.length) return null;
+  const disabled = actor.combat?.actionUsed === true;
+  return <section className="cmb-study">
+    <h4>观察</h4>
+    <label>目标<select value={targetId} onChange={event => setTargetId(event.target.value)} aria-label="观察目标">{enemies.map(item => <option key={item.id} value={item.id}>{actorLabel(battle, item)}</option>)}</select></label>
+    <button type="button" className="button-secondary" disabled={disabled} onClick={() => handlers.onStudy(targetId)} aria-label="观察目标">观察（动作，调查 DC 10）</button>
+    <p className="cmb-hint">成功后在战斗日志里列出目标的 AC、生命值、抗性与状态。</p>
+  </section>;
+}
