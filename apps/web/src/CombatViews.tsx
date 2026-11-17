@@ -52,6 +52,8 @@ export type CombatHandlers = {
   onWeb: (actorId: string, cells: { x: number; y: number }[]) => void;
   onEscapeWeb: (actorId: string) => void;
   onFog: (actorId: string, cells: { x: number; y: number }[]) => void;
+  onSleep: (actorId: string) => void;
+  onWake: (actorId: string, targetId: string) => void;
   onHaste: (actorId: string) => void;
   onInvisible: (actorId: string) => void;
   onInitiative: (actorId: string, initiative: number) => void;
@@ -278,10 +280,13 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.reactionUsed} onClick={() => handlers.onShield(actor.id)} aria-label="护盾术">护盾术（反应，AC +5）</button>
       <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onHaste(actor.id)} aria-label="加速术">加速术（动作，速度翻倍／AC +2）</button>
       <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onInvisible(actor.id)} aria-label="隐形术">隐形术（动作，10 轮）</button>
+      <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onSleep(actor.id)} aria-label="沉睡术">沉睡术（动作，5d8 生命值池）</button>
+      {state.sleeping ? <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onWake(actor.id, actor.id)} aria-label="唤醒">唤醒（动作，移除沉睡）</button> : null}
       {state.blessed ? <span className="cmb-hint">祝福：剩余 {state.blessed} 轮</span> : null}
       {state.shield ? <span className="cmb-hint">护盾术：AC +{state.shield}</span> : null}
       {state.hasted ? <span className="cmb-hint">加速术：剩余 {state.hasted} 轮（速度翻倍、AC +2）</span> : null}
       {state.invisible ? <span className="cmb-hint">隐形术：剩余 {state.invisible} 轮</span> : null}
+      {state.sleeping ? <span className="cmb-hint">沉睡中（失能 + 倒地，受伤或唤醒时解除）</span> : null}
       <label className="cmb-check"><input type="checkbox" checked={state.dualWielder === true} onChange={event => handlers.onDualWielder(actor.id, event.target.checked)} aria-label="双持战斗者" title="AC +1，副手攻击可用非轻型武器" />双持战斗者（AC +1，副手可用非轻型）</label>
       <label className="cmb-check"><input type="checkbox" checked={state.sentinel === true} onChange={event => handlers.onSentinel(actor.id, event.target.checked)} aria-label="哨兵" title="长武器命中使目标本回合移动力清零；邻近敌人攻击他人时可花反应反击" />哨兵（长武器减速、可反击）</label>
       <label className="cmb-check"><input type="checkbox" checked={state.flying === true} onChange={event => handlers.onFlying(actor.id, event.target.checked)} aria-label="飞行" title="飞行时移动忽略地形消耗与危险地形伤害" />飞行</label>

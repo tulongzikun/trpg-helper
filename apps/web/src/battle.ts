@@ -63,6 +63,8 @@ export type CombatantState = {
   ongoing?: OngoingEffect[];
   /** 正在维持的专注。 */
   concentration?: Concentration;
+  /** 是否被沉睡术陷入沉睡（失能 + 倒地，受伤或唤醒时解除）。 */
+  sleeping?: boolean;
   /** 本回合是否已撤离（移动不引发借机攻击）。 */
   disengaged?: boolean;
   /** 擒抱者 id，用于计算挣脱 DC。 */
@@ -262,6 +264,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.dualWielder !== undefined && typeof value.dualWielder !== 'boolean') return false;
   if (value.sentinel !== undefined && typeof value.sentinel !== 'boolean') return false;
   if (value.stable !== undefined && typeof value.stable !== 'boolean') return false;
+  if (value.sleeping !== undefined && typeof value.sleeping !== 'boolean') return false;
+  if (value.sleeping !== undefined && typeof value.sleeping !== 'boolean') return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
   if (value.warCaster !== undefined && typeof value.warCaster !== 'boolean') return false;
   if (value.counterspell !== undefined && typeof value.counterspell !== 'boolean') return false;

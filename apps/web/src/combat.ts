@@ -515,6 +515,73 @@ function greaseFall(battle: Battle, actor: Actor, deps: CombatDeps): boolean {
   return true;
 }
 
+const SLEEP_DICE = '5d8';
+const SLEEP_RANGE_FT = 20;
+
+/** 沉睡术：动作施放，掷 5d8 得到生命值池，按当前生命值由低到高让 20 尺内目标陷入沉睡（失能 + 倒地），直到池子耗尽。 */
+export function castSleep(battle: Battle, casterId: string, targetIds: string[], deps: CombatDeps = {}): { battle: Battle; pool: number; slept: string[] } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const state = combatantOf(caster);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放沉睡术。');
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const ids = [...new Set(targetIds)].filter(id => id !== casterId);
+  if (!ids.length) throw new Error('请选择沉睡术的目标。');
+  for (const id of ids) {
+    const target = actorOf(next, id);
+    if (combatantOf(target).status !== 'active') throw new Error('沉睡术只能影响在场的单位。');
+    if (caster.position && target.position) {
+      const feet = actorDistance(next, casterId, id) ?? 0;
+      if (feet > SLEEP_RANGE_FT) throw new Error(`沉睡术只能影响 ${SLEEP_RANGE_FT} 尺内的单位。`);
+    }
+  }
+  const rolled = rollDamage(SLEEP_DICE, randomOf(deps));
+  let pool = rolled.total;
+  state.actionUsed = true;
+  const slept: string[] = [];
+  const ordered = [...ids].sort((left, right) => actorOf(next, left).currentHp - actorOf(next, right).currentHp);
+  for (const id of ordered) {
+    const target = actorOf(next, id);
+    const targetState = combatantOf(target);
+    if (targetState.sleeping === true) continue;
+    if (target.currentHp > pool) continue;
+    pool -= target.currentHp;
+    targetState.sleeping = true;
+    if (!targetState.conditions.includes('失能')) targetState.conditions.push('失能');
+    if (!targetState.conditions.includes('倒地')) targetState.conditions.push('倒地');
+    slept.push(id);
+  }
+  const names = slept.map(id => actorLabel(next, actorOf(next, id))).join('、');
+  addLog(next, slept.length
+    ? `${actorLabel(next, caster)} 施放沉睡术：${SLEEP_DICE} → ${rolled.total}，${names} 陷入沉睡（消耗 ${rolled.total - pool} 点生命值池）。`
+    : `${actorLabel(next, caster)} 施放沉睡术：${SLEEP_DICE} → ${rolled.total}，没有目标的生命值低于剩余池子，无人陷入沉睡。`, deps);
+  return { battle: next, pool, slept };
+}
+
+/** 唤醒：动作叫醒 5 尺内的沉睡者，移除失能与倒地。 */
+export function wakeUp(battle: Battle, actorId: string, targetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以唤醒同伴。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const target = actorOf(next, targetId);
+  const targetState = combatantOf(target);
+  if (targetState.sleeping !== true) throw new Error('该单位没有处于沉睡。');
+  if (actor.position && target.position && (actorDistance(next, actorId, targetId) ?? 0) > 5) throw new Error('只能唤醒 5 尺内的沉睡者。');
+  state.actionUsed = true;
+  delete targetState.sleeping;
+  targetState.conditions = targetState.conditions.filter(condition => condition !== '失能' && condition !== '倒地');
+  addLog(next, `${actorLabel(next, actor)} 叫醒了 ${actorLabel(next, target)}。`, deps);
+  return next;
+}
+
 const FOG_MAX_CELLS = 24;
 
 /** 雾云术：动作施放 + 专注，1–24 格内成为重度遮蔽；攻击者与目标分处雾内外时攻击检定劣势。 */
@@ -1710,6 +1777,11 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
     state.deathSaves = { successes: 0, failures: 0 };
   }
   if (battle && state.status === 'dead') settleDeath(battle, actor, deps);
+  if (battle && adjusted > 0 && state.sleeping === true) {
+    delete state.sleeping;
+    state.conditions = state.conditions.filter(condition => condition !== '失能' && condition !== '倒地');
+    addLog(battle, `${actorLabel(battle, actor)} 受到伤害，从沉睡中醒来。`, deps);
+  }
   return { damage: adjusted, tempAbsorbed: absorbed, status: state.status };
 }
 /** 单位死亡后的收尾：中断专注并驱散召唤物、清除自身持续效果与回合标记、移除其产生的灵光。 */
@@ -2801,6 +2873,7 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     actor.combat.reckless = false;
     actor.combat.hidden = false;
     actor.combat.sapped = false;
+    delete actor.combat.sleeping;
     delete actor.combat.vexTargetId;
     delete actor.combat.helpedAttack;
     delete actor.combat.ready;
