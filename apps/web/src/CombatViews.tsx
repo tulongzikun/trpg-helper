@@ -322,7 +322,9 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
   const sources = attackSources(attacker);
   const first = sources[0];
   const targets = availableTargets(battle, attacker.id);
-  const maxAttacks = attacksPerAction(attacker);
+  const selectedSource = sources.find(item => item.id === sourceId);
+  const loading = selectedSource?.properties?.includes('装填') === true;
+  const maxAttacks = loading ? 1 : attacksPerAction(attacker);
   const [targetId, setTargetId] = useState(targets[0]?.id ?? '');
   const [sourceId, setSourceId] = useState(first?.id ?? '');
   const [bonus, setBonus] = useState(String(first?.attackBonus ?? 0));
@@ -408,7 +410,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
       <label>额外伤害<input value={extraDamage} onChange={event => setExtraDamage(event.target.value)} aria-label="额外伤害骰" placeholder="如 1d6（可留空）" /></label>
       <label>额外伤害类型<select value={extraType} onChange={event => setExtraType(event.target.value as DamageType | '无')} aria-label="额外伤害类型"><option value="无">无</option>{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
       <label className="cmb-check"><input type="checkbox" checked={extraCritical} onChange={event => setExtraCritical(event.target.checked)} aria-label="额外伤害随重击翻倍" />额外伤害随重击翻倍</label>
-      <label>攻击次数<input type="number" min={1} max={maxAttacks} step={1} value={attacks} onChange={event => setAttacks(event.target.value)} aria-label="攻击次数" title={`额外攻击：本回合最多 ${maxAttacks} 次`} /></label>
+      <label>攻击次数<input type="number" min={1} max={maxAttacks} step={1} value={attacks} onChange={event => setAttacks(event.target.value)} aria-label="攻击次数" title={loading ? '装填武器每次动作只能射击一次' : `额外攻击：本回合最多 ${maxAttacks} 次`} />{loading ? <small>装填：每次动作只能射击一次</small> : null}</label>
       <label>检定<select value={mode} onChange={event => setMode(event.target.value as AttackMode)} aria-label="检定方式"><option value="normal">正常</option><option value="advantage">优势</option><option value="disadvantage">劣势</option></select></label>
       <label>消耗<select value={cost} onChange={event => setCost(event.target.value as AttackCost)} aria-label="消耗动作"><option value="action">动作</option><option value="bonus">附赠动作</option><option value="reaction">反应</option></select></label>
     </div>
@@ -691,6 +693,7 @@ export function ReinforcePanel({ battle, cards, onReinforce }: { battle: Battle;
     <div className="cmb-reinforce-actions"><button type="submit" className="button-secondary">加入增援</button>{message && <span className="cmb-muted">{message}</span>}</div>
   </form>;
 }
+
 
 
 

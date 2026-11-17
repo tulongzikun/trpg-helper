@@ -1,4 +1,4 @@
-﻿import { abilityModifier, proficiencyBonus } from './characterRules.ts';
+import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
@@ -735,6 +735,10 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (!Number.isInteger(reachFt) || reachFt < 5 || reachFt > 30) throw new Error('近战触及范围须为 5 至 30 尺的整数。');
   if (options.cover !== undefined && !coverTypes.includes(options.cover)) throw new Error('掩体取值无效。');
   if (options.weaponId !== undefined && !attackSources(attacker).some(item => item.id === options.weaponId)) throw new Error('攻击来源无效。');
+  if (options.weaponId !== undefined) {
+    const weapon = attackSources(attacker).find(item => item.id === options.weaponId);
+    if (weapon?.properties?.includes('装填') && (options.attacks ?? 1) > 1) throw new Error('装填武器每个动作只能射击一次。');
+  }
   if (options.twoHanded) {
     const versatile = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId)?.versatileDamage : undefined;
     if (!versatile) throw new Error('该武器没有两用形态，无法双手持用。');

@@ -113,8 +113,8 @@ export const weapons: Weapon[] = [
   { name: '戟', aliases: ['halberd'], damage: '1d10', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 10, properties: ['重型', '双手'] },
   { name: '长弓', aliases: ['longbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 150, longRangeFt: 600 },
   { name: '短弓', aliases: ['shortbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80, longRangeFt: 320 },
-  { name: '轻弩', aliases: ['light crossbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80, longRangeFt: 320 },
-  { name: '手弩', aliases: ['hand crossbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 30, longRangeFt: 120, properties: ['轻型'] },
+  { name: '轻弩', aliases: ['light crossbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80, longRangeFt: 320, properties: ['装填'] },
+  { name: '手弩', aliases: ['hand crossbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 30, longRangeFt: 120, properties: ['轻型', '装填'] },
   { name: '投石索', aliases: ['sling'], damage: '1d4', damageType: '钝击', ability: 'dex', range: 'ranged', distanceFt: 30, longRangeFt: 120 },
   { name: '标枪', aliases: ['javelin'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'ranged', distanceFt: 30, longRangeFt: 120 },
 ];
@@ -220,6 +220,8 @@ export const originLabels: Record<AttackOrigin, string> = {
   weapon: '装备武器',
   estimate: '属性估算',
 };
+
+
 
 
 
