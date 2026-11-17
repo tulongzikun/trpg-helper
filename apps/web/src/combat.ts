@@ -742,6 +742,13 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   const measured = actorDistance(battle, attacker.id, target.id);
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'melee' && measured > reachFt) throw new Error(`目标距离 ${measured} 尺，超出近战触及范围（${reachFt} 尺）。`);
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && measured > 600) throw new Error('目标距离超出远程攻击范围（600 尺）。');
+  if (options.weaponId) {
+    const source = attackSources(attacker).find(item => item.id === options.weaponId);
+    if (source?.longRangeFt && range === 'ranged') {
+      const distance = measured ?? options.distanceFt ?? 30;
+      if (distance > source.longRangeFt) throw new Error('目标距离超出该武器的最大射程（' + source.longRangeFt + ' 尺）。');
+    }
+  }
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && attacker.position && target.position && !hasLineOfSight(battle, attacker.position, target.position)) throw new Error('视线被墙体阻挡，无法进行远程攻击。');
   const distanceFt = options.ignoreDistanceCheck ? (options.distanceFt ?? reachFt) : (measured ?? options.distanceFt ?? (range === 'melee' ? reachFt : 30));
   if (!Number.isInteger(distanceFt) || distanceFt < 0 || distanceFt > 600) throw new Error('距离须为 0 至 600 尺的整数。');
@@ -765,6 +772,13 @@ function effectiveDamageExpression(actor: Actor, options: AttackOptions): string
   return options.damageExpression.replace(/^\s*\d{1,2}\s*d\s*\d{1,3}/, versatile);
 }
 
+function longRangeAdjustment(actor: Actor, options: AttackOptions, distanceFt: number): ModeAdjustment | null {
+  if (!options.weaponId || options.range === 'melee') return null;
+  const source = attackSources(actor).find(item => item.id === options.weaponId);
+  if (!source?.longRangeFt || distanceFt <= source.distanceFt) return null;
+  return { mode: 'disadvantage', notes: [`距离 ${distanceFt} 尺超出常规射程 ${source.distanceFt} 尺：攻击检定劣势`] };
+}
+
 function resolveOneAttack(battle: Battle, options: AttackOptions, context: AttackContext, deps: CombatDeps, consumeCost: boolean): AttackOutcome {
   const attacker = actorOf(battle, options.attackerId);
   const target = actorOf(battle, options.targetId);
@@ -772,7 +786,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const targetWasDown = combatantOf(target).status === 'down';
   const random = randomOf(deps);
   const heavy = heavyWeaponAdjustment(attacker, options.weaponId);
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : [])]);
+  const far = longRangeAdjustment(attacker, options, context.distanceFt);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : [])]);
   const mode = combined.mode;
   const notes = [...combined.notes];
   const first = rollDie(20, random);
@@ -1371,6 +1386,7 @@ export function standUp(battle: Battle, actorId: string, deps: CombatDeps = {}):
   addLog(next, `${actorLabel(next, actor)} 起身，消耗 ${cost} 尺移动力。`, deps);
   return next;
 }
+
 
 
 

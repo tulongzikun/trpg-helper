@@ -18,6 +18,8 @@ export type AttackSource = {
   properties?: string[];
   /** 两用武器的双手伤害骰。 */
   versatileDamage?: string;
+  /** 远程武器的最大射程（尺）。 */
+  longRangeFt?: number;
 };
 export type ParsedAttackText = {
   attackBonus?: number;
@@ -95,7 +97,7 @@ export function monsterAttackSources(actor: Actor): AttackSource[] {
   return sources;
 }
 
-type Weapon = { name: string; aliases: string[]; damage: string; damageType: DamageType; ability: 'str' | 'dex' | 'best'; range: AttackRange; distanceFt: number; properties?: string[]; versatile?: string };
+type Weapon = { name: string; aliases: string[]; damage: string; damageType: DamageType; ability: 'str' | 'dex' | 'best'; range: AttackRange; distanceFt: number; properties?: string[]; versatile?: string; longRangeFt?: number };
 
 /** 2024 常用武器表；命中加值 = 属性调整值 + 熟练加值，武器熟练未建模时按已熟练处理。 */
 export const weapons: Weapon[] = [
@@ -109,12 +111,12 @@ export const weapons: Weapon[] = [
   { name: '长棍', aliases: ['quarterstaff'], damage: '1d6', damageType: '钝击', ability: 'best', range: 'melee', distanceFt: 5, properties: ['重型'], versatile: '1d8' },
   { name: '长矛', aliases: ['spear'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'melee', distanceFt: 5, versatile: '1d8' },
   { name: '戟', aliases: ['halberd'], damage: '1d10', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 10, properties: ['重型', '双手'] },
-  { name: '长弓', aliases: ['longbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 150 },
-  { name: '短弓', aliases: ['shortbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80 },
-  { name: '轻弩', aliases: ['light crossbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80 },
-  { name: '手弩', aliases: ['hand crossbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 30 },
-  { name: '投石索', aliases: ['sling'], damage: '1d4', damageType: '钝击', ability: 'dex', range: 'ranged', distanceFt: 30 },
-  { name: '标枪', aliases: ['javelin'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'ranged', distanceFt: 30 },
+  { name: '长弓', aliases: ['longbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 150, longRangeFt: 600 },
+  { name: '短弓', aliases: ['shortbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80, longRangeFt: 320 },
+  { name: '轻弩', aliases: ['light crossbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80, longRangeFt: 320 },
+  { name: '手弩', aliases: ['hand crossbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 30, longRangeFt: 120 },
+  { name: '投石索', aliases: ['sling'], damage: '1d4', damageType: '钝击', ability: 'dex', range: 'ranged', distanceFt: 30, longRangeFt: 120 },
+  { name: '标枪', aliases: ['javelin'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'ranged', distanceFt: 30, longRangeFt: 120 },
 ];
 
 function abilityScores(actor: Actor): Record<string, number> {
@@ -146,6 +148,7 @@ function weaponSource(actor: Actor, weapon: Weapon): AttackSource {
     origin: 'weapon',
     ...(weapon.properties ? { properties: weapon.properties } : {}),
     ...(weapon.versatile ? { versatileDamage: weapon.versatile } : {}),
+    ...(weapon.longRangeFt ? { longRangeFt: weapon.longRangeFt } : {}),
   };
 }
 
@@ -217,6 +220,7 @@ export const originLabels: Record<AttackOrigin, string> = {
   weapon: '装备武器',
   estimate: '属性估算',
 };
+
 
 
 
