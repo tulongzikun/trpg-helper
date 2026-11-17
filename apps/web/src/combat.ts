@@ -101,6 +101,32 @@ export function rollDamage(expression: string, random: Random = Math.random, cri
   return { total: rolls.reduce((sum, value) => sum + value, 0) + dice.modifier, rolls, modifier: dice.modifier };
 }
 
+/** 巨武器战斗：伤害骰掷出 1 或 2 时可以重掷一次并采用新结果。 */
+export function rollGreatWeaponDamage(expression: string, random: Random = Math.random, critical = false): { total: number; rolls: number[]; modifier: number } {
+  const dice = parseDice(expression);
+  const count = critical ? dice.count * 2 : dice.count;
+  const rolls: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const first = rollDie(dice.sides, random);
+    rolls.push(first <= 2 ? rollDie(dice.sides, random) : first);
+  }
+  return { total: rolls.reduce((sum, value) => sum + value, 0) + dice.modifier, rolls, modifier: dice.modifier };
+}
+
+/** 巨武器战斗风格是否适用于这次攻击（双手近战武器）。 */
+function greatWeaponFighting(actor: Actor, options: AttackOptions): boolean {
+  if (!fightingStylesOf(actor).includes('巨武器战斗')) return false;
+  const source = options.weaponId ? attackSources(actor).find(item => item.id === options.weaponId) : undefined;
+  if (!source || source.range !== 'melee') return false;
+  return source.properties?.includes('双手') === true || source.properties?.includes('重型') === true || options.twoHanded === true;
+}
+
+/** 防御风格：穿着护甲时 AC +1。 */
+function defenseBonus(actor: Actor): number {
+  return fightingStylesOf(actor).includes('防御') ? 1 : 0;
+}
+
+
 function requireCombat(battle: Battle) {
   if (!battle.combat) throw new Error('战斗尚未开始。');
   return battle.combat;
@@ -1493,7 +1519,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const archery = archeryBonus(attacker, options, context.range);
   if (archery > 0) notes.push('射术：远程攻击检定 +2');
   const total = natural + options.attackBonus + archery - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
-  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0);
+  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + defenseBonus(target);
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
   const automaticCritical = hit && isAutomaticCritical(target, context.range, context.distanceFt);
@@ -1511,7 +1537,9 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const damageExpression = effectiveDamageExpression(attacker, options);
   const weaponSource = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
   if (hit) {
-    const rolled = rollDamage(damageExpression, random, critical);
+    const gwf = greatWeaponFighting(attacker, options);
+    if (gwf) notes.push('巨武器战斗：1 或 2 点伤害骰重掷一次');
+    const rolled = gwf ? rollGreatWeaponDamage(damageExpression, random, critical) : rollDamage(damageExpression, random, critical);
     const defenseResult = defenseOf(target, options.damageType);
     const terrainResult = terrainDefense(battle, options.damageType);
     defense = [defenseResult.label, terrainResult.label].filter(Boolean).join('，');
