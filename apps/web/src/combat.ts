@@ -5128,6 +5128,8 @@ export function tickTurnStart(battle: Battle, deps: CombatDeps = {}): Battle {
 function resolveDeathSave(next: Battle, actor: Actor, deps: CombatDeps): DeathSaveOutcome {
   const state = combatantOf(actor);
   const natural = rollDie(20, randomOf(deps));
+  const penalty = exhaustionPenalty(actor);
+  const total = natural - penalty;
   if (natural === 20) {
     actor.currentHp = 1;
     state.status = 'active';
@@ -5136,10 +5138,11 @@ function resolveDeathSave(next: Battle, actor: Actor, deps: CombatDeps): DeathSa
     return { natural, successes: 0, failures: 0, status: 'active', revived: true };
   }
   if (natural === 1) state.deathSaves.failures = Math.min(3, state.deathSaves.failures + 2);
-  else if (natural >= 10) state.deathSaves.successes = Math.min(3, state.deathSaves.successes + 1);
+  else if (total >= 10) state.deathSaves.successes = Math.min(3, state.deathSaves.successes + 1);
   else state.deathSaves.failures = Math.min(3, state.deathSaves.failures + 1);
   if (state.deathSaves.failures >= 3) state.status = 'dead';
-  addLog(next, `${actorLabel(next, actor)} 死亡豁免 d20(${natural})：${state.deathSaves.successes} 成功 / ${state.deathSaves.failures} 失败${state.status === 'dead' ? '，死亡' : state.deathSaves.successes >= 3 ? '，稳定' : ''}。`, deps);
+  const detail = penalty > 0 ? `d20(${natural}) - ${penalty}（力竭）= ${total}` : `d20(${natural}) = ${total}`;
+  addLog(next, `${actorLabel(next, actor)} 死亡豁免 ${detail}：${state.deathSaves.successes} 成功 / ${state.deathSaves.failures} 失败${state.status === 'dead' ? '，死亡' : state.deathSaves.successes >= 3 ? '，稳定' : ''}。`, deps);
   return { natural, successes: state.deathSaves.successes, failures: state.deathSaves.failures, status: state.status, revived: false };
 }
 
