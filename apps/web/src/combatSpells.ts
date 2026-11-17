@@ -40,9 +40,11 @@ export function setSpellSlots(battle: Battle, actorId: string, slots: number[], 
   if (!Array.isArray(slots) || slots.length > 9 || slots.some(item => !Number.isInteger(item) || item < 0 || item > 20)) throw new Error('法术位须为 0 至 9 个不超过 20 的非负整数。');
   if (slots.length === 0) {
     delete actor.combat.spellSlots;
+    delete actor.combat.spellSlotsMax;
     return appendLog(next, `清除 ${actor.name} 的法术位记录。`, deps);
   }
   actor.combat.spellSlots = slots.slice();
+  actor.combat.spellSlotsMax = slots.slice();
   const summary = slots.map((count, index) => count > 0 ? `${count} 个 ${index + 1} 环` : '').filter(Boolean).join(' / ') || '全部为空';
   return appendLog(next, `记录 ${actor.name} 的法术位：${summary}。`, deps);
 }

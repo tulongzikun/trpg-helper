@@ -1754,6 +1754,30 @@ export function recoverClassResources(battle: Battle, deps: CombatDeps = {}): Ba
   return next;
 }
 
+/** 长休：恢复职业资源、弹药与法术位，并清除专注与每回合状态。 */
+export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
+  let next = recoverClassResources(battle, deps);
+  for (const actor of next.actors) {
+    if (!actor.combat) continue;
+    actor.combat.nickUsed = false;
+    actor.combat.sneakUsed = false;
+    actor.combat.dodging = false;
+    actor.combat.reckless = false;
+    actor.combat.hidden = false;
+    actor.combat.sapped = false;
+    delete actor.combat.vexTargetId;
+    delete actor.combat.helpedAttack;
+    delete actor.combat.ready;
+    delete actor.combat.concentration;
+    delete actor.combat.speedPenaltyFt;
+    delete actor.combat.slowSourceId;
+    delete actor.combat.ammo;
+    if (actor.combat.spellSlotsMax) actor.combat.spellSlots = actor.combat.spellSlotsMax.slice();
+  }
+  addLog(next, '长休：法术位、动作如潮、回气与弹药全部恢复，专注与每回合状态清除（生命值不变）。', deps);
+  return next;
+}
+
 export type SaveOptions = { actorId: string; ability: Ability; dc: number; bonus?: number; mode?: AttackMode; /** 掩体：仅对敏捷豁免提供 +2／+5。 */ cover?: CoverType };
 export type SaveOutcome = { natural: number; total: number; dc: number; success: boolean; mode: AttackMode; notes: string[]; automaticFailure: boolean };
 export type AreaSaveOptions = {
