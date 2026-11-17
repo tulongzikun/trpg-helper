@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
-import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
@@ -628,6 +628,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
   }, [suggestion]);
   const target = targets.find(item => item.id === targetId);
   const sightBlocked = range === 'ranged' && !!attacker.position && !!target?.position && !hasLineOfSight(battle, attacker.position, target.position);
+  const hints = target ? attackHints(battle, attacker.id, target.id, range) : [];
   if (!targets.length) return <p className="cmb-hint">当前没有可攻击的目标。</p>;
   const applySource = (id: string) => {
     const source = sources.find(item => item.id === id);
@@ -715,6 +716,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
       <label>消耗<select value={cost} onChange={event => setCost(event.target.value as AttackCost)} aria-label="消耗动作"><option value="action">动作</option><option value="bonus">附赠动作</option><option value="reaction">反应</option></select></label>
     </div>
     {sightBlocked && <p className="cmb-hint">视线被墙体阻挡：远程攻击无法进行，请换用近战或调整位置。</p>}
+      {hints.map(hint => <p key={hint} className="cmb-hint">{hint}</p>)}
     {message && <p role="alert" className="battle-error">{message}</p>}
         {(() => { const accurate = bonus.trim() && Number.isInteger(Number(bonus)) && target; if (!accurate) return null; const value = expectedDamage(Number(bonus), target.template.armorClass, mode, damage); return <p className="cmb-hint">命中率 {hitChanceLabel(Number(bonus), target.template.armorClass, mode)}，期望伤害 {value}</p>; })()}
     <div className="cmb-attack-actions"><span className="cmb-hint">伤害由本地掷骰；状态（目盲、倒地、麻痹等）会自动修正检定并结算重击，抗性、易伤、免疫与临时生命照常处理。</span><button className="button-primary" type="submit">{Number(attacks) > 1 ? `投掷 ${attacks} 次攻击` : '投掷攻击'}</button><button className="button-secondary" type="button" onClick={submitOffhand} aria-label="副手攻击">副手攻击（附赠动作）</button>

@@ -2158,6 +2158,27 @@ export function creatureCover(battle: Battle, attackerId: string, targetId: stri
     && cells.some(cell => cell.x === item.position!.x && cell.y === item.position!.y)) ?? null;
 }
 
+/** 攻击前的提示汇总：视线、生物掩体、遮蔽、天气与高地。 */
+export function attackHints(battle: Battle, attackerId: string, targetId: string, range: 'melee' | 'ranged'): string[] {
+  const attacker = battle.actors.find(item => item.id === attackerId);
+  const target = battle.actors.find(item => item.id === targetId);
+  if (!attacker?.position || !target?.position) return [];
+  const hints: string[] = [];
+  const inFog = (item: Actor) => !!item.position && (battle.fog ?? []).some(cell => cell.x === item.position!.x && cell.y === item.position!.y);
+  if (range === 'ranged') {
+    if (!hasLineOfSight(battle, attacker.position, target.position)) hints.push('视线被墙体阻挡：无法进行远程攻击');
+    const blocker = creatureCover(battle, attackerId, targetId);
+    if (blocker) hints.push(`生物掩体：${blocker.name} 挡在中间（AC +2）`);
+    if (inDarkness(battle, attackerId) !== inDarkness(battle, targetId)) hints.push('魔法黑暗：看不清目标（攻击劣势）');
+    if (inFog(attacker) !== inFog(target)) hints.push('云雾遮蔽：看不清目标（攻击劣势）');
+    if (battle.weather) hints.push(battle.weather === 'rain' ? '暴雨：远程攻击检定劣势' : '强风：远程攻击检定劣势');
+  }
+  const delta = (attacker.elevation ?? 0) - (target.elevation ?? 0);
+  if (range === 'ranged' && delta >= 10) hints.push(`高地优势：高差 ${delta} 尺（攻击优势）`);
+  if (range === 'ranged' && delta <= -10) hints.push(`仰射：高差 ${delta} 尺（攻击劣势）`);
+  return hints;
+}
+
 /** 两格之间是否没有被墙体阻挡的直线视线。 */
 export function hasLineOfSight(battle: Battle, from: Position, to: Position): boolean {
   if (!battle.grid) return true;
