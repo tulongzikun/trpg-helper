@@ -967,6 +967,75 @@ export function castGrease(battle: Battle, casterId: string, cells: Position[], 
   return next;
 }
 
+const ENTANGLE_DC = 13;
+const ENTANGLE_MAX_CELLS = 16;
+
+/** 该格是否被纠缠术的藤蔓覆盖。 */
+export function entangleAt(battle: Battle, x: number, y: number): boolean {
+  return (battle.entangle ?? []).some(cell => cell.x === x && cell.y === y);
+}
+
+/** 踏入或停留在藤蔓中的单位做 DC 13 力量豁免：失败被「束缚」，挣脱后不会再次被同一片藤蔓缠住。 */
+function entangleSnare(battle: Battle, actor: Actor, deps: CombatDeps): boolean {
+  const state = combatantOf(actor);
+  if (state.flying === true) return false;
+  const position = actor.position;
+  if (!position || !entangleAt(battle, position.x, position.y)) return false;
+  const held = state.entangled === true;
+  const save = resolveSave(actor, { actorId: actor.id, ability: 'str', dc: ENTANGLE_DC, bonus: defaultSaveBonus(actor, 'str') + auraBonus(battle, actor.id, 'saves') }, randomOf(deps));
+  if (save.success) {
+    if (held) {
+      delete state.entangled;
+      state.conditions = state.conditions.filter(condition => condition !== '束缚');
+      addLog(battle, `${actorLabel(battle, actor)} 挣脱了藤蔓的缠绕（力量 ${save.total} ≥ DC ${ENTANGLE_DC}）。`, deps);
+    }
+    return false;
+  }
+  if (held) {
+    addLog(battle, `${actorLabel(battle, actor)} 仍被藤蔓缠住（力量 ${save.total} < DC ${ENTANGLE_DC}）。`, deps);
+    return false;
+  }
+  if (state.conditions.includes('束缚')) return false;
+  state.conditions.push('束缚');
+  state.entangled = true;
+  addLog(battle, `${actorLabel(battle, actor)} 被藤蔓缠住，束缚（力量 ${save.total} < DC ${ENTANGLE_DC}）。`, deps);
+  return true;
+}
+
+/** 施放纠缠术：覆盖 1–16 格，藤蔓区域移动消耗翻倍，进入或停留在其中的单位需通过力量豁免，失败被束缚。 */
+export function castEntangle(battle: Battle, casterId: string, cells: Position[], deps: CombatDeps = {}): Battle {
+  if (!battle.grid) throw new Error('请先启用方格战场。');
+  const unique = new Map<string, Position>();
+  for (const cell of cells) {
+    if (!Number.isInteger(cell.x) || !Number.isInteger(cell.y)) throw new Error('纠缠术的格子坐标须为整数。');
+    if (cell.x < 0 || cell.y < 0 || cell.x >= battle.grid.width || cell.y >= battle.grid.height) throw new Error('纠缠术的格子超出战场范围。');
+    unique.set(`${cell.x},${cell.y}`, { x: cell.x, y: cell.y });
+  }
+  if (!unique.size) throw new Error('请选择纠缠术覆盖的格子。');
+  if (unique.size > ENTANGLE_MAX_CELLS) throw new Error('纠缠术最多覆盖 16 格。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const state = combatantOf(caster);
+  requireVoice(next, casterId);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放纠缠术。');
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (state.concentration) throw new Error('施法者已经在维持其他专注。');
+  state.actionUsed = true;
+  state.concentration = { spell: '纠缠术' };
+  const list = [...unique.values()];
+  next.entangle = list;
+  next.entangleBy = casterId;
+  addLog(next, `${actorLabel(next, caster)} 施放纠缠术：藤蔓覆盖 ${list.length} 格，移动消耗翻倍，进入需通过 DC ${ENTANGLE_DC} 力量豁免。`, deps);
+  for (const actor of next.actors) {
+    if ((actor.combat?.status ?? 'active') !== 'active' || actor.id === casterId) continue;
+    entangleSnare(next, actor, deps);
+  }
+  return next;
+}
+
 const WEB_DC = 12;
 
 /** 该格是否被蛛网覆盖。 */
@@ -1730,6 +1799,16 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
     delete battle.sleepCloudBy;
     addLog(battle, `${reason}，睡眠粉尘消散了。`, deps);
   }
+  if (battle.entangle && battle.entangleBy === casterId) {
+    delete battle.entangle;
+    delete battle.entangleBy;
+    const trapped = battle.actors.filter(item => item.combat?.entangled === true);
+    for (const item of trapped) {
+      delete item.combat!.entangled;
+      item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '束缚');
+    }
+    addLog(battle, `${reason}，藤蔓枯萎了${trapped.length ? `，${trapped.map(item => actorLabel(battle, item)).join('、')} 摆脱了纠缠` : ''}。`, deps);
+  }
   const charmedOnes = battle.actors.filter(item => item.combat?.charmedBy === casterId);
   if (charmedOnes.length) {
     for (const item of charmedOnes) {
@@ -2370,16 +2449,18 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const brambles = next.terrain === 'brambles';
   const muddy = next.terrain === 'mud';
   const webbed = webAt(next, x, y);
+  const entwined = entangleAt(next, x, y);
   const flying = state.flying === true;
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava || brambles || muddy || webbed ? 2 : 1);
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava || brambles || muddy || webbed || entwined ? 2 : 1);
   const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && muddy ? '，泥沼使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}。`, deps);
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && muddy ? '，泥沼使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}${!flying && entwined ? '，藤蔓使消耗翻倍' : ''}。`, deps);
   if (greaseAt(next, x, y) && !flying) greaseFall(next, actor, deps);
   if (sleepCloudAt(next, x, y)) sleepDust(next, actor, deps);
   if (webbed && !flying) webStuck(next, actor, deps);
+  if (entwined && !flying) entangleSnare(next, actor, deps);
   if (icy && !flying) {
     const stumble = resolveSave(actor, { actorId: actor.id, ability: 'dex', dc: 10, bonus: defaultSaveBonus(actor, 'dex') + auraBonus(next, actor.id, 'saves') }, randomOf(deps));
     if (!stumble.success) {
@@ -2842,6 +2923,7 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   charmRecover(next, actor, deps);
   fearRecover(next, actor, deps);
   blindRecover(next, actor, deps);
+  entangleSnare(next, actor, deps);
   if (actor.position) {
     applyHazardAt(next, actor, actor.position.x, actor.position.y, deps, '回合开始');
     applyLavaAt(next, actor, deps, '回合开始');
@@ -4282,6 +4364,7 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     actor.combat.hidden = false;
     actor.combat.sapped = false;
     delete actor.combat.sleeping;
+    delete actor.combat.entangled;
   delete actor.combat.paralyzed;
   delete actor.combat.paralyzedBy;
     delete actor.combat.suppressed;
@@ -4339,6 +4422,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
   delete next.silenceBy;
   delete next.sleepCloud;
   delete next.sleepCloudBy;
+  delete next.entangle;
+  delete next.entangleBy;
   addLog(next, '长休：恢复全部生命值，法术位、动作如潮、回气与弹药全部恢复，力竭减 1，专注与每回合状态清除。', deps);
   return next;
 }

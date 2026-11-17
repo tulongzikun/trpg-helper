@@ -145,6 +145,8 @@ export type CombatantState = {
   blinded?: number;
   /** 施加致盲术的施法者 id。 */
   blindedBy?: string;
+  /** 是否被纠缠术的藤蔓缠住（束缚来源，挣脱后清除）。 */
+  entangled?: boolean;
   /** 恐惧术：剩余轮数（无法靠近恐惧源，对其攻击劣势）。 */
   frightened?: number;
   /** 施加恐惧术的施法者 id。 */
@@ -241,7 +243,7 @@ export type AttackPreset = {
   powerAttack?: boolean;
   twoHanded?: boolean;
 };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; weather?: Weather; difficult?: Position[]; walls?: Position[]; cover?: Position[]; hazards?: Hazard[]; grease?: Position[]; fog?: Position[]; fogBy?: string; darkness?: Position[]; darknessBy?: string; silence?: Position[]; silenceBy?: string; sleepCloud?: Position[]; sleepCloudBy?: string; webs?: Position[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; weather?: Weather; difficult?: Position[]; walls?: Position[]; cover?: Position[]; hazards?: Hazard[]; grease?: Position[]; fog?: Position[]; fogBy?: string; darkness?: Position[]; darknessBy?: string; silence?: Position[]; silenceBy?: string; sleepCloud?: Position[]; sleepCloudBy?: string; webs?: Position[]; entangle?: Position[]; entangleBy?: string; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -479,6 +481,8 @@ function isBattle(value: unknown): boolean {
     && (value.sleepCloud === undefined || (Array.isArray(value.sleepCloud) && value.sleepCloud.length <= 400 && value.sleepCloud.every(isPosition)))
     && (value.sleepCloudBy === undefined || (typeof value.sleepCloudBy === 'string' && value.sleepCloudBy.length > 0 && value.sleepCloudBy.length <= 64))
     && (value.webs === undefined || (Array.isArray(value.webs) && value.webs.length <= 400 && value.webs.every(isPosition)))
+    && (value.entangle === undefined || (Array.isArray(value.entangle) && value.entangle.length <= 400 && value.entangle.every(isPosition)))
+    && (value.entangleBy === undefined || (typeof value.entangleBy === 'string' && value.entangleBy.length > 0 && value.entangleBy.length <= 64))
     && (value.attackPresets === undefined || (Array.isArray(value.attackPresets) && value.attackPresets.length <= 10 && value.attackPresets.every(isAttackPreset)))
   && (value.pendingCast === undefined || isPendingCastPlan(value.pendingCast)) && (value.auras === undefined || (Array.isArray(value.auras) && value.auras.length <= 8 && value.auras.every(isAura)));
 }
