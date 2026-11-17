@@ -185,7 +185,7 @@ export type AttackPreset = {
   powerAttack?: boolean;
   twoHanded?: boolean;
 };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; grease?: Position[]; fog?: Position[]; fogBy?: string; webs?: Position[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; grease?: Position[]; fog?: Position[]; fogBy?: string; silence?: Position[]; silenceBy?: string; webs?: Position[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -387,6 +387,8 @@ function isBattle(value: unknown): boolean {
     && (value.grease === undefined || (Array.isArray(value.grease) && value.grease.length <= 400 && value.grease.every(isPosition)))
     && (value.fog === undefined || (Array.isArray(value.fog) && value.fog.length <= 400 && value.fog.every(isPosition)))
     && (value.fogBy === undefined || (typeof value.fogBy === 'string' && value.fogBy.length > 0 && value.fogBy.length <= 64))
+    && (value.silence === undefined || (Array.isArray(value.silence) && value.silence.length <= 400 && value.silence.every(isPosition)))
+    && (value.silenceBy === undefined || (typeof value.silenceBy === 'string' && value.silenceBy.length > 0 && value.silenceBy.length <= 64))
     && (value.webs === undefined || (Array.isArray(value.webs) && value.webs.length <= 400 && value.webs.every(isPosition)))
     && (value.attackPresets === undefined || (Array.isArray(value.attackPresets) && value.attackPresets.length <= 10 && value.attackPresets.every(isAttackPreset)))
   && (value.pendingCast === undefined || isPendingCastPlan(value.pendingCast)) && (value.auras === undefined || (Array.isArray(value.auras) && value.auras.length <= 8 && value.auras.every(isAura)));

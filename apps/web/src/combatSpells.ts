@@ -1,4 +1,4 @@
-import { appendLog, areaSave, attack, cellDistance, currentActorId, spendResource, startConcentration } from './combat.ts';
+import { appendLog, areaSave, attack, cellDistance, currentActorId, silenceBlocks, spendResource, startConcentration } from './combat.ts';
 import type { CombatDeps } from './combat.ts';
 import type { Ability } from './characters';
 import type { Actor, Battle, DamageType, Position } from './battle';
@@ -106,6 +106,7 @@ export function castSpell(battle: Battle, options: SpellCastOptions, deps: Comba
   if (!caster) throw new Error('施法者不存在。');
   if (!battle.combat) throw new Error('战斗尚未开始。');
   if (caster.combat?.status !== 'active') throw new Error('只有在场的单位可以施法。');
+  if (silenceBlocks(battle, options.casterId)) throw new Error('处于沉默区域，无法施放需要言语成分的法术。');
   if (currentActorId(battle) !== options.casterId) throw new Error('只有当前回合的单位可以施法。');
   const hasAttack = Boolean(options.attack);
   const hasSave = Boolean(options.save);

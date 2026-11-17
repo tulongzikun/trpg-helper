@@ -515,6 +515,56 @@ function greaseFall(battle: Battle, actor: Actor, deps: CombatDeps): boolean {
   return true;
 }
 
+const SILENCE_MAX_CELLS = 20;
+
+/** 该格是否被沉默术覆盖。 */
+export function silenceAt(battle: Battle, x: number, y: number): boolean {
+  return (battle.silence ?? []).some(cell => cell.x === x && cell.y === y);
+}
+
+/** 施法者是否站在沉默区域内：区域内无法施放需要言语成分的法术。 */
+export function silenceBlocks(battle: Battle, actorId: string): boolean {
+  const cells = battle.silence ?? [];
+  if (!cells.length) return false;
+  const actor = battle.actors.find(item => item.id === actorId);
+  if (!actor?.position) return false;
+  return silenceAt(battle, actor.position.x, actor.position.y);
+}
+
+/** 所有已实现的法术都含言语成分：站在沉默区域时必须先离开。 */
+function requireVoice(battle: Battle, casterId: string): void {
+  if (silenceBlocks(battle, casterId)) throw new Error('处于沉默区域，无法施放需要言语成分的法术。');
+}
+
+/** 沉默术：动作施放 + 专注，1–20 格内无法施放需要言语成分的法术。 */
+export function castSilence(battle: Battle, casterId: string, cells: Position[], deps: CombatDeps = {}): Battle {
+  if (!battle.grid) throw new Error('请先启用方格战场。');
+  const unique = new Map<string, Position>();
+  for (const cell of cells) {
+    if (!Number.isInteger(cell.x) || !Number.isInteger(cell.y)) throw new Error('沉默术的格子坐标须为整数。');
+    if (cell.x < 0 || cell.y < 0 || cell.x >= battle.grid.width || cell.y >= battle.grid.height) throw new Error('沉默术的格子超出战场范围。');
+    unique.set(`${cell.x},${cell.y}`, { x: cell.x, y: cell.y });
+  }
+  if (!unique.size) throw new Error('请选择沉默术覆盖的格子。');
+  if (unique.size > SILENCE_MAX_CELLS) throw new Error('沉默术最多覆盖 20 格。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
+  const state = combatantOf(caster);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放沉默术。');
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (state.concentration) throw new Error('施法者已经在维持其他专注。');
+  state.actionUsed = true;
+  state.concentration = { spell: '沉默术' };
+  next.silence = [...unique.values()];
+  next.silenceBy = casterId;
+  addLog(next, `${actorLabel(next, caster)} 施放沉默术：${next.silence.length} 格内无法施放需要言语成分的法术，持续 10 轮。`, deps);
+  return next;
+}
+
 const SLEEP_DICE = '5d8';
 const SLEEP_RANGE_FT = 20;
 
@@ -523,6 +573,7 @@ export function castSleep(battle: Battle, casterId: string, targetIds: string[],
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
   const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
   const state = combatantOf(caster);
   if (state.status !== 'active') throw new Error('只有在场的单位可以施放沉睡术。');
   const blocker = actionBlocker(caster);
@@ -599,6 +650,7 @@ export function castFogCloud(battle: Battle, casterId: string, cells: Position[]
   requireCombat(next);
   const caster = actorOf(next, casterId);
   const state = combatantOf(caster);
+  requireVoice(next, casterId);
   if (state.status !== 'active') throw new Error('只有在场的单位可以施放雾云术。');
   const blocker = actionBlocker(caster);
   if (blocker) throw new Error(blocker);
@@ -627,6 +679,7 @@ export function castGrease(battle: Battle, casterId: string, cells: Position[], 
   requireCombat(next);
   const caster = actorOf(next, casterId);
   const state = combatantOf(caster);
+  requireVoice(next, casterId);
   if (state.status !== 'active') throw new Error('只有在场的单位可以施放油腻术。');
   if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
   state.actionUsed = true;
@@ -676,6 +729,7 @@ export function castWeb(battle: Battle, casterId: string, cells: Position[], dep
   requireCombat(next);
   const caster = actorOf(next, casterId);
   const state = combatantOf(caster);
+  requireVoice(next, casterId);
   if (state.status !== 'active') throw new Error('只有在场的单位可以施放蛛网术。');
   if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
   state.actionUsed = true;
@@ -721,6 +775,7 @@ export function castHaste(battle: Battle, casterId: string, targetId: string, de
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
   const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
   const casterState = combatantOf(caster);
   if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放加速术。');
   if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
@@ -741,6 +796,7 @@ export function castInvisible(battle: Battle, casterId: string, targetId: string
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
   const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
   const casterState = combatantOf(caster);
   if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放隐形术。');
   if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
@@ -772,6 +828,11 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
     delete battle.fogBy;
     addLog(battle, `${reason}，迷雾消散了。`, deps);
   }
+  if (battle.silence && battle.silenceBy === casterId) {
+    delete battle.silence;
+    delete battle.silenceBy;
+    addLog(battle, `${reason}，沉默区域恢复了声音。`, deps);
+  }
 }
 
 /** 祝福术：动作施放，最多 3 名友方在 10 轮内攻击检定与豁免 +1d4，施法者需维持专注。 */
@@ -779,6 +840,7 @@ export function castBless(battle: Battle, casterId: string, targetIds: string[],
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
   const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
   const state = combatantOf(caster);
   if (state.status !== 'active') throw new Error('只有在场的单位可以施放祝福术。');
   const blocker = actionBlocker(caster);
@@ -807,6 +869,7 @@ export function castShieldReaction(battle: Battle, actorId: string, deps: Combat
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
   const actor = actorOf(next, actorId);
+  requireVoice(next, actorId);
   const state = combatantOf(actor);
   if (state.status !== 'active') throw new Error('只有在场的单位可以施放护盾术。');
   if (state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
@@ -2907,6 +2970,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
   }
   delete next.fog;
   delete next.fogBy;
+  delete next.silence;
+  delete next.silenceBy;
   addLog(next, '长休：恢复全部生命值，法术位、动作如潮、回气与弹药全部恢复，力竭减 1，专注与每回合状态清除。', deps);
   return next;
 }
