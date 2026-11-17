@@ -54,6 +54,10 @@ export type CombatantState = {
   /** 是否在使用闪避：直到自己下个回合开始前，针对它的攻击检定具有劣势。 */
   dodging?: boolean;
   nickUsed?: boolean;
+  /** 是否持有「防守决斗」专长：可用反应让 AC 加上熟练加值直到下个回合开始。 */
+  defensiveDuelist?: boolean;
+  /** 防守决斗带来的临时 AC 加值，回合开始时清零。 */
+  parryBonus?: number;
   /** 是否持有「双持战斗者」专长：AC +1，且副手攻击可用非轻型武器。 */
   dualWielder?: boolean;
   /** 力竭等级（0–6）：每级使攻击、豁免、属性检定 -2，速度 -5 尺。 */
@@ -156,6 +160,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.dodging !== undefined && typeof value.dodging !== 'boolean') return false;
   if (value.nickUsed !== undefined && typeof value.nickUsed !== 'boolean') return false;
   if (value.sneakUsed !== undefined && typeof value.sneakUsed !== 'boolean') return false;
+  if (value.defensiveDuelist !== undefined && typeof value.defensiveDuelist !== 'boolean') return false;
+  if (value.parryBonus !== undefined && !isInteger(value.parryBonus, 0, 10)) return false;
   if (value.dualWielder !== undefined && typeof value.dualWielder !== 'boolean') return false;
   if (value.exhaustion !== undefined && !isInteger(value.exhaustion, 0, 6)) return false;
   if (value.spellSlots !== undefined && (!Array.isArray(value.spellSlots) || value.spellSlots.length > 9 || value.spellSlots.some(item => !isInteger(item, 0, 20)))) return false;

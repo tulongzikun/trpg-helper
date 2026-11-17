@@ -27,6 +27,8 @@ export type CombatHandlers = {
   onLongRest: () => void;
   onExhaustion: (actorId: string, level: number) => void;
   onDualWielder: (actorId: string, enabled: boolean) => void;
+  onDefensiveDuelist: (actorId: string, enabled: boolean) => void;
+  onParry: (actorId: string) => void;
   onInitiative: (actorId: string, initiative: number) => void;
   onCheck: (options: CheckOptions) => void;
   onHeal: (targetId: string, amount: number) => void;
@@ -223,6 +225,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <div className="cmb-extras">
       <ConditionPicker actor={actor} onChange={condition => handlers.onCondition(actor.id, condition)} />
               {actor.combat?.conditions.includes('倒地') && <button type="button" className="button-secondary" onClick={() => handlers.onStand(actor.id)}>起身（消耗一半移动力）</button>}
+      <label className="cmb-check"><input type="checkbox" checked={state.defensiveDuelist === true} onChange={event => handlers.onDefensiveDuelist(actor.id, event.target.checked)} aria-label="防守决斗" title="用反应让自己 AC 加上熟练加值" />防守决斗</label>
+      {state.defensiveDuelist === true ? <button type="button" className="button-secondary" disabled={state.reactionUsed} onClick={() => handlers.onParry(actor.id)} aria-label="格挡">格挡（反应，AC +{state.parryBonus ?? '熟练'}）</button> : null}
       <label className="cmb-check"><input type="checkbox" checked={state.dualWielder === true} onChange={event => handlers.onDualWielder(actor.id, event.target.checked)} aria-label="双持战斗者" title="AC +1，副手攻击可用非轻型武器" />双持战斗者（AC +1，副手可用非轻型）</label>
       <label className="cmb-temp">力竭<input key={`ex-${state.exhaustion ?? 0}`} type="number" min={0} max={6} step={1} defaultValue={state.exhaustion ?? 0} aria-label="力竭等级" title="每级：攻击、豁免、属性检定 -2，速度 -5 尺" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0 && value <= 6) handlers.onExhaustion(actor.id, value); }} /></label>
       <label className="cmb-temp">临时生命<input key={state.tempHp} type="number" min={0} step={1} defaultValue={state.tempHp} aria-label="临时生命值" onBlur={event => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 0) handlers.onTempHp(actor.id, value); }} /></label>

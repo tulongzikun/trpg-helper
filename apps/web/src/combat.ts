@@ -247,6 +247,38 @@ function exhaustionSpeedPenalty(actor: Actor): number {
 function movementAllowance(actor: Actor): number {
   return Math.max(0, actorSpeed(actor) - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
 }
+/** 切换「防守决斗」专长标记。 */
+export function setDefensiveDuelist(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (enabled) state.defensiveDuelist = true;
+  else {
+    delete state.defensiveDuelist;
+    delete state.parryBonus;
+  }
+  addLog(next, enabled ? `${actorLabel(next, actor)} 启用防守决斗：可用反应让自己 AC 加上熟练加值。` : `${actorLabel(next, actor)} 不再使用防守决斗。`, deps);
+  return next;
+}
+
+/** 防守决斗：消耗反应，让 AC 加上熟练加值，直到自己下个回合开始。 */
+export function parry(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以格挡。');
+  if (state.defensiveDuelist !== true) throw new Error('只有持有防守决斗专长的单位可以格挡。');
+  if (state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
+  const melee = attackSources(actor).find(item => item.range === 'melee');
+  if (!melee) throw new Error('需要持有近战武器才能使用防守决斗。');
+  const bonus = proficiencyBonus(actor.characterSnapshot?.sheet.level ?? 1);
+  state.reactionUsed = true;
+  state.parryBonus = bonus;
+  addLog(next, `${actorLabel(next, actor)} 用「${melee.label}」格挡，AC +${bonus} 直到下个回合开始。`, deps);
+  return next;
+}
+
 /** 切换「双持战斗者」专长：AC +1，且副手攻击不再要求轻型武器。 */
 export function setDualWielder(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -792,6 +824,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.disengaged = false;
   combat.dodging = false;
   combat.nickUsed = false;
+  delete combat.parryBonus;
   combat.sneakUsed = false;
   combat.reckless = false;
   for (const other of battle.actors) {
@@ -1338,7 +1371,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const second = mode === 'normal' ? first : rollDie(20, random);
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
   const total = natural + options.attackBonus - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
-  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0);
+  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0);
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
   const automaticCritical = hit && isAutomaticCritical(target, context.range, context.distanceFt);
