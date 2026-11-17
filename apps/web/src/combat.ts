@@ -494,6 +494,8 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   requireCombat(battle);
   const next = recordUndo(structuredClone(battle));
   const combat = requireCombat(next);
+  const endingId = combat.order[combat.turnIndex];
+  if (endingId) applyOngoingDamage(next, deps, 'end', endingId);
   const actor = nextTurnIndex(next);
   resetTurnResources(next, actor.id);
   addLog(next, `第 ${combat.round} 轮 · 轮到 ${actorLabel(next, actor)}（先攻 ${combatantOf(actor).initiative}）。`, deps);
@@ -997,7 +999,7 @@ export function areaSave(battle: Battle, options: AreaSaveOptions, deps: CombatD
   return { battle: next, results };
 }
 
-export type OngoingInput = { name: string; damageExpression: string; damageType: DamageType; saveEnds?: { ability: Ability; dc: number } };
+export type OngoingInput = { name: string; damageExpression: string; damageType: DamageType; saveEnds?: { ability: Ability; dc: number }; timing?: 'start' | 'end' };
 export type ConcentrationCheck = { lost: boolean; dc: number; natural: number; total: number; text: string };
 
 export type SummonInput = { ownerId: string; spell?: string; rounds?: number };
@@ -1122,6 +1124,7 @@ function validateOngoing(input: OngoingInput): void {
   parseDice(input.damageExpression);
   if (!damageTypes.includes(input.damageType)) throw new Error('请选择有效的伤害类型。');
   if (input.saveEnds && (!Number.isInteger(input.saveEnds.dc) || input.saveEnds.dc < 1 || input.saveEnds.dc > 40)) throw new Error('持续效果的豁免 DC 须为 1 至 40 的整数。');
+  if (input.timing !== undefined && input.timing !== 'start' && input.timing !== 'end') throw new Error('持续效果的结算时机无效。');
 }
 
 export function addOngoingEffect(battle: Battle, targetId: string, input: OngoingInput, deps: CombatDeps = {}): { battle: Battle; effectId: string } {
@@ -1132,9 +1135,10 @@ export function addOngoingEffect(battle: Battle, targetId: string, input: Ongoin
   const state = combatantOf(actor);
   if (state.ongoing && state.ongoing.length >= 8) throw new Error('单个单位最多记录 8 个持续效果。');
   const effectId = makeIdOf(deps)();
-  state.ongoing = [...(state.ongoing ?? []), { id: effectId, name: input.name.trim(), damageExpression: input.damageExpression, damageType: input.damageType, saveEnds: input.saveEnds }];
+  state.ongoing = [...(state.ongoing ?? []), { id: effectId, name: input.name.trim(), damageExpression: input.damageExpression, damageType: input.damageType, saveEnds: input.saveEnds, timing: input.timing ?? 'start' }];
+  const timingLabel = (input.timing ?? 'start') === 'start' ? '回合开始' : '回合结束';
   addLog(next, `${actorLabel(next, actor)} 受到持续效果「${input.name.trim()}」影响。`, deps,
-    `回合开始承受 ${input.damageExpression} 点${input.damageType}伤害${input.saveEnds ? `；回合开始进行${saveNames[input.saveEnds.ability]}豁免 DC ${input.saveEnds.dc}，成功则移除` : ''}`);
+    `${timingLabel}承受 ${input.damageExpression} 点${input.damageType}伤害${input.saveEnds ? `；${timingLabel}进行${saveNames[input.saveEnds.ability]}豁免 DC ${input.saveEnds.dc}，成功则移除` : ''}`);
   return { battle: next, effectId };
 }
 
@@ -1177,8 +1181,8 @@ export function endConcentration(battle: Battle, actorId: string, deps: CombatDe
   return next;
 }
 
-function applyOngoingDamage(battle: Battle, deps: CombatDeps): void {
-  const id = currentActorId(battle);
+function applyOngoingDamage(battle: Battle, deps: CombatDeps, timing: 'start' | 'end' = 'start', actorId?: string): void {
+  const id = actorId ?? currentActorId(battle);
   if (!id) return;
   const actor = battle.actors.find(item => item.id === id);
   const state = actor?.combat;
@@ -1188,6 +1192,7 @@ function applyOngoingDamage(battle: Battle, deps: CombatDeps): void {
   const survivors: typeof state.ongoing = [];
   const statusNow = (): CombatStatus => actor.combat?.status ?? 'active';
   for (const effect of state.ongoing) {
+    if ((effect.timing ?? 'start') !== timing) { survivors.push(effect); continue; }
     let ended = false;
     if (effect.saveEnds) {
       const save = resolveSave(actor, { actorId: actor.id, ability: effect.saveEnds.ability, dc: effect.saveEnds.dc }, random);
@@ -1200,7 +1205,7 @@ function applyOngoingDamage(battle: Battle, deps: CombatDeps): void {
       const rolled = rollDamage(effect.damageExpression, random, false);
       const outcome = applyDamageToActor(actor, rolled.total, effect.damageType);
       const concentration = concentrationCheck(battle, actor, outcome.damage, random, deps);
-      addLog(battle, `回合开始：「${effect.name}」对 ${actorLabel(battle, actor)} 造成 ${outcome.damage} 点${effect.damageType}伤害，剩余 ${actor.currentHp}/${actor.maxHp}。`, deps,
+      addLog(battle, `${timing === 'start' ? '回合开始' : '回合结束'}：「${effect.name}」对 ${actorLabel(battle, actor)} 造成 ${outcome.damage} 点${effect.damageType}伤害，剩余 ${actor.currentHp}/${actor.maxHp}。`, deps,
         [`${effect.damageExpression} → ${rolled.total}`, concentration?.text, statusNow() === 'down' ? '倒地，需要死亡豁免' : statusNow() === 'dead' ? '死亡' : ''].filter(Boolean).join('；'));
       survivors.push(effect);
     }

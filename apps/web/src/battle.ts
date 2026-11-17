@@ -14,6 +14,8 @@ export type OngoingEffect = {
   damageType: DamageType;
   /** 回合开始时进行豁免，成功则移除该效果。 */
   saveEnds?: { ability: Ability; dc: number };
+  /** 结算时机：回合开始（默认）或回合结束。 */
+  timing?: 'start' | 'end';
 };
 /** 正在维持的专注法术。 */
 export type Concentration = { spell: string };
@@ -89,6 +91,7 @@ function isOngoingEffect(value: unknown): value is OngoingEffect {
   if (!isObject(value)) return false;
   if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.damageExpression !== 'string') return false;
   if (!damageTypes.includes(value.damageType as DamageType)) return false;
+  if (value.timing !== undefined && value.timing !== 'start' && value.timing !== 'end') return false;
   if (value.saveEnds === undefined) return true;
   const saveEnds = value.saveEnds;
   return isObject(saveEnds) && abilityKeys.includes(saveEnds.ability as Ability) && isInteger(saveEnds.dc, 1, 40);
@@ -239,3 +242,4 @@ export function replaceBattle(store: BattleStore, battle: Battle): BattleStore {
   result.battles[index] = battle;
   return result;
 }
+

@@ -469,6 +469,7 @@ function OngoingPanel({ battle, handlers }: { battle: Battle; handlers: CombatHa
   const [type, setType] = useState<DamageType>('火焰');
   const [saveAbility, setSaveAbility] = useState<Ability | ''>('');
   const [saveDc, setSaveDc] = useState('13');
+  const [timing, setTiming] = useState<'start' | 'end'>('start');
   const [message, setMessage] = useState('');
   if (!actor?.combat) return null;
   const ongoing = actor.combat.ongoing ?? [];
@@ -484,7 +485,7 @@ function OngoingPanel({ battle, handlers }: { battle: Battle; handlers: CombatHa
       saveEnds = { ability: saveAbility, dc };
     }
     setMessage('');
-    handlers.onAddOngoing(actor.id, { name: name.trim(), damageExpression: dice, damageType: type, saveEnds });
+    handlers.onAddOngoing(actor.id, { name: name.trim(), damageExpression: dice, damageType: type, saveEnds, timing });
     setName('');
   };
   const start = (event: React.FormEvent) => {
@@ -496,10 +497,10 @@ function OngoingPanel({ battle, handlers }: { battle: Battle; handlers: CombatHa
   };
   return <div className="cmb-area">
     <div className="cmb-attack-head"><h4>持续效果与专注</h4><small>{ongoing.length} 个持续效果</small></div>
-    <p className="cmb-hint">持续效果在每个回合开始时自动结算；带豁免的效果会在回合开始时掷豁免，成功即移除。专注会在受到伤害时自动检定（DC = max(10, 伤害 ÷ 2)）。</p>
+    <p className="cmb-hint">持续效果在自己回合的开始或结束时机自动结算（按键入时选择的时机）；带豁免的效果会在同一时机掷豁免，成功即移除。专注会在受到伤害时自动检定（DC = max(10, 伤害 ÷ 2)）。</p>
     <div className="cmb-ongoing-list">
       {concentration ? <span className="cmb-chip">专注：{concentration.spell}<button type="button" className="cmb-chip-remove" onClick={() => handlers.onConcentration(actor.id, null)} aria-label="结束专注">×</button></span> : null}
-      {ongoing.map(effect => <span key={effect.id} className="cmb-chip">{effect.name}（{effect.damageExpression} {effect.damageType}{effect.saveEnds ? `，${abilityNames[effect.saveEnds.ability]}豁免 DC ${effect.saveEnds.dc}` : ''}）<button type="button" className="cmb-chip-remove" onClick={() => handlers.onRemoveOngoing(actor.id, effect.id)} aria-label={`移除${effect.name}`}>×</button></span>)}
+      {ongoing.map(effect => <span key={effect.id} className="cmb-chip">{effect.name}（{effect.damageExpression} {effect.damageType}，{(effect.timing ?? 'start') === 'start' ? '回合开始' : '回合结束'}{effect.saveEnds ? `，${abilityNames[effect.saveEnds.ability]}豁免 DC ${effect.saveEnds.dc}` : ''}）<button type="button" className="cmb-chip-remove" onClick={() => handlers.onRemoveOngoing(actor.id, effect.id)} aria-label={`移除${effect.name}`}>×</button></span>)}
       {!concentration && !ongoing.length ? <span className="cmb-muted">当前没有专注或持续效果。</span> : null}
     </div>
     {message && <p role="alert" className="battle-error">{message}</p>}
@@ -511,7 +512,8 @@ function OngoingPanel({ battle, handlers }: { battle: Battle; handlers: CombatHa
       <label>效果名称<input value={name} onChange={event => setName(event.target.value)} placeholder="如：燃烧" aria-label="持续效果名称" /></label>
       <label>伤害骰<input value={dice} onChange={event => setDice(event.target.value)} aria-label="持续伤害骰" /></label>
       <label>伤害类型<select value={type} onChange={event => setType(event.target.value as DamageType)} aria-label="持续伤害类型">{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
-      <label>回合开始豁免<select value={saveAbility} onChange={event => setSaveAbility(event.target.value as Ability | '')} aria-label="持续效果豁免属性"><option value="">无</option>{(['str', 'dex', 'con', 'int', 'wis', 'cha'] as Ability[]).map(item => <option key={item} value={item}>{abilityNames[item]}</option>)}</select></label>
+      <label>结算时机<select value={timing} onChange={event => setTiming(event.target.value as 'start' | 'end')} aria-label="持续效果结算时机"><option value="start">回合开始</option><option value="end">回合结束</option></select></label>
+      <label>豁免属性<select value={saveAbility} onChange={event => setSaveAbility(event.target.value as Ability | '')} aria-label="持续效果豁免属性"><option value="">无</option>{(['str', 'dex', 'con', 'int', 'wis', 'cha'] as Ability[]).map(item => <option key={item} value={item}>{abilityNames[item]}</option>)}</select></label>
       <label>豁免 DC<input type="number" min={1} max={40} value={saveDc} onChange={event => setSaveDc(event.target.value)} aria-label="持续效果豁免 DC" disabled={!saveAbility} /></label>
       <label className="cmb-inline-action"><button className="button-secondary" type="submit">添加效果</button></label>
     </form>
@@ -675,4 +677,6 @@ export function ReinforcePanel({ battle, cards, onReinforce }: { battle: Battle;
     <div className="cmb-reinforce-actions"><button type="submit" className="button-secondary">加入增援</button>{message && <span className="cmb-muted">{message}</span>}</div>
   </form>;
 }
+
+
 
