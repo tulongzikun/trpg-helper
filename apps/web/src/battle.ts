@@ -133,6 +133,10 @@ export type CombatantState = {
   paralyzedBy?: string;
   /** 命令术「停止」：轮到它时整个回合无法行动，跳过并清除。 */
   commanded?: 'halt';
+  /** 耳聋术：剩余轮数。 */
+  deafened?: number;
+  /** 耳聋术的施法者。 */
+  deafenedBy?: string;
   /** 缓慢术：剩余轮数（速度减半、AC -2、无法使用反应）。 */
   slowed?: number;
   /** 施加缓慢术的施法者 id。 */
@@ -326,6 +330,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.paralyzed !== undefined && !isInteger(value.paralyzed, 0, 100)) return false;
   if (value.paralyzedBy !== undefined && (typeof value.paralyzedBy !== 'string' || value.paralyzedBy.length === 0 || value.paralyzedBy.length > 64)) return false;
   if (value.commanded !== undefined && value.commanded !== 'halt') return false;
+  if (value.deafened !== undefined && !isInteger(value.deafened, 0, 100)) return false;
+  if (value.deafenedBy !== undefined && (typeof value.deafenedBy !== 'string' || value.deafenedBy.length === 0 || value.deafenedBy.length > 64)) return false;
   if (value.slowed !== undefined && !isInteger(value.slowed, 0, 100)) return false;
   if (value.slowedBy !== undefined && (typeof value.slowedBy !== 'string' || value.slowedBy.length === 0 || value.slowedBy.length > 64)) return false;
   if (value.charmed !== undefined && !isInteger(value.charmed, 0, 100)) return false;

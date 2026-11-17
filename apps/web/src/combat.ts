@@ -667,6 +667,7 @@ export function castCommand(battle: Battle, casterId: string, targetId: string, 
   const targetState = combatantOf(target);
   if (targetState.status !== 'active') throw new Error('只能对在场的单位施放命令术。');
   if (target.id === casterId) throw new Error('命令术不能对自己施放。');
+  if (isDeafened(target)) throw new Error(`${actorLabel(next, target)} 听不见命令。`);
   if (caster.position && target.position) {
     const feet = actorDistance(next, casterId, targetId) ?? 0;
     if (feet > COMMAND_RANGE_FT) throw new Error('命令术只能影响 60 尺内的单位。');
@@ -1761,6 +1762,74 @@ function blindRecover(battle: Battle, actor: Actor, deps: CombatDeps = {}): void
   addLog(battle, `${actorLabel(battle, actor)} 恢复了视力（体质 ${save.natural} → ${save.total}，DC ${BLIND_DC}）。`, deps);
 }
 
+const DEAFEN_DC = 13;
+const DEAFEN_RANGE_FT = 30;
+
+/** 该单位是否听不见（耳聋术生效中）。 */
+function isDeafened(actor: Actor): boolean {
+  const state = actor.combat;
+  return !!state && (state.deafened ?? 0) > 0;
+}
+
+/** 耳聋术的施法目标：30 尺内敌对、在场。 */
+export function deafenTargets(battle: Battle, casterId: string, rangeFt = DEAFEN_RANGE_FT): Actor[] {
+  const caster = battle.actors.find(item => item.id === casterId);
+  if (!caster) return [];
+  return battle.actors.filter(item => item.id !== casterId && item.side !== caster.side && item.side !== '中立'
+    && (item.combat?.status ?? 'active') === 'active'
+    && (battle.grid === undefined || (actorDistance(battle, casterId, item.id) ?? 0) <= rangeFt));
+}
+
+function deafRecover(battle: Battle, actor: Actor, deps: CombatDeps = {}): void {
+  const state = actor.combat;
+  if (!state || state.deafened === undefined || state.deafened <= 0) return;
+  const save = resolveSave(actor, { actorId: actor.id, ability: 'con', dc: DEAFEN_DC }, randomOf(deps));
+  if (!save.success) {
+    addLog(battle, `${actorLabel(battle, actor)} 仍然听不见（体质 ${save.natural} → ${save.total}，DC ${DEAFEN_DC}）。`, deps);
+    return;
+  }
+  delete state.deafened;
+  delete state.deafenedBy;
+  state.conditions = state.conditions.filter(condition => condition !== '耳聋');
+  addLog(battle, `${actorLabel(battle, actor)} 恢复了听觉（体质 ${save.natural} → ${save.total}，DC ${DEAFEN_DC}）。`, deps);
+}
+
+/** 耳聋术：动作 + 专注，30 尺内单体体质豁免，失败耳聋 10 轮；耳聋者听不见命令。 */
+export function castDeafness(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): { battle: Battle; outcome: SaveOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
+  const casterState = combatantOf(caster);
+  if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放耳聋术。');
+  if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (casterState.concentration) throw new Error('施法者已经在维持其他专注。');
+  const target = actorOf(next, targetId);
+  if (target.id === casterId) throw new Error('耳聋术不能对自己施放。');
+  const targetState = combatantOf(target);
+  if (targetState.status !== 'active') throw new Error('只能对在场的单位施放耳聋术。');
+  if (target.side === caster.side) throw new Error('耳聋术只能影响敌对单位。');
+  if (target.side === '中立') throw new Error('耳聋术只能影响敌对单位。');
+  if (caster.position && target.position) {
+    const feet = actorDistance(next, casterId, targetId) ?? 0;
+    if (feet > DEAFEN_RANGE_FT) throw new Error(`耳聋术的射程是 ${DEAFEN_RANGE_FT} 尺。`);
+  }
+  casterState.actionUsed = true;
+  casterState.concentration = { spell: '耳聋术' };
+  const outcome = resolveSave(target, { actorId: target.id, ability: 'con', dc: DEAFEN_DC }, randomOf(deps));
+  if (!outcome.success) {
+    targetState.deafened = 10;
+    targetState.deafenedBy = casterId;
+    if (!targetState.conditions.includes('耳聋')) targetState.conditions.push('耳聋');
+    addLog(next, `${actorLabel(next, target)} 被耳聋术击中：耳聋 10 轮（体质 ${outcome.natural} → ${outcome.total} < DC ${DEAFEN_DC}）。`, deps);
+  } else {
+    addLog(next, `${actorLabel(next, target)} 抵抗了耳聋术（体质 ${outcome.natural} → ${outcome.total} ≥ DC ${DEAFEN_DC}）。`, deps);
+  }
+  return { battle: next, outcome };
+}
+
 /** 致盲术：动作 + 专注，30 尺内单体体质豁免，失败目盲 10 轮。 */
 export function castBlindness(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): { battle: Battle; outcome: SaveOutcome } {
   const next = recordUndo(structuredClone(battle));
@@ -1856,6 +1925,15 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
       item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '目盲');
     }
     addLog(battle, `${reason}，${blindedOnes.map(item => actorLabel(battle, item)).join('、')} 的致盲术结束了。`, deps);
+  }
+  const deafOnes = battle.actors.filter(item => item.combat?.deafenedBy === casterId);
+  if (deafOnes.length) {
+    for (const item of deafOnes) {
+      delete item.combat!.deafened;
+      delete item.combat!.deafenedBy;
+      item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '耳聋');
+    }
+    addLog(battle, `${reason}，${deafOnes.map(item => actorLabel(battle, item)).join('、')} 的耳聋术结束了。`, deps);
   }
   const shaped = battle.actors.filter(item => item.combat?.polymorphedBy === casterId);
   if (shaped.length) {
@@ -2724,8 +2802,10 @@ export function helpCheck(battle: Battle, helperId: string, targetId: string, de
   if (state.status !== 'active') throw new Error('只有在场的单位可以协助。');
   const blocker = actionBlocker(helper);
   if (blocker) throw new Error(blocker);
+  if (isDeafened(helper)) throw new Error('耳聋的单位听不见请求，无法协助。');
   if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
   if (combatantOf(target).status !== 'active') throw new Error('只能协助在场的单位。');
+  if (isDeafened(target)) throw new Error('耳聋的单位听不见协助。');
   if (helper.side !== target.side || helper.side === '中立') throw new Error('只能协助同阵营的单位。');
   state.actionUsed = true;
   combatantOf(target).helpedCheck = true;
@@ -2798,6 +2878,15 @@ function resetTurnResources(battle: Battle, actorId: string) {
       delete combat.blindedBy;
       combat.conditions = combat.conditions.filter(condition => condition !== '目盲');
       addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 的致盲术结束了。`, {});
+    }
+  }
+  if (typeof combat.deafened === 'number') {
+    combat.deafened -= 1;
+    if (combat.deafened <= 0) {
+      delete combat.deafened;
+      delete combat.deafenedBy;
+      combat.conditions = combat.conditions.filter(condition => condition !== '耳聋');
+      addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 的耳聋术结束了。`, {});
     }
   }
   if (typeof combat.charmed === 'number') {
@@ -2958,6 +3047,7 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   charmRecover(next, actor, deps);
   fearRecover(next, actor, deps);
   blindRecover(next, actor, deps);
+  deafRecover(next, actor, deps);
   entangleSnare(next, actor, deps);
   if (actor.position) {
     applyHazardAt(next, actor, actor.position.x, actor.position.y, deps, '回合开始');
@@ -4423,6 +4513,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.frightened;
     delete actor.combat.blinded;
     delete actor.combat.blindedBy;
+    delete actor.combat.deafened;
+    delete actor.combat.deafenedBy;
     delete actor.combat.frightenedBy;
     delete actor.combat.surprised;
     delete actor.combat.poisoned;
