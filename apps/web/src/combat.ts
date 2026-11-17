@@ -35,6 +35,8 @@ export type AttackOptions = {
   ignoreDistanceCheck?: boolean;
   /** 使用的攻击来源 id（来自 attackSources），用于武器特性等规则。 */
   weaponId?: string;
+  /** 两用武器改用双手持用时的伤害骰（需要 weaponId 指向一把两用武器）。 */
+  twoHanded?: boolean;
   /** 附带的额外伤害骰（如猎人印记、至圣斩），随重击一起翻倍。 */
   extraDamageExpression?: string;
   extraDamageType?: DamageType;
@@ -733,6 +735,10 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (!Number.isInteger(reachFt) || reachFt < 5 || reachFt > 30) throw new Error('近战触及范围须为 5 至 30 尺的整数。');
   if (options.cover !== undefined && !coverTypes.includes(options.cover)) throw new Error('掩体取值无效。');
   if (options.weaponId !== undefined && !attackSources(attacker).some(item => item.id === options.weaponId)) throw new Error('攻击来源无效。');
+  if (options.twoHanded) {
+    const versatile = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId)?.versatileDamage : undefined;
+    if (!versatile) throw new Error('该武器没有两用形态，无法双手持用。');
+  }
   const measured = actorDistance(battle, attacker.id, target.id);
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'melee' && measured > reachFt) throw new Error(`目标距离 ${measured} 尺，超出近战触及范围（${reachFt} 尺）。`);
   if (measured !== undefined && !options.ignoreDistanceCheck && range === 'ranged' && measured > 600) throw new Error('目标距离超出远程攻击范围（600 尺）。');
@@ -750,6 +756,13 @@ function heavyWeaponAdjustment(actor: Actor, weaponId?: string): ModeAdjustment 
   const strength = actor.characterSnapshot?.sheet.abilities.str ?? actor.template.abilities?.str ?? 10;
   if (strength >= 13) return null;
   return { mode: 'disadvantage', notes: [`力量 ${strength} 低于重型武器要求的 13：攻击检定劣势`] };
+}
+
+function effectiveDamageExpression(actor: Actor, options: AttackOptions): string {
+  if (!options.twoHanded || !options.weaponId) return options.damageExpression;
+  const versatile = attackSources(actor).find(item => item.id === options.weaponId)?.versatileDamage;
+  if (!versatile) return options.damageExpression;
+  return options.damageExpression.replace(/^\s*\d{1,2}\s*d\s*\d{1,3}/, versatile);
 }
 
 function resolveOneAttack(battle: Battle, options: AttackOptions, context: AttackContext, deps: CombatDeps, consumeCost: boolean): AttackOutcome {
@@ -778,8 +791,9 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   let concentration = '';
   let extraDamage = 0;
   let extraNote = '';
+  const damageExpression = effectiveDamageExpression(attacker, options);
   if (hit) {
-    const rolled = rollDamage(options.damageExpression, random, critical);
+    const rolled = rollDamage(damageExpression, random, critical);
     const defenseResult = defenseOf(target, options.damageType);
     defense = defenseResult.label;
     const result = applyDamageToActor(target, rolled.total, options.damageType);
@@ -812,6 +826,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     context.cover ? coverNote(context.cover) : '',
     hit ? (critical ? '重击' : '命中') : (natural === 1 ? '大失败' : '未命中'),
     damageText,
+    options.twoHanded && damageExpression !== options.damageExpression ? `双手持用：${damageExpression}` : '',
     extraNote,
     defense,
     `目标剩余 ${target.currentHp}/${target.maxHp}`,
@@ -1356,6 +1371,8 @@ export function standUp(battle: Battle, actorId: string, deps: CombatDeps = {}):
   addLog(next, `${actorLabel(next, actor)} 起身，消耗 ${cost} 尺移动力。`, deps);
   return next;
 }
+
+
 
 
 
