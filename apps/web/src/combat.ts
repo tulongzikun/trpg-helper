@@ -2,7 +2,8 @@ import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
-import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, OpportunityPrompt, Position, ReadyAction } from './battle';
+import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
+import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
 import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
 import { attackSources } from './attackSources.ts';
@@ -1264,4 +1265,57 @@ export function combatantSummary(actor: Actor): string {
 }
 
 
+
+
+export type ReinforcementInput = { side: Side; initiative?: number; position?: Position; name?: string };
+
+/** 战斗进行中把新单位插入先攻序列；插入点位于当前行动者之前时，当前行动者保持不变。 */
+export function addReinforcement(battle: Battle, card: Card, input: ReinforcementInput, deps: CombatDeps = {}): { battle: Battle; actorId: string; initiative: number } {
+  if (!battle.combat) throw new Error('请先开始战斗再加入增援。');
+  const name = input.name?.trim() || card.block.name;
+  if (!name) throw new Error('请填写增援单位的名称。');
+  const maxHp = card.block.hitPoints.average;
+  if (!Number.isInteger(maxHp) || maxHp < 1) throw new Error('增援单位的生命值无效。');
+  if (input.position && !battle.grid) throw new Error('请先启用方格战场。');
+  if (input.initiative !== undefined && (!Number.isInteger(input.initiative) || input.initiative < -20 || input.initiative > 60)) throw new Error('先攻值须为 -20 至 60 的整数。');
+  const next = recordUndo(structuredClone(battle));
+  const combat = next.combat!;
+  if (input.position) {
+    const { x, y } = input.position;
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= next.grid!.width || y >= next.grid!.height) throw new Error('目标格子超出战场范围。');
+    const occupied = next.actors.find(actor => actor.position && actor.position.x === x && actor.position.y === y);
+    if (occupied) throw new Error(`该格已有单位：${occupied.name}。`);
+  }
+  const random = randomOf(deps);
+  const actor: Actor = {
+    id: makeIdOf(deps)(),
+    name,
+    side: input.side,
+    currentHp: maxHp,
+    maxHp,
+    source: { entryId: card.entry.id, blockId: card.block.id, entryName: card.entry.name, source: structuredClone(card.entry.source), revision: card.entry.revision },
+    template: structuredClone(card.block),
+    combat: {
+      initiative: 0,
+      tempHp: 0,
+      conditions: [],
+      actionUsed: false,
+      bonusUsed: false,
+      reactionUsed: false,
+      movementUsed: 0,
+      status: 'active',
+      deathSaves: { successes: 0, failures: 0 },
+    },
+    ...(input.position ? { position: { x: input.position.x, y: input.position.y } } : {}),
+  };
+  const initiative = input.initiative ?? rollDie(20, random) + actorInitiativeBonus(actor);
+  actor.combat!.initiative = initiative;
+  next.actors.push(actor);
+  const insertAt = combat.order.findIndex(id => (next.actors.find(a => a.id === id)?.combat?.initiative ?? 0) < initiative);
+  const index = insertAt < 0 ? combat.order.length : insertAt;
+  combat.order.splice(index, 0, actor.id);
+  if (index <= combat.turnIndex) combat.turnIndex += 1;
+  addLog(next, `${name} 以先攻 ${initiative} 加入战斗。`, deps);
+  return { battle: next, actorId: actor.id, initiative };
+}
 
