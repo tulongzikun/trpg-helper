@@ -1591,7 +1591,7 @@ export function castDispelMagic(battle: Battle, casterId: string, targetId: stri
 
   const targetState = combatantOf(target);
   const dispelled: string[] = [];
-  const strip = (field: 'blessed' | 'hasted' | 'invisible' | 'slowed' | 'charmed' | 'frightened' | 'paralyzed', byField: 'blessedBy' | 'hastedBy' | 'invisibleBy' | 'slowedBy' | 'charmedBy' | 'frightenedBy' | 'paralyzedBy', name: string, condition?: string) => {
+  const strip = (field: 'blessed' | 'hasted' | 'invisible' | 'slowed' | 'charmed' | 'frightened' | 'paralyzed' | 'blinded' | 'deafened' | 'barkskin' | 'polymorphed', byField: 'blessedBy' | 'hastedBy' | 'invisibleBy' | 'slowedBy' | 'charmedBy' | 'frightenedBy' | 'paralyzedBy' | 'blindedBy' | 'deafenedBy' | 'barkskinBy' | 'polymorphedBy', name: string, condition?: string) => {
     if (targetState[field] === undefined && targetState[byField] === undefined) return;
     delete targetState[field];
     delete targetState[byField];
@@ -1616,6 +1616,17 @@ export function castDispelMagic(battle: Battle, casterId: string, targetId: stri
   strip('frightened', 'frightenedBy', '恐惧术', '恐慌');
   strip('charmed', 'charmedBy', '魅惑术', '魅惑');
   strip('paralyzed', 'paralyzedBy', '定身术', '麻痹');
+  strip('blinded', 'blindedBy', '致盲术', '目盲');
+  strip('deafened', 'deafenedBy', '耳聋术', '耳聋');
+  strip('barkskin', 'barkskinBy', '树肤术');
+  strip('polymorphed', 'polymorphedBy', '变形术', '失能');
+  if (targetState.aided) {
+    const bonus = targetState.aided;
+    delete targetState.aided;
+    target.maxHp = Math.max(1, target.maxHp - bonus);
+    target.currentHp = Math.min(target.currentHp, target.maxHp);
+    dispelled.push('援助术');
+  }
   const detail = dispelled.length > 0 ? `驱散了${dispelled.join('、')}` : '目标身上没有可驱散的法术效果';
   addLog(next, `${actorLabel(next, caster)} 对 ${actorLabel(next, target)} 施放驱散魔法：施法属性检定 ${natural}+${bonus}=${total} vs DC ${DISPEL_DC}，${detail}。`, deps);
   return { battle: next, outcome: { success: true, natural, total, dc: DISPEL_DC, dispelled } };
