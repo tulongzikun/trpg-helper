@@ -1,8 +1,8 @@
 ﻿const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { emptyStore, addMonsters, addCharacter } = require('../apps/web/src/battle.ts');
-const { configureGrid, currentActorId, moveActorToCell, startCombat, toggleWallCell } = require('../apps/web/src/combat.ts');
-const { autoAct, autoTurn } = require('../apps/web/src/combatAuto.ts');
+const { configureGrid, currentActorId, endTurn, moveActorToCell, startCombat, toggleWallCell } = require('../apps/web/src/combat.ts');
+const { autoAct, autoSide, autoTurn } = require('../apps/web/src/combatAuto.ts');
 const entry = require('../packages/contracts/examples/monster-entry.json');
 const card = { entry, block: entry.statBlocks[0] };
 let counter = 0;
@@ -123,5 +123,29 @@ test('自动回合：无法行动时待命并结束回合', () => {
   assert.ok(result.steps.some(text => text.includes('原地待命')));
   assert.ok(result.steps.includes('自动行动：结束回合。'));
   assert.notEqual(currentActorId(result.battle), hero.id);
+});
+
+
+test('整轮自动：连续推进两个敌方单位', () => {
+  const { battle, hero } = setup(2);
+  const atEnemy = endTurn(battle);
+  const result = autoSide(atEnemy, '敌方', { random: sequence(0.5, 0.5, 0.5, 0.5, 0.5, 0.5) });
+  assert.equal(result.turns.length, 2);
+  assert.ok(result.turns.every(text => text.includes('自动行动')));
+  assert.equal(currentActorId(result.battle), hero.id);
+});
+
+test('整轮自动：当前不是该阵营时不做任何事', () => {
+  const { battle, hero } = setup(2);
+  const result = autoSide(battle, '敌方', { random: sequence(0.5) });
+  assert.equal(result.turns.length, 0);
+  assert.equal(currentActorId(result.battle), hero.id);
+});
+
+test('整轮自动：遵守 maxTurns 上限', () => {
+  const { battle } = setup(2);
+  const atEnemy = endTurn(battle);
+  const result = autoSide(atEnemy, '敌方', { random: sequence(0.5, 0.5, 0.5) }, { maxTurns: 1 });
+  assert.equal(result.turns.length, 1);
 });
 

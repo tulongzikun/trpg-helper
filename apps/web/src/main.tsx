@@ -8,7 +8,7 @@ import { Characters } from './CharacterViews';
 import type { CharacterSnapshot } from './characters';
 import { addCharacter, addMonsters, emptyStore, readBattles, removeActor, writeBattles, type BattleStore, type Side } from './battle';
 import { importBattle } from './battleTransfer';
-import { autoAct, autoTurn } from './combatAuto';
+import { autoAct, autoSide, autoTurn } from './combatAuto';
 import { addOngoingEffect, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, declineOpportunity, standUp, disengage, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
@@ -44,6 +44,7 @@ function App() {
   onEscapeGrapple:actorId=>tryBattle(()=>changeBattle(battleId,battle=>escapeGrapple(battle,actorId).battle)),
   onAuto:actorId=>tryBattle(()=>changeBattle(battleId,battle=>autoAct(battle,actorId).battle)),
   onAutoTurn:actorId=>tryBattle(()=>changeBattle(battleId,battle=>autoTurn(battle,actorId).battle)),
+  onAutoSide:side=>tryBattle(()=>changeBattle(battleId,battle=>autoSide(battle,side).battle)),
   onSave:options=>tryBattle(()=>changeBattle(battleId,battle=>savingThrow(battle,options).battle)),
   onAreaSave:options=>tryBattle(()=>changeBattle(battleId,battle=>areaSave(battle,options).battle)),
   onConcentration:(actorId,spell)=>tryBattle(()=>changeBattle(battleId,battle=>spell?startConcentration(battle,actorId,spell):endConcentration(battle,actorId))),
@@ -85,6 +86,7 @@ function App() {
 }
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+
 
 
 

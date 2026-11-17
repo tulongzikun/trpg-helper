@@ -27,6 +27,7 @@ export type CombatHandlers = {
   onEscapeGrapple: (actorId: string) => void;
   onAuto: (actorId: string) => void;
   onAutoTurn: (actorId: string) => void;
+  onAutoSide: (side: Side) => void;
   onSave: (options: SaveOptions) => void;
   onAreaSave: (options: AreaSaveOptions) => void;
   onConcentration: (actorId: string, spell: string | null) => void;
@@ -152,6 +153,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" disabled={state.actionUsed || state.disengaged} onClick={() => handlers.onDisengage(actor.id)}>{state.disengaged ? '本回合已撤离' : '撤离（消耗动作，本回合移动不引发借机攻击）'}</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAuto(actor.id)}>自动行动（攻击或靠近）</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoTurn(actor.id)}>自动回合（行动后结束）</button>
+      <button type="button" className="button-secondary" onClick={() => handlers.onAutoSide(actor.side)}>本阵营整轮自动</button>
     </div>
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
     <ReadyPanel key={`ready-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
@@ -722,6 +724,7 @@ export function ReinforcePanel({ battle, cards, onReinforce }: { battle: Battle;
     <div className="cmb-reinforce-actions"><button type="submit" className="button-secondary">加入增援</button>{message && <span className="cmb-muted">{message}</span>}</div>
   </form>;
 }
+
 
 
 

@@ -1,7 +1,7 @@
 ﻿import { actorDistance, attack, currentActorId, endTurn, moveActorToCell } from './combat.ts';
 import type { CombatDeps } from './combat.ts';
 import { suggestAttacks } from './combatAi.ts';
-import type { Battle, Position } from './battle';
+import type { Battle, Position, Side } from './battle';
 
 export type AutoActionKind = 'attack' | 'move' | 'wait';
 export type AutoAction = { battle: Battle; kind: AutoActionKind; text: string };
@@ -87,4 +87,25 @@ export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {},
     steps.push('自动行动：结束回合。');
   }
   return { battle: current, kind, text: steps.join(' '), steps };
+}
+
+export type AutoSideOptions = { maxTurns?: number };
+
+/** 连续推进同一阵营的回合，直到轮到其他阵营或达到上限。 */
+export function autoSide(battle: Battle, side: Side, deps: CombatDeps = {}, options: AutoSideOptions = {}): { battle: Battle; turns: string[] } {
+  if (!battle.combat) throw new Error('战斗尚未开始。');
+  const turns: string[] = [];
+  let current = battle;
+  const maxTurns = Math.max(1, Math.min(30, options.maxTurns ?? 10));
+  for (let index = 0; index < maxTurns; index++) {
+    const actorId = currentActorId(current);
+    if (!actorId) break;
+    const actor = current.actors.find(item => item.id === actorId);
+    if (!actor || actor.side !== side || actor.combat?.status !== 'active') break;
+    const result = autoTurn(current, actorId, deps);
+    turns.push(`${actor.name}：${result.text}`);
+    current = result.battle;
+    if (currentActorId(current) === actorId) break;
+  }
+  return { battle: current, turns };
 }
