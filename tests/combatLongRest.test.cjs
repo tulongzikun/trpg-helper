@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { emptyStore, addMonsters, addCharacter } = require('../apps/web/src/battle.ts');
-const { currentActorId, recoverClassResources, startCombat, takeLongRest } = require('../apps/web/src/combat.ts');
+const { currentActorId, recoverClassResources, startCombat, takeLongRest, setExhaustion, setActorHp } = require('../apps/web/src/combat.ts');
 const { castSpell, setSpellSlots } = require('../apps/web/src/combatSpells.ts');
 const entry = require('../packages/contracts/examples/monster-entry.json');
 const card = { entry, block: entry.statBlocks[0] };
@@ -78,14 +78,31 @@ test('长休清除专注与每回合状态', () => {
   assert.equal(after.speedPenaltyFt, undefined);
 });
 
-test('长休不改变生命值', () => {
+test('长休恢复全部生命值并清空临时生命', () => {
   const { battle, friend } = setup();
   const dirty = structuredClone(battle);
   const actor = dirty.actors.find(item => item.id === friend.id);
   actor.currentHp = 11;
+  actor.combat.tempHp = 5;
   const rested = takeLongRest(dirty);
-  assert.equal(rested.actors.find(item => item.id === friend.id).currentHp, 11);
+  const healed = rested.actors.find(item => item.id === friend.id);
+  assert.equal(healed.currentHp, healed.maxHp);
+  assert.equal(healed.combat.tempHp, 0);
   assert.ok(rested.combat.log.at(-1).text.includes('长休'));
+});
+
+test('长休把力竭等级减 1，并让倒地角色复活', () => {
+  const { battle, friend, monster } = setup();
+  let current = setExhaustion(battle, friend.id, 2);
+  current = setActorHp(current, friend.id, 0);
+  const downed = current.actors.find(item => item.id === friend.id).combat.status;
+  assert.equal(downed, 'down');
+  const rested = takeLongRest(current);
+  const state = rested.actors.find(item => item.id === friend.id).combat;
+  assert.equal(state.exhaustion, 1);
+  assert.equal(state.status, 'active');
+  assert.equal(state.conditions.includes('倒地'), false);
+  assert.equal(rested.actors.find(item => item.id === friend.id).currentHp, rested.actors.find(item => item.id === friend.id).maxHp);
 });
 
 test('短休只恢复动作与职业资源，不恢复法术位', () => {

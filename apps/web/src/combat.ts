@@ -1940,9 +1940,24 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.speedPenaltyFt;
     delete actor.combat.slowSourceId;
     delete actor.combat.ammo;
+    delete actor.combat.stable;
+    actor.combat.tempHp = 0;
+    actor.combat.delayed = false;
     if (actor.combat.spellSlotsMax) actor.combat.spellSlots = actor.combat.spellSlotsMax.slice();
+    if (actor.combat.status !== 'dead') {
+      const wasDown = actor.combat.status === 'down';
+      actor.currentHp = actor.maxHp;
+      actor.combat.status = 'active';
+      actor.combat.deathSaves = { successes: 0, failures: 0 };
+      if (wasDown) actor.combat.conditions = actor.combat.conditions.filter(condition => condition !== '倒地');
+    }
+    if (actor.combat.exhaustion) {
+      const reduced = actor.combat.exhaustion - 1;
+      if (reduced <= 0) delete actor.combat.exhaustion;
+      else actor.combat.exhaustion = reduced;
+    }
   }
-  addLog(next, '长休：法术位、动作如潮、回气与弹药全部恢复，专注与每回合状态清除（生命值不变）。', deps);
+  addLog(next, '长休：恢复全部生命值，法术位、动作如潮、回气与弹药全部恢复，力竭减 1，专注与每回合状态清除。', deps);
   return next;
 }
 
