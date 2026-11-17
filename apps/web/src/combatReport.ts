@@ -1,5 +1,6 @@
 import type { Battle } from './battle';
 import { encounterXp, defeatedActors, encounterReward } from './encounterReward.ts';
+import { battleStatistics, statsText, typeText } from './combatStats.ts';
 
 const statusLabels: Record<string, string> = { active: '在场', down: '倒地待救', dead: '阵亡' };
 
@@ -22,6 +23,23 @@ export function battleReport(battle: Battle): string {
     const conditions = (actor.combat?.conditions ?? []).join('、') || '—';
     const concentration = actor.combat?.concentration?.spell ?? '—';
     lines.push(`| ${actor.name} | ${actor.side} | ${actor.currentHp}/${actor.maxHp} | ${statusLabels[state] ?? state} | ${conditions} | ${concentration} |`);
+  }
+  const stats = battleStatistics(battle);
+  const active = stats.rows.filter(row => row.attacks > 0 || row.damageDealt > 0 || row.damageTaken > 0 || row.healing > 0);
+  lines.push('');
+  lines.push('## 统计');
+  lines.push('');
+  if (!active.length) {
+    lines.push('（暂无攻击记录）');
+  } else {
+    lines.push('| 单位 | 攻击 | 命中 | 重击 | 造成伤害 | 承受伤害 | 治疗 |');
+    lines.push('| --- | --- | --- | --- | --- | --- | --- |');
+    for (const row of active) {
+      lines.push(`| ${row.name} | ${row.attacks} | ${row.hits} | ${row.crits} | ${row.damageDealt} | ${row.damageTaken} | ${row.healing} |`);
+    }
+    lines.push('');
+    lines.push(`- ${statsText(battle)}`);
+    lines.push(`- ${typeText(battle)}`);
   }
   const log = battle.combat?.log ?? [];
   lines.push('');
