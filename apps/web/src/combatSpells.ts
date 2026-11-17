@@ -102,12 +102,15 @@ export function castSpell(battle: Battle, options: SpellCastOptions, deps: Comba
   const spell = options.spell?.trim() ?? '';
   if (!spell) throw new Error('请填写法术名称。');
   if (!Number.isInteger(options.level) || options.level < 0 || options.level > 9) throw new Error('法术环阶须为 0 至 9 的整数。');
-  const caster = battle.actors.find(actor => actor.id === options.casterId);
+  // 先克隆再校验与扣法术位：原来的写法直接改传入对象的 spellSlots，会让调用方手里那份档案
+  // 与“操作前”的快照同步变化，撤销和 React 状态都会对不上。
+  let next = structuredClone(battle);
+  const caster = next.actors.find(actor => actor.id === options.casterId);
   if (!caster) throw new Error('施法者不存在。');
-  if (!battle.combat) throw new Error('战斗尚未开始。');
+  if (!next.combat) throw new Error('战斗尚未开始。');
   if (caster.combat?.status !== 'active') throw new Error('只有在场的单位可以施法。');
-  if (silenceBlocks(battle, options.casterId)) throw new Error('处于沉默区域，无法施放需要言语成分的法术。');
-  if (currentActorId(battle) !== options.casterId) throw new Error('只有当前回合的单位可以施法。');
+  if (silenceBlocks(next, options.casterId)) throw new Error('处于沉默区域，无法施放需要言语成分的法术。');
+  if (currentActorId(next) !== options.casterId) throw new Error('只有当前回合的单位可以施法。');
   const hasAttack = Boolean(options.attack);
   const hasSave = Boolean(options.save);
   if (hasAttack === hasSave) throw new Error('请选择法术的结算方式（攻击检定或豁免）。');
@@ -118,8 +121,8 @@ export function castSpell(battle: Battle, options: SpellCastOptions, deps: Comba
     if (remaining <= 0) throw new Error(`${options.level} 环法术位已经用完。`);
     tracked[options.level - 1] = remaining - 1;
   }
-  const start = battle.combat.log.length;
-  let next = appendLog(battle, `${caster.name} 施放「${spell}」${options.level > 0 ? `（${options.level} 环）` : '（戏法）'}。`, deps);
+  const start = next.combat.log.length;
+  next = appendLog(next, `${caster.name} 施放「${spell}」${options.level > 0 ? `（${options.level} 环）` : '（戏法）'}。`, deps);
   if (options.level > 0 && tracked) next = appendLog(next, `消耗 1 个 ${options.level} 环法术位，剩余 ${tracked[options.level - 1]} 个。`, deps);
   if (options.defer) {
     next = spendResource(next, options.casterId, cost, deps);
