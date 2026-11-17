@@ -3240,6 +3240,7 @@ export function surrender(battle: Battle, actorId: string, deps: CombatDeps = {}
     delete state.concentration;
     clearFocusBuffs(next, actorId, `${actorLabel(next, actor)} 投降，专注的${spell}中断`, deps);
   }
+  releaseGrapples(next, actorId, `${actorLabel(next, actor)} 投降`, deps);
   addLog(next, `${actorLabel(next, actor)} 放下武器，投降。`, deps);
   return next;
 }
@@ -3261,6 +3262,7 @@ export function fleeBattle(battle: Battle, actorId: string, deps: CombatDeps = {
     delete state.concentration;
     clearFocusBuffs(next, actorId, `${actorLabel(next, actor)} 撤离战场，专注的${spell}中断`, deps);
   }
+  releaseGrapples(next, actorId, `${actorLabel(next, actor)} 撤离战场`, deps);
   addLog(next, `${actorLabel(next, actor)} 撤离了战场。`, deps);
   return next;
 }
@@ -3275,6 +3277,7 @@ export function removeCombatant(battle: Battle, actorId: string, deps: CombatDep
   const wasCurrent = combat.order[combat.turnIndex] === actorId;
   // 移出战场等同离场：先中断专注、驱散它维持的效果与召唤物，避免场上留下无人维持的法术。
   dismissSummonsOf(next, actorId, `${actor.name} 离开战场`, deps);
+  releaseGrapples(next, actorId, `${actor.name} 离开战场`, deps);
   if (actor.combat?.concentration) {
     const spell = actor.combat.concentration.spell;
     delete actor.combat.concentration;
@@ -3586,6 +3589,18 @@ function statsOf(state: CombatantState): CombatStats {
 }
 
 /** 单位死亡后的收尾：中断专注并驱散召唤物、清除自身持续效果与回合标记、移除其产生的灵光。 */
+/** 擒抱者离场（死亡／撤离／投降／被移出战场）时，被它抓着的单位立即获得自由。 */
+function releaseGrapples(battle: Battle, actorId: string, reason: string, deps: CombatDeps = {}): void {
+  const held = battle.actors.filter(item => item.combat?.grappledBy === actorId);
+  if (!held.length) return;
+  for (const item of held) {
+    delete item.combat!.grappledBy;
+    item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '擒抱');
+  }
+  const holder = battle.actors.find(item => item.id === actorId);
+  addLog(battle, `${reason}，被${holder ? actorLabel(battle, holder) : '它'}擒抱的${held.map(item => actorLabel(battle, item)).join('、')} 获得自由。`, deps);
+}
+
 function settleDeath(battle: Battle, actor: Actor, deps: CombatDeps = {}): void {
   const state = actor.combat;
   if (!state || state.status !== 'dead') return;
@@ -3611,6 +3626,11 @@ function settleDeath(battle: Battle, actor: Actor, deps: CombatDeps = {}): void 
     addLog(battle, `${actorLabel(battle, actor)} 死亡，身上的持续效果一并清除。`, deps);
   }
   delete state.ready;
+  if (state.grappledBy) {
+    delete state.grappledBy;
+    state.conditions = state.conditions.filter(condition => condition !== '擒抱');
+  }
+  releaseGrapples(battle, actor.id, `${actorLabel(battle, actor)} 倒下`, deps);
   state.dodging = false;
   state.helpedAttack = false;
   delete state.vexTargetId;
