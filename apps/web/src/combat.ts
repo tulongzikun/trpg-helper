@@ -2066,6 +2066,7 @@ function threatPrompts(battle: Battle, mover: Actor, from: Position, to: Positio
   if (!grid || mover.side === '中立' || mover.combat?.disengaged) return [];
   return battle.actors
     .filter(other => other.id !== mover.id && other.side !== '中立' && other.side !== mover.side && other.position && other.combat?.status === 'active')
+    .filter(canReactNow)
     .filter(other => {
       const reach = actorReach(other);
       const before = cellDistance(other.position!, from) * grid.cellFt;
@@ -2075,12 +2076,20 @@ function threatPrompts(battle: Battle, mover: Actor, from: Position, to: Positio
     .map(other => ({ reactorId: other.id, targetId: mover.id }));
 }
 
+/** 能否立刻做出反应：在场、未撤离、未投降，且没有失能类状态。 */
+function canReactNow(actor: Actor): boolean {
+  if ((actor.combat?.status ?? 'active') !== 'active') return false;
+  if (actor.combat?.fled === true || actor.combat?.surrendered === true) return false;
+  return actionBlocker(actor) === null;
+}
+
 /** 长武器借机：敌对单位「进入」持长武器者的触及范围时也可以借机攻击。 */
 function enteringReachPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
   const grid = battle.grid;
   if (!grid || !battle.enterReachOpportunity || mover.side === '中立' || mover.combat?.disengaged) return [];
   return battle.actors
     .filter(other => other.id !== mover.id && other.side !== '中立' && other.side !== mover.side && other.position && other.combat?.status === 'active')
+    .filter(canReactNow)
     .filter(other => attackSources(other).some(item => item.range === 'melee' && item.properties?.includes('长武器')))
     .filter(other => {
       const reach = actorReach(other);
@@ -2096,6 +2105,7 @@ function readyPrompts(battle: Battle, mover: Actor, from: Position, to: Position
   if (!grid || mover.side === '中立' || mover.combat?.disengaged) return [];
   return battle.actors
     .filter(other => other.id !== mover.id && other.side !== '中立' && other.side !== mover.side && other.position && other.combat?.status === 'active')
+    .filter(canReactNow)
     .filter(other => other.combat?.ready && other.combat.reactionUsed !== true)
     .filter(other => /攻击/.test(other.combat?.ready?.action ?? ''))
     .filter(other => {
