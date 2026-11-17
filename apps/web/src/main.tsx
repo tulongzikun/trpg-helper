@@ -1,4 +1,4 @@
-﻿import { SpellLibrary } from './SpellLibrary';
+import { SpellLibrary } from './SpellLibrary';
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { cards, errors, filterCards, crValue, normalizedType, type Card, type Feature } from './catalog';
@@ -8,7 +8,7 @@ import { Characters } from './CharacterViews';
 import type { CharacterSnapshot } from './characters';
 import { addCharacter, addMonsters, emptyStore, readBattles, removeActor, writeBattles, type BattleStore, type Side } from './battle';
 import { importBattle } from './battleTransfer';
-import { addOngoingEffect, areaSave, attack, attackSequence, addReinforcement, configureGrid, declineOpportunity, standUp, disengage, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
+import { addOngoingEffect, areaSave, attack, attackSequence, offhandAttack, addReinforcement, configureGrid, declineOpportunity, standUp, disengage, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -37,6 +37,7 @@ function App() {
   onReset:()=>tryBattle(()=>changeBattle(battleId,battle=>resetCombat(battle))),
   onAttack:options=>tryBattle(()=>changeBattle(battleId,battle=>attack(battle,options).battle)),
   onAttackSequence:options=>tryBattle(()=>changeBattle(battleId,battle=>attackSequence(battle,options).battle)),
+  onOffhand:options=>tryBattle(()=>changeBattle(battleId,battle=>offhandAttack(battle,options).battle)),
   onSave:options=>tryBattle(()=>changeBattle(battleId,battle=>savingThrow(battle,options).battle)),
   onAreaSave:options=>tryBattle(()=>changeBattle(battleId,battle=>areaSave(battle,options).battle)),
   onConcentration:(actorId,spell)=>tryBattle(()=>changeBattle(battleId,battle=>spell?startConcentration(battle,actorId,spell):endConcentration(battle,actorId))),
@@ -78,6 +79,7 @@ function App() {
 }
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+
 
 
 

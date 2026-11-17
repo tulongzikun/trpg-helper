@@ -1,4 +1,4 @@
-import { abilityModifier, proficiencyBonus } from './characterRules.ts';
+﻿import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
@@ -6,7 +6,7 @@ import type { Actor, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfi
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
 import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
-import { attackSources } from './attackSources.ts';
+import { attackSources, type AttackSource } from './attackSources.ts';
 import type { AttackRange, CoverType, ModeAdjustment } from './combatModifiers.ts';
 
 export type Random = () => number;
@@ -882,6 +882,33 @@ export function attackSequence(battle: Battle, options: AttackOptions, deps: Com
   return { battle: next, outcomes };
 }
 
+function lightProperty(source: AttackSource): boolean {
+  return source.properties?.includes('轻型') === true;
+}
+
+function offhandDamageExpression(source: AttackSource): string {
+  return source.damageExpression.replace(/\s*([+-])\s*(\d+)\s*$/, (_match: string, sign: string, value: string) => (sign === '-' ? `-${value}` : ''));
+}
+
+export function offhandAttack(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  const attacker = actorOf(next, options.attackerId);
+  const state = combatantOf(attacker);
+  const blocker = actionBlocker(attacker);
+  if (blocker) throw new Error(blocker);
+  if (currentActorId(next) !== options.attackerId) throw new Error('只有当前回合的单位可以副手攻击。');
+  if (state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
+  if (!state.actionUsed) throw new Error('副手攻击需要在用动作攻击之后进行。');
+  const source = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
+  if (!source) throw new Error('请选择副手武器。');
+  if (!lightProperty(source)) throw new Error('只有轻型武器可以进行副手攻击。');
+  const offhandOptions: AttackOptions = { ...options, weaponId: source.id, damageExpression: offhandDamageExpression(source), cost: 'bonus', range: source.range };
+  const context = validateAttackOptions(next, offhandOptions);
+  const outcome = resolveOneAttack(next, offhandOptions, context, deps, true);
+  addLog(next, `${actorLabel(next, attacker)} 用副手武器「${source.label}」进行附赠动作攻击，伤害不使用属性调整值。`, deps);
+  return { battle: next, outcome };
+}
+
 export function useActionSurge(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
@@ -1386,6 +1413,7 @@ export function standUp(battle: Battle, actorId: string, deps: CombatDeps = {}):
   addLog(next, `${actorLabel(next, actor)} 起身，消耗 ${cost} 尺移动力。`, deps);
   return next;
 }
+
 
 
 
