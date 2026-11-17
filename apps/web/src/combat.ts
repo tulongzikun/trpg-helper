@@ -1933,6 +1933,32 @@ export function scrollDc(name: string): number {
   return 10 + (Number.isInteger(level) && level > 0 ? level : 1);
 }
 
+/** 摧毁掩体：动作，力量（运动）检定对抗 DC 15，成功移除相邻格的工事。 */
+export function destroyCover(battle: Battle, actorId: string, cell: Position, deps: CombatDeps = {}): { battle: Battle; outcome: CheckOutcome } {
+  if (!battle.grid) throw new Error('请先启用方格战场。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以摧毁掩体。');
+  if (state.status !== 'active') throw new Error('只有在场的单位可以摧毁掩体。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (!coverAt(next, cell.x, cell.y)) throw new Error('该格没有可摧毁的掩体。');
+  if (actor.position && cellDistance(actor.position, cell) * (next.grid?.cellFt ?? 5) > 5) throw new Error('只能摧毁相邻格子的掩体。');
+  state.actionUsed = true;
+  const result = abilityCheck(next, { actorId, ability: 'str', skill: '运动', dc: 15 }, deps);
+  const after = result.battle;
+  const label = actorLabel(after, actorOf(after, actorId));
+  if (result.outcome.success) {
+    after.cover = (after.cover ?? []).filter(item => item.x !== cell.x || item.y !== cell.y);
+    addLog(after, `${label} 摧毁了（${cell.x}, ${cell.y}）的掩体。`, deps);
+  } else {
+    addLog(after, `${label} 用力砸向（${cell.x}, ${cell.y}）的掩体，但没能撼动它。`, deps);
+  }
+  return { battle: after, outcome: result.outcome };
+}
 /** 抄写卷轴需要的材料。 */
 export const SCRIBE_PAPER = '空白羊皮纸';
 /** 目前可以抄写的法术。 */

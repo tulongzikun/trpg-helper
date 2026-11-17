@@ -66,6 +66,7 @@ export type CombatHandlers = {
   onAim: (actorId: string) => void;
   onSilence: (actorId: string, cells: { x: number; y: number }[]) => void;
   onBuildCover: (actorId: string, cell: { x: number; y: number }) => void;
+  onDemolish: (actorId: string, cell: { x: number; y: number }) => void;
   onSleep: (actorId: string) => void;
   onWake: (actorId: string, targetId: string) => void;
   onHaste: (actorId: string) => void;
@@ -391,7 +392,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   const [width, setWidth] = useState('12');
   const [height, setHeight] = useState('12');
   const [selected, setSelected] = useState('');
-  const [mode, setMode] = useState<'move' | 'terrain' | 'wall' | 'hazard'>('move');
+  const [mode, setMode] = useState<'move' | 'terrain' | 'wall' | 'hazard' | 'demolish'>('move');
   const [message, setMessage] = useState('');
   const [hazardDice, setHazardDice] = useState('1d6');
   const [hazardType, setHazardType] = useState<DamageType>('火焰');
@@ -437,6 +438,13 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       handlers.onHazard(x, y, hazardDice.trim(), hazardType);
       return;
     }
+    if (mode === 'demolish') {
+      if (!selected) { setMessage('先选择一个单位，再点击要摧毁的掩体。'); return; }
+      if (!coveredCells.has(`${x},${y}`)) { setMessage('这一格没有掩体。'); return; }
+      setMessage('');
+      handlers.onDemolish(selected, { x, y });
+      return;
+    }
     const occupant = placed.get(`${x},${y}`);
     if (occupant) { setSelected(occupant.id); setMessage(''); return; }
     if (!selected) { setMessage('先选择一个单位，再点击目标格。'); return; }
@@ -464,7 +472,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     : [];
   return <div className="cmb-grid-panel">
     <div className="cmb-attack-head"><h4>方格战场</h4><small>{grid.width}×{grid.height} · 每格 {grid.cellFt} 尺</small></div>
-    <p className="cmb-hint">点击格子上的单位选中它，再点击空白的格子放置或移动。{mode === 'terrain' ? '地形模式：点击格子切换困难地形（进入时移动消耗翻倍）。' : mode === 'wall' ? '墙体模式：点击格子切换墙体（阻挡移动与远程视线）。' : mode === 'hazard' ? `危险地形模式：点击格子切换危险地形（进入即受到 ${hazardDice} ${hazardType}伤害）。` : ''}{selectedActor ? `当前选中：${selectedActor.name}${selectedActor.position ? `（${selectedActor.position.x}, ${selectedActor.position.y}）` : '（未放置）'}` : '尚未选中单位。'}</p>
+    <p className="cmb-hint">点击格子上的单位选中它，再点击空白的格子放置或移动。{mode === 'terrain' ? '地形模式：点击格子切换困难地形（进入时移动消耗翻倍）。' : mode === 'wall' ? '墙体模式：点击格子切换墙体（阻挡移动与远程视线）。' : mode === 'hazard' ? `危险地形模式：点击格子切换危险地形（进入即受到 ${hazardDice} ${hazardType}伤害）。` : mode === 'demolish' ? '摧毁模式：选中单位后点击掩体格，力量（运动）检定 DC 15。' : ''}{selectedActor ? `当前选中：${selectedActor.name}${selectedActor.position ? `（${selectedActor.position.x}, ${selectedActor.position.y}）` : '（未放置）'}` : '尚未选中单位。'}</p>
     {unplaced.length ? <div className="cmb-ongoing-list">{unplaced.map(actor => <button key={actor.id} type="button" className="cmb-chip cmb-chip-action" onClick={() => setSelected(actor.id)}>{actor.name}（未放置）</button>)}</div> : null}
     <div className="cmb-grid" style={{ gridTemplateColumns: `repeat(${grid.width}, 2.4rem)` }}>
       {rows.map(y => columns.map(x => {
@@ -489,6 +497,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className={mode === 'terrain' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'terrain'} onClick={() => setMode('terrain')}>标记困难地形</button>
       <button type="button" className={mode === 'wall' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'wall'} onClick={() => setMode('wall')}>标记墙体</button>
       <button type="button" className={mode === 'hazard' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'hazard'} onClick={() => setMode('hazard')}>标记危险地形</button>
+      <button type="button" className={mode === 'demolish' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'demolish'} onClick={() => setMode('demolish')}>摧毁掩体</button>
       <button type="button" className="button-secondary" disabled={!selectedActor?.position} onClick={() => { const position = selectedActor?.position; if (!position) return; const cells = [-1, 0, 1].flatMap(dx => [-1, 0, 1].map(dy => ({ x: position.x + dx, y: position.y + dy }))).filter(cell => cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height); setMessage(''); handlers.onGrease(selectedActor.id, cells); }} aria-label="油腻术">油腻术（3×3，DC 13 敏捷）</button>
       <button type="button" className="button-secondary" disabled={!selectedActor?.position} onClick={() => { const position = selectedActor?.position; if (!position) return; const cells = [-1, 0, 1].flatMap(dx => [-1, 0, 1].map(dy => ({ x: position.x + dx, y: position.y + dy }))).filter(cell => cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height); setMessage(''); handlers.onWeb(selectedActor.id, cells); }} aria-label="蛛网术">蛛网术（3×3，DC 12 敏捷）</button>
       <button type="button" className="button-secondary" disabled={!selectedActor?.position} onClick={() => { const position = selectedActor?.position; if (!position) return; const cells = [-1, 0, 1].flatMap(dx => [-1, 0, 1].map(dy => ({ x: position.x + dx, y: position.y + dy }))).filter(cell => cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height); setMessage(''); handlers.onFog(selectedActor.id, cells); }} aria-label="雾云术">雾云术（3×3，重度遮蔽）</button>
