@@ -3154,6 +3154,11 @@ export function surrender(battle: Battle, actorId: string, deps: CombatDeps = {}
   if (next.combat) {
     next.combat.pendingOpportunity = (next.combat.pendingOpportunity ?? []).filter(item => item.reactorId !== actorId && item.targetId !== actorId);
   }
+  if (state.concentration) {
+    const spell = state.concentration.spell;
+    delete state.concentration;
+    clearFocusBuffs(next, actorId, `${actorLabel(next, actor)} 投降，专注的${spell}中断`, deps);
+  }
   addLog(next, `${actorLabel(next, actor)} 放下武器，投降。`, deps);
   return next;
 }
@@ -3169,6 +3174,11 @@ export function fleeBattle(battle: Battle, actorId: string, deps: CombatDeps = {
   state.fled = true;
   if (next.combat) {
     next.combat.pendingOpportunity = (next.combat.pendingOpportunity ?? []).filter(item => item.reactorId !== actorId && item.targetId !== actorId);
+  }
+  if (state.concentration) {
+    const spell = state.concentration.spell;
+    delete state.concentration;
+    clearFocusBuffs(next, actorId, `${actorLabel(next, actor)} 撤离战场，专注的${spell}中断`, deps);
   }
   addLog(next, `${actorLabel(next, actor)} 撤离了战场。`, deps);
   return next;
