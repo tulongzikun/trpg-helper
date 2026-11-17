@@ -230,7 +230,7 @@ export function actorSpeed(actor: Actor): number {
 }
 /** 本回合可用的移动力：基础速度加上疾跑带来的额外移动力。 */
 function movementAllowance(actor: Actor): number {
-  return actorSpeed(actor) + (actor.combat?.dashMovement ?? 0);
+  return Math.max(0, actorSpeed(actor) - (actor.combat?.speedPenaltyFt ?? 0)) + (actor.combat?.dashMovement ?? 0);
 }
 export function actorAttackProfile(actor: Actor): { attackBonus: number; damage: string; damageType: DamageType } {
   const abilities = actor.characterSnapshot?.sheet.abilities ?? actor.template.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
@@ -590,6 +590,12 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.movementUsed = 0;
   combat.disengaged = false;
   combat.dodging = false;
+  for (const other of battle.actors) {
+    if (other.combat?.slowSourceId === actorId) {
+      other.combat.speedPenaltyFt = 0;
+      delete other.combat.slowSourceId;
+    }
+  }
   combat.dashMovement = 0;
 }
 function nextTurnIndex(battle: Battle) {
@@ -958,14 +964,17 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const far = longRangeAdjustment(attacker, options, context.distanceFt);
   const dodging = combatantOf(target).dodging === true;
   const helped = combatantOf(attacker).helpedAttack === true;
+  const sapped = combatantOf(attacker).sapped === true;
   const hiddenAttacker = combatantOf(attacker).hidden === true;
   const hiddenTarget = combatantOf(target).hidden === true;
   const dodgeAdjustment: ModeAdjustment | null = dodging ? { mode: 'disadvantage', notes: ['目标在使用闪避：攻击检定劣势'] } : null;
   const helpAdjustment: ModeAdjustment | null = helped ? { mode: 'advantage', notes: ['得到协助：攻击检定优势'] } : null;
+  const sapAdjustment: ModeAdjustment | null = sapped ? { mode: 'disadvantage', notes: ['被削韧：攻击检定劣势'] } : null;
   const hideAdjustment: ModeAdjustment | null = hiddenAttacker ? { mode: 'advantage', notes: ['攻击者处于躲藏：攻击检定优势'] } : null;
   const unseenAdjustment: ModeAdjustment | null = hiddenTarget ? { mode: 'disadvantage', notes: ['目标处于躲藏：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
+  if (sapped) combatantOf(attacker).sapped = false;
   if (hiddenAttacker) combatantOf(attacker).hidden = false;
   if (hiddenTarget) combatantOf(target).hidden = false;
   const mode = combined.mode;
@@ -986,6 +995,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   let concentration = '';
   let extraDamage = 0;
   let extraNote = '';
+  let masteryNote = '';
   const damageExpression = effectiveDamageExpression(attacker, options);
   if (hit) {
     const rolled = rollDamage(damageExpression, random, critical);
@@ -1006,6 +1016,34 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
       extraNote = `额外 ${extraRoll.total} 点${options.extraDamageType}伤害${extraDefense.label ? `（${extraDefense.label}）` : ''}`;
     }
     concentration = concentrationCheck(battle, target, damage, random, deps)?.text ?? '';
+    const weaponSource = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
+    const mastery = weaponSource?.mastery;
+    if (mastery && combatantOf(target).status === 'active') {
+      const targetState = combatantOf(target);
+      if (mastery === '迟滞') {
+        targetState.speedPenaltyFt = Math.min(50, (targetState.speedPenaltyFt ?? 0) + 10);
+        targetState.slowSourceId = attacker.id;
+        masteryNote = '精通·迟滞：目标速度 -10 尺，直到它的回合开始';
+      } else if (mastery === '削韧') {
+        targetState.sapped = true;
+        masteryNote = '精通·削韧：目标下一次攻击检定劣势';
+      } else if (mastery === '推撞' && battle.grid && attacker.position && target.position) {
+        const dx = Math.sign(target.position.x - attacker.position.x);
+        const dy = Math.sign(target.position.y - attacker.position.y);
+        const cell = { x: target.position.x + dx, y: target.position.y + dy };
+        const blocked = cell.x < 0 || cell.y < 0 || cell.x >= battle.grid.width || cell.y >= battle.grid.height
+          || isWallCell(battle, cell.x, cell.y)
+          || battle.actors.some(item => item.id !== target.id && item.position?.x === cell.x && item.position?.y === cell.y);
+        if (blocked) {
+          masteryNote = '精通·推撞：目标无法被推开（边界、墙体或占用）';
+        } else {
+          target.position = cell;
+          masteryNote = `精通·推撞：目标被推到 (${cell.x}, ${cell.y})`;
+        }
+      } else if (mastery === '推撞') {
+        masteryNote = '精通·推撞：未启用方格，需手动移动目标 5 尺';
+      }
+    }
   }
   if (consumeCost) {
     if (context.cost === 'action') state.actionUsed = true;
@@ -1024,6 +1062,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     damageText,
     options.twoHanded && damageExpression !== options.damageExpression ? `双手持用：${damageExpression}` : '',
     extraNote,
+    masteryNote,
     defense,
     `目标剩余 ${target.currentHp}/${target.maxHp}`,
     tempAbsorbed ? `临时生命吸收 ${tempAbsorbed}` : '',

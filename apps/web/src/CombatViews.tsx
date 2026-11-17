@@ -429,7 +429,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
   return <form className="cmb-attack" onSubmit={submit}>
     <div className="cmb-attack-head"><h4>攻击</h4><small>目标 AC {target?.template.armorClass ?? '—'}</small></div>
     <div className="cmb-attack-grid">
-      <label>攻击来源<select value={sourceId} onChange={event => applySource(event.target.value)} aria-label="攻击来源">{sources.map(item => <option key={item.id} value={item.id}>{item.label}（{originLabels[item.origin]}）</option>)}</select></label>
+      <label>攻击来源<select value={sourceId} onChange={event => applySource(event.target.value)} aria-label="攻击来源">{sources.map(item => <option key={item.id} value={item.id}>{item.label}（{originLabels[item.origin]}{item.mastery ? `，精通：${item.mastery}` : ''}）</option>)}</select></label>
       <label>目标<select value={targetId} onChange={event => setTargetId(event.target.value)} aria-label="攻击目标">{targets.map(item => <option key={item.id} value={item.id}>{actorLabel(battle, item)}（{item.side}，HP {item.currentHp}/{item.maxHp}，AC {item.template.armorClass}）</option>)}</select></label>
       <label>攻击加值<input type="number" step={1} value={bonus} onChange={event => setBonus(event.target.value)} aria-label="攻击加值" /></label>
       <label>伤害骰<input value={damage} onChange={event => setDamage(event.target.value)} aria-label="伤害骰" placeholder="2d6+3" /></label>

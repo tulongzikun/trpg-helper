@@ -4,6 +4,8 @@ import type { Actor, DamageType } from './battle';
 import type { AttackRange } from './combatModifiers.ts';
 
 /** 攻击来源：怪物动作文本、角色装备中的武器，或按属性估算的兜底值。 */
+export type WeaponMastery = '迟滞' | '推撞' | '削韧';
+
 export type AttackOrigin = 'monster-action' | 'character-action' | 'weapon' | 'estimate';
 export type AttackSource = {
   id: string;
@@ -24,6 +26,8 @@ export type AttackSource = {
   thrownRangeFt?: number;
   /** 投掷武器的最大射程（尺）。 */
   thrownMaxRangeFt?: number;
+  /** 2024 武器精通特性：命中后附带的效果。 */
+  mastery?: WeaponMastery;
 };
 export type ParsedAttackText = {
   attackBonus?: number;
@@ -101,28 +105,28 @@ export function monsterAttackSources(actor: Actor): AttackSource[] {
   return sources;
 }
 
-type Weapon = { name: string; aliases: string[]; damage: string; damageType: DamageType; ability: 'str' | 'dex' | 'best'; range: AttackRange; distanceFt: number; properties?: string[]; versatile?: string; longRangeFt?: number; thrownRangeFt?: number; thrownMaxRangeFt?: number };
+type Weapon = { mastery?: WeaponMastery; name: string; aliases: string[]; damage: string; damageType: DamageType; ability: 'str' | 'dex' | 'best'; range: AttackRange; distanceFt: number; properties?: string[]; versatile?: string; longRangeFt?: number; thrownRangeFt?: number; thrownMaxRangeFt?: number };
 
 /** 2024 常用武器表；命中加值 = 属性调整值 + 熟练加值，武器熟练未建模时按已熟练处理。 */
 export const weapons: Weapon[] = [
-  { name: '长剑', aliases: ['longsword'], damage: '1d8', damageType: '挥砍', ability: 'best', range: 'melee', distanceFt: 5, versatile: '1d10' },
+  { name: '长剑', mastery: '削韧', aliases: ['longsword'], damage: '1d8', damageType: '挥砍', ability: 'best', range: 'melee', distanceFt: 5, versatile: '1d10' },
   { name: '短剑', aliases: ['shortsword'], damage: '1d6', damageType: '穿刺', ability: 'best', range: 'melee', distanceFt: 5, properties: ['轻型'] },
   { name: '匕首', aliases: ['dagger'], damage: '1d4', damageType: '穿刺', ability: 'best', range: 'melee', distanceFt: 5, properties: ['轻型'] },
   { name: '刺剑', aliases: ['rapier'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'melee', distanceFt: 5 },
   { name: '巨剑', aliases: ['greatsword'], damage: '2d6', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5, properties: ['重型', '双手'] },
   { name: '巨斧', aliases: ['greataxe'], damage: '1d12', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5, properties: ['重型', '双手'] },
-  { name: '战锤', aliases: ['warhammer'], damage: '1d8', damageType: '钝击', ability: 'str', range: 'melee', distanceFt: 5, properties: ['重型'], versatile: '1d10' },
-  { name: '长棍', aliases: ['quarterstaff'], damage: '1d6', damageType: '钝击', ability: 'best', range: 'melee', distanceFt: 5, properties: ['重型'], versatile: '1d8' },
-  { name: '长矛', aliases: ['spear'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'melee', distanceFt: 5, versatile: '1d8', properties: ['投掷'], thrownRangeFt: 20, thrownMaxRangeFt: 60 },
+  { name: '战锤', mastery: '推撞', aliases: ['warhammer'], damage: '1d8', damageType: '钝击', ability: 'str', range: 'melee', distanceFt: 5, properties: ['重型'], versatile: '1d10' },
+  { name: '长棍', mastery: '推撞', aliases: ['quarterstaff'], damage: '1d6', damageType: '钝击', ability: 'best', range: 'melee', distanceFt: 5, properties: ['重型'], versatile: '1d8' },
+  { name: '长矛', mastery: '削韧', aliases: ['spear'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'melee', distanceFt: 5, versatile: '1d8', properties: ['投掷'], thrownRangeFt: 20, thrownMaxRangeFt: 60 },
   { name: '手斧', aliases: ['handaxe'], damage: '1d6', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 5, properties: ['轻型', '投掷'], thrownRangeFt: 20, thrownMaxRangeFt: 60 },
   { name: '轻锤', aliases: ['light hammer'], damage: '1d4', damageType: '钝击', ability: 'str', range: 'melee', distanceFt: 5, properties: ['轻型', '投掷'], thrownRangeFt: 20, thrownMaxRangeFt: 60 },
   { name: '戟', aliases: ['halberd'], damage: '1d10', damageType: '挥砍', ability: 'str', range: 'melee', distanceFt: 10, properties: ['重型', '双手'] },
-  { name: '长弓', aliases: ['longbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 150, longRangeFt: 600, properties: ['弹药'] },
+  { name: '长弓', mastery: '迟滞', aliases: ['longbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 150, longRangeFt: 600, properties: ['弹药'] },
   { name: '短弓', aliases: ['shortbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80, longRangeFt: 320, properties: ['弹药'] },
   { name: '轻弩', aliases: ['light crossbow'], damage: '1d8', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 80, longRangeFt: 320, properties: ['弹药', '装填'] },
   { name: '手弩', aliases: ['hand crossbow'], damage: '1d6', damageType: '穿刺', ability: 'dex', range: 'ranged', distanceFt: 30, longRangeFt: 120, properties: ['弹药', '轻型', '装填'] },
   { name: '投石索', aliases: ['sling'], damage: '1d4', damageType: '钝击', ability: 'dex', range: 'ranged', distanceFt: 30, longRangeFt: 120, properties: ['弹药'] },
-  { name: '标枪', aliases: ['javelin'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'ranged', distanceFt: 30, longRangeFt: 120 },
+  { name: '标枪', mastery: '迟滞', aliases: ['javelin'], damage: '1d6', damageType: '穿刺', ability: 'str', range: 'ranged', distanceFt: 30, longRangeFt: 120 },
 ];
 
 function abilityScores(actor: Actor): Record<string, number> {
@@ -157,6 +161,7 @@ function weaponSource(actor: Actor, weapon: Weapon): AttackSource {
     ...(weapon.longRangeFt ? { longRangeFt: weapon.longRangeFt } : {}),
     ...(weapon.thrownRangeFt ? { thrownRangeFt: weapon.thrownRangeFt } : {}),
     ...(weapon.thrownMaxRangeFt ? { thrownMaxRangeFt: weapon.thrownMaxRangeFt } : {}),
+    ...(weapon.mastery ? { mastery: weapon.mastery } : {}),
   };
 }
 
