@@ -3241,6 +3241,8 @@ export function surrender(battle: Battle, actorId: string, deps: CombatDeps = {}
     clearFocusBuffs(next, actorId, `${actorLabel(next, actor)} 投降，专注的${spell}中断`, deps);
   }
   releaseGrapples(next, actorId, `${actorLabel(next, actor)} 投降`, deps);
+  releaseMount(next, actorId, `${actorLabel(next, actor)} 投降`, deps);
+  releaseAuras(next, actorId, `${actorLabel(next, actor)} 投降`, deps);
   addLog(next, `${actorLabel(next, actor)} 放下武器，投降。`, deps);
   return next;
 }
@@ -3263,6 +3265,8 @@ export function fleeBattle(battle: Battle, actorId: string, deps: CombatDeps = {
     clearFocusBuffs(next, actorId, `${actorLabel(next, actor)} 撤离战场，专注的${spell}中断`, deps);
   }
   releaseGrapples(next, actorId, `${actorLabel(next, actor)} 撤离战场`, deps);
+  releaseMount(next, actorId, `${actorLabel(next, actor)} 撤离战场`, deps);
+  releaseAuras(next, actorId, `${actorLabel(next, actor)} 撤离战场`, deps);
   addLog(next, `${actorLabel(next, actor)} 撤离了战场。`, deps);
   return next;
 }
@@ -3278,6 +3282,8 @@ export function removeCombatant(battle: Battle, actorId: string, deps: CombatDep
   // 移出战场等同离场：先中断专注、驱散它维持的效果与召唤物，避免场上留下无人维持的法术。
   dismissSummonsOf(next, actorId, `${actor.name} 离开战场`, deps);
   releaseGrapples(next, actorId, `${actor.name} 离开战场`, deps);
+  releaseMount(next, actorId, `${actor.name} 离开战场`, deps);
+  releaseAuras(next, actorId, `${actor.name} 离开战场`, deps);
   if (actor.combat?.concentration) {
     const spell = actor.combat.concentration.spell;
     delete actor.combat.concentration;
@@ -3589,6 +3595,39 @@ function statsOf(state: CombatantState): CombatStats {
 }
 
 /** 单位死亡后的收尾：中断专注并驱散召唤物、清除自身持续效果与回合标记、移除其产生的灵光。 */
+/** 骑手离场时，坐骑身上的骑手引用要一并清掉，否则那匹马会被永久占用。 */
+function releaseMount(battle: Battle, actorId: string, reason: string, deps: CombatDeps = {}): void {
+  const rider = battle.actors.find(item => item.id === actorId);
+  const mountId = rider?.combat?.mountedOn;
+  if (mountId) {
+    const mount = battle.actors.find(item => item.id === mountId);
+    if (mount?.combat) {
+      delete mount.combat.riderId;
+      addLog(battle, `${reason}，${actorLabel(battle, mount)} 空了出来。`, deps);
+    }
+  }
+  const riderId = rider?.combat?.riderId;
+  if (riderId) {
+    const mounted = battle.actors.find(item => item.id === riderId);
+    if (mounted?.combat) {
+      delete mounted.combat.mountedOn;
+      delete mounted.combat.mountSpeedFt;
+      if (!mounted.combat.conditions.includes('倒地')) mounted.combat.conditions.push('倒地');
+      addLog(battle, `${reason}，${actorLabel(battle, mounted)} 落马倒地。`, deps);
+    }
+  }
+}
+
+/** 灵光持有者离场后，它的灵光不应继续留在战场上。 */
+function releaseAuras(battle: Battle, actorId: string, reason: string, deps: CombatDeps = {}): void {
+  const auras = battle.auras ?? [];
+  const lost = auras.filter(aura => aura.ownerId === actorId);
+  if (!lost.length) return;
+  const rest = auras.filter(aura => aura.ownerId !== actorId);
+  if (rest.length) battle.auras = rest; else delete battle.auras;
+  for (const aura of lost) addLog(battle, `${reason}，「${aura.name}」灵光随之消失。`, deps);
+}
+
 /** 擒抱者离场（死亡／撤离／投降／被移出战场）时，被它抓着的单位立即获得自由。 */
 function releaseGrapples(battle: Battle, actorId: string, reason: string, deps: CombatDeps = {}): void {
   const held = battle.actors.filter(item => item.combat?.grappledBy === actorId);
