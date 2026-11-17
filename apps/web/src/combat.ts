@@ -515,6 +515,36 @@ function greaseFall(battle: Battle, actor: Actor, deps: CombatDeps): boolean {
   return true;
 }
 
+const FOG_MAX_CELLS = 24;
+
+/** 雾云术：动作施放 + 专注，1–24 格内成为重度遮蔽；攻击者与目标分处雾内外时攻击检定劣势。 */
+export function castFogCloud(battle: Battle, casterId: string, cells: Position[], deps: CombatDeps = {}): Battle {
+  if (!battle.grid) throw new Error('请先启用方格战场。');
+  const unique = new Map<string, Position>();
+  for (const cell of cells) {
+    if (!Number.isInteger(cell.x) || !Number.isInteger(cell.y)) throw new Error('雾云术的格子坐标须为整数。');
+    if (cell.x < 0 || cell.y < 0 || cell.x >= battle.grid.width || cell.y >= battle.grid.height) throw new Error('雾云术的格子超出战场范围。');
+    unique.set(`${cell.x},${cell.y}`, { x: cell.x, y: cell.y });
+  }
+  if (!unique.size) throw new Error('请选择雾云术覆盖的格子。');
+  if (unique.size > FOG_MAX_CELLS) throw new Error('雾云术最多覆盖 24 格。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const state = combatantOf(caster);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放雾云术。');
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (state.concentration) throw new Error('施法者已经在维持其他专注。');
+  state.actionUsed = true;
+  state.concentration = { spell: '雾云术' };
+  next.fog = [...unique.values()];
+  next.fogBy = casterId;
+  addLog(next, `${actorLabel(next, caster)} 施放雾云术：迷雾覆盖 ${next.fog.length} 格，雾内为重度遮蔽，持续 10 轮。`, deps);
+  return next;
+}
+
 /** 油腻术：动作施放，指定若干格（最多 12 格）；进入或回合开始时需通过 DC 13 敏捷豁免，失败倒地。 */
 export function castGrease(battle: Battle, casterId: string, cells: Position[], deps: CombatDeps = {}): Battle {
   if (!battle.grid) throw new Error('请先启用方格战场。');
@@ -669,6 +699,11 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
       delete item.combat![byField];
     }
     addLog(battle, `${reason}，${affected.map(item => actorLabel(battle, item)).join('、')} 的${name}结束了。`, deps);
+  }
+  if (battle.fog && battle.fogBy === casterId) {
+    delete battle.fog;
+    delete battle.fogBy;
+    addLog(battle, `${reason}，迷雾消散了。`, deps);
   }
 }
 
@@ -2154,8 +2189,12 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const obscuredAdjustment: ModeAdjustment | null = battle.obscured === 'heavy' ? { mode: 'disadvantage', notes: ['重度遮蔽：攻击检定劣势'] } : null;
   const hideAdjustment: ModeAdjustment | null = hiddenAttacker ? { mode: 'advantage', notes: ['攻击者处于躲藏：攻击检定优势'] } : null;
   const unseenAdjustment: ModeAdjustment | null = hiddenTarget ? { mode: 'disadvantage', notes: ['目标处于躲藏：攻击检定劣势'] } : null;
+  const inFog = (item: Actor) => !!item.position && (battle.fog ?? []).some(cell => cell.x === item.position!.x && cell.y === item.position!.y);
+  const attackerFog = inFog(attacker);
+  const targetFog = inFog(target);
+  const fogAdjustment: ModeAdjustment | null = attackerFog !== targetFog ? { mode: 'disadvantage', notes: ['云雾遮蔽：攻击检定劣势'] } : null;
   const invisibleAdjustment: ModeAdjustment | null = invisibleAttacker ? { mode: 'advantage', notes: ['攻击者处于隐形：攻击检定优势'] } : invisibleTarget ? { mode: 'disadvantage', notes: ['目标处于隐形：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
@@ -2793,6 +2832,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
       else actor.combat.exhaustion = reduced;
     }
   }
+  delete next.fog;
+  delete next.fogBy;
   addLog(next, '长休：恢复全部生命值，法术位、动作如潮、回气与弹药全部恢复，力竭减 1，专注与每回合状态清除。', deps);
   return next;
 }
