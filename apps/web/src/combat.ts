@@ -2718,6 +2718,7 @@ export function resolveReadyPrompt(battle: Battle, reactorId: string, deps: Comb
   const combat = requireCombat(next);
   const prompt = (combat.pendingOpportunity ?? []).find(item => item.reactorId === reactorId && item.kind === 'ready');
   if (!prompt) throw new Error('该单位没有待确认的准备动作。');
+  if (!canReactNow(actorOf(next, reactorId))) throw new Error('该单位现在无法行动，不能执行准备好的动作。');
   const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
   if (rest.length) combat.pendingOpportunity = rest;
   else delete combat.pendingOpportunity;
@@ -3279,6 +3280,7 @@ export function triggerReadyAction(battle: Battle, actorId: string, deps: Combat
   requireReactionAllowed(actor);
   if (state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
   if (state.status !== 'active') throw new Error('只有在场的单位可以执行准备好的动作。');
+  if (!canReactNow(actor)) throw new Error('该单位现在无法行动，不能执行准备好的动作。');
   const ready = state.ready;
   delete state.ready;
   state.reactionUsed = true;
