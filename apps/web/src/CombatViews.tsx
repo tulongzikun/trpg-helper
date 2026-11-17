@@ -1148,6 +1148,9 @@ function AttackPresetPanel({ battle, actor, handlers }: { battle: Battle; actor:
   const presets = (battle.attackPresets ?? []).filter(item => item.attackerId === actor.id);
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
+  const [sharp, setSharp] = useState(false);
+  const [power, setPower] = useState(false);
+  const [versatile, setVersatile] = useState(false);
   const sources = attackSources(actor);
   const targets = availableTargets(battle, actor.id);
   if (!targets.length) return null;
@@ -1155,7 +1158,7 @@ function AttackPresetPanel({ battle, actor, handlers }: { battle: Battle; actor:
   const save = () => {
     if (!name.trim()) { setMessage('请填写常用攻击的名称。'); return; }
     if (!first) { setMessage('该单位没有可用的攻击来源。'); return; }
-    handlers.onSavePreset({ name: name.trim(), attackerId: actor.id, targetId: targets[0].id, attackBonus: first.attackBonus, damageExpression: first.damageExpression, damageType: first.damageType, range: first.range });
+    handlers.onSavePreset({ name: name.trim(), attackerId: actor.id, targetId: targets[0].id, attackBonus: first.attackBonus, damageExpression: first.damageExpression, damageType: first.damageType, range: first.range, ...(first.id ? { weaponId: first.id } : {}), ...(sharp ? { sharpshooter: true } : {}), ...(power ? { powerAttack: true } : {}), ...(versatile ? { twoHanded: true } : {}) });
     setName('');
     setMessage('');
   };
@@ -1167,6 +1170,9 @@ function AttackPresetPanel({ battle, actor, handlers }: { battle: Battle; actor:
         <button type="button" className="cmb-chip-remove" onClick={() => handlers.onRemovePreset(preset.id)} aria-label={`删除常用攻击 ${preset.name}`}>×</button>
       </span>) : <span className="cmb-muted">还没有保存的常用攻击。</span>}
       <label>名称<input value={name} onChange={event => setName(event.target.value)} placeholder="如：巨剑猛砍" aria-label="常用攻击名称" /></label>
+      <label className="cmb-check"><input type="checkbox" checked={sharp} onChange={event => setSharp(event.target.checked)} aria-label="含神射手" />神射手</label>
+      <label className="cmb-check"><input type="checkbox" checked={power} onChange={event => setPower(event.target.checked)} aria-label="含强力攻击" />强力攻击</label>
+      <label className="cmb-check"><input type="checkbox" checked={versatile} onChange={event => setVersatile(event.target.checked)} aria-label="双手持用" />双手持用</label>
       <button type="button" className="button-secondary" onClick={save} aria-label="保存常用攻击">保存当前武器快捷攻击</button>
       {message ? <span className="cmb-hint">{message}</span> : null}
     </div>

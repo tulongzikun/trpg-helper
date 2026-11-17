@@ -213,7 +213,7 @@ export function reloadAmmo(battle: Battle, actorId: string, count: number = defa
 }
 
 /** 常用攻击的输入：名称 + 一套攻击参数。 */
-export type AttackPresetInput = { name: string; attackerId: string; targetId: string; attackBonus: number; damageExpression: string; damageType: DamageType; range: AttackRange };
+export type AttackPresetInput = { name: string; attackerId: string; targetId: string; attackBonus: number; damageExpression: string; damageType: DamageType; range: AttackRange; weaponId?: string; sharpshooter?: boolean; powerAttack?: boolean; twoHanded?: boolean };
 
 /** 保存一套常用攻击（同名同攻击者会覆盖）。 */
 export function saveAttackPreset(battle: Battle, input: AttackPresetInput, deps: CombatDeps = {}): { battle: Battle; presetId: string } {
@@ -227,10 +227,11 @@ export function saveAttackPreset(battle: Battle, input: AttackPresetInput, deps:
   parseDice(input.damageExpression);
   if (!damageTypes.includes(input.damageType)) throw new Error('伤害类型无效。');
   if (input.range !== 'melee' && input.range !== 'ranged') throw new Error('攻击距离类型无效。');
+  if (input.weaponId !== undefined && !attackSources(attacker).some(item => item.id === input.weaponId)) throw new Error('常用攻击的武器无效。');
   const list = [...(next.attackPresets ?? [])];
   const existing = list.find(item => item.attackerId === input.attackerId && item.name === name);
   const presetId = existing?.id ?? makeIdOf(deps)();
-  const preset: AttackPreset = { id: presetId, name, attackerId: input.attackerId, targetId: input.targetId, attackBonus: input.attackBonus, damageExpression: input.damageExpression, damageType: input.damageType, range: input.range };
+  const preset: AttackPreset = { id: presetId, name, attackerId: input.attackerId, targetId: input.targetId, attackBonus: input.attackBonus, damageExpression: input.damageExpression, damageType: input.damageType, range: input.range, ...(input.weaponId ? { weaponId: input.weaponId } : {}), ...(input.sharpshooter ? { sharpshooter: true } : {}), ...(input.powerAttack ? { powerAttack: true } : {}), ...(input.twoHanded ? { twoHanded: true } : {}) };
   if (existing) list[list.indexOf(existing)] = preset;
   else {
     if (list.length >= 10) throw new Error('最多保存 10 个常用攻击。');
@@ -261,7 +262,7 @@ export function attackWithPreset(battle: Battle, presetId: string, deps: CombatD
   const attacker = battle.actors.find(item => item.id === preset.attackerId);
   if (!attacker) throw new Error('该常用攻击的攻击者不在战斗中。');
   const targetId = presetTarget(battle, preset, attacker);
-  const result = attack(battle, { attackerId: preset.attackerId, targetId, attackBonus: preset.attackBonus, damageExpression: preset.damageExpression, damageType: preset.damageType, range: preset.range }, deps);
+  const result = attack(battle, { attackerId: preset.attackerId, targetId, attackBonus: preset.attackBonus, damageExpression: preset.damageExpression, damageType: preset.damageType, range: preset.range, ...(preset.weaponId ? { weaponId: preset.weaponId } : {}), ...(preset.sharpshooter ? { sharpshooter: true } : {}), ...(preset.powerAttack ? { powerAttack: true } : {}), ...(preset.twoHanded ? { twoHanded: true } : {}) }, deps);
   return { ...result, targetId };
 }
 

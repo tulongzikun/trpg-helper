@@ -154,7 +154,20 @@ export type Actor = {
   elevation?: number;
 };
 export type Aura = { id: string; name: string; ownerId: string; radiusFt: number; bonus: number; kind: 'ac' | 'saves' };
-export type AttackPreset = { id: string; name: string; attackerId: string; targetId: string; attackBonus: number; damageExpression: string; damageType: DamageType; range: 'melee' | 'ranged' };
+export type AttackPreset = {
+  id: string;
+  name: string;
+  attackerId: string;
+  targetId: string;
+  attackBonus: number;
+  damageExpression: string;
+  damageType: DamageType;
+  range: 'melee' | 'ranged';
+  weaponId?: string;
+  sharpshooter?: boolean;
+  powerAttack?: boolean;
+  twoHanded?: boolean;
+};
 export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
@@ -321,6 +334,14 @@ function isAura(value: unknown): boolean {
   return value.kind === 'ac' || value.kind === 'saves';
 }
 function isAttackPreset(value: unknown): value is AttackPreset {
+  for (const key of ['weaponId'] as const) {
+    const item = (value as Record<string, unknown>)[key];
+    if (item !== undefined && (typeof item !== 'string' || item.length === 0 || item.length > 64)) return false;
+  }
+  for (const key of ['sharpshooter', 'powerAttack', 'twoHanded'] as const) {
+    const item = (value as Record<string, unknown>)[key];
+    if (item !== undefined && typeof item !== 'boolean') return false;
+  }
   if (!isObject(value)) return false;
   if (typeof value.id !== 'string' || !value.id.length) return false;
   if (typeof value.name !== 'string' || !value.name.length || value.name.length > 30) return false;
