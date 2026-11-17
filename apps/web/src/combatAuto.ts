@@ -1,11 +1,11 @@
-﻿import { actorDistance, attack, currentActorId, dodge, drinkHealingPotion, endTurn, moveActorToCell, offhandAttack, secondWind } from './combat.ts';
+﻿import { actorDistance, attack, cellDistance, currentActorId, disengage, dodge, drinkHealingPotion, endTurn, moveActorToCell, offhandAttack, secondWind } from './combat.ts';
 import { hasSecondWind } from './combatModifiers.ts';
 import { attackSources } from './attackSources.ts';
 import type { CombatDeps } from './combat.ts';
 import { suggestAttacks } from './combatAi.ts';
 import type { Battle, Position, Side } from './battle';
 
-export type AutoActionKind = 'attack' | 'move' | 'wait';
+export type AutoActionKind = 'attack' | 'move' | 'retreat' | 'wait';
 export type AutoAction = { battle: Battle; kind: AutoActionKind; text: string };
 export type AutoTurn = AutoAction & { steps: string[] };
 
@@ -82,12 +82,57 @@ function selfCare(battle: Battle, actorId: string, deps: CombatDeps): AutoAction
   }
 }
 
+/** 生命值低于四分之一且身边有敌人时：先撤离，再退到离最近敌人最远的可达格。 */
+function retreat(battle: Battle, actorId: string, deps: CombatDeps): AutoAction | null {
+  const actor = battle.actors.find(item => item.id === actorId);
+  if (!actor || actor.combat?.status !== 'active') return null;
+  if (actor.currentHp > Math.floor(actor.maxHp / 4)) return null;
+  const enemies = battle.actors.filter(item => item.id !== actorId && item.side !== actor.side && item.side !== '中立' && item.combat?.status === 'active' && !!item.position);
+  if (!enemies.length) return null;
+  let next = battle;
+  const adjacent = !!actor.position && enemies.some(item => cellDistance(item.position!, actor.position!) <= 1);
+  // 只有被贴身时才值得撤退；否则先考虑自救或攻击。
+  if (!adjacent) return null;
+  if (actor.combat?.actionUsed !== true && actor.combat?.disengaged !== true) {
+    try {
+      next = disengage(next, actorId, deps);
+    } catch {
+      /* 撤离不可用时直接后撤。 */
+    }
+  }
+  const moved = next.actors.find(item => item.id === actorId);
+  if (!next.grid || !moved?.position) {
+    return { battle: next, kind: 'retreat', text: '自动行动：生命值过低，使用撤离拉开距离（未启用方格，无法自动移动）。' };
+  }
+  const grid = next.grid;
+  const distanceTo = (cell: Position): number => Math.min(...enemies.map(item => Math.max(Math.abs(cell.x - item.position!.x), Math.abs(cell.y - item.position!.y)))) * grid.cellFt;
+  const current = distanceTo(moved.position);
+  const cells = neighbors(moved.position)
+    .filter(cell => cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height)
+    .filter(cell => !next.actors.some(item => item.id !== actorId && item.position?.x === cell.x && item.position?.y === cell.y))
+    .filter(cell => !(next.walls ?? []).some(wall => wall.x === cell.x && wall.y === cell.y))
+    .filter(cell => !(next.hazards ?? []).some(hazard => hazard.x === cell.x && hazard.y === cell.y))
+    .filter(cell => distanceTo(cell) > current)
+    .sort((a, b) => distanceTo(b) - distanceTo(a));
+  for (const cell of cells) {
+    try {
+      const retreated = moveActorToCell(next, actorId, cell.x, cell.y, deps);
+      return { battle: retreated, kind: 'retreat', text: `自动行动：生命值过低，撤离并后撤到 (${cell.x}, ${cell.y})。` };
+    } catch {
+      /* 这一格走不到就试下一格。 */
+    }
+  }
+  return { battle: next, kind: 'retreat', text: '自动行动：生命值过低，使用撤离拉开距离，但已无路可退。' };
+}
+
 export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): AutoAction {
   if (currentActorId(battle) !== actorId) throw new Error('只有当前回合的单位可以自动行动。');
   const self = battle.actors.find(item => item.id === actorId);
   if (!self || self.combat?.status !== 'active') {
     return { battle, kind: 'wait', text: '自动行动：该单位已无法行动，原地待命。' };
   }
+  const flee = retreat(battle, actorId, deps);
+  if (flee) return flee;
   const care = selfCare(battle, actorId, deps);
   if (care) return care;
   const suggestions = suggestAttacks(battle, actorId, 6);
