@@ -3224,19 +3224,33 @@ function contestRoll(bonus: number, random: Random): { natural: number; total: n
   return { natural, total: natural + bonus };
 }
 
+/**
+ * 属性检定掷骰：处于「中毒」的单位带劣势（掷两次取低），返回实际取值与两次原始点数。
+ */
+function poisonedCheckRoll(battle: Battle, actorId: string, bonus: number, random: Random): { natural: number; total: number; notes: string | null } {
+  const poisoned = battle.actors.find(item => item.id === actorId)?.combat?.conditions.includes('中毒') ?? false;
+  const first = 1 + Math.floor(random() * 20);
+  if (!poisoned) return { natural: first, total: first + bonus, notes: null };
+  const second = 1 + Math.floor(random() * 20);
+  const natural = Math.min(first, second);
+  return { natural, total: natural + bonus, notes: `中毒：属性检定劣势（${first}/${second} 取 ${natural}）` };
+}
+
 function grappleContest(next: Battle, attacker: Actor, target: Actor, deps: CombatDeps): ContestOutcome {
   const random = deps.random ?? Math.random;
   const attackerBonus = abilityCheckBonus(attacker, 'str', '运动');
   const targetStrength = abilityCheckBonus(target, 'str', '运动');
   const targetDexterity = abilityCheckBonus(target, 'dex', '体操');
   const targetBonus = Math.max(targetStrength, targetDexterity);
-  const attackerRoll = contestRoll(attackerBonus, random);
-  const targetRoll = contestRoll(targetBonus, random);
+  const attackerRoll = poisonedCheckRoll(next, attacker.id, attackerBonus, random);
+  const targetRoll = poisonedCheckRoll(next, target.id, targetBonus, random);
   const success = attackerRoll.total > targetRoll.total;
   addLog(next, success
     ? `${actorLabel(next, attacker)} 擒抱或推撞 ${actorLabel(next, target)} 成功（${attackerRoll.natural}+${attackerBonus} 对 ${targetRoll.natural}+${targetBonus}）。`
     : `${actorLabel(next, attacker)} 擒抱或推撞 ${actorLabel(next, target)} 失败（${attackerRoll.natural}+${attackerBonus} 对 ${targetRoll.natural}+${targetBonus}）。`, deps,
     `力量（运动）对抗目标的力量（运动）或敏捷（体操）：${attackerRoll.total} 对 ${targetRoll.total}`);
+  const poisonNotes = [attackerRoll.notes, targetRoll.notes].filter((note): note is string => note !== null);
+  if (poisonNotes.length) addLog(next, `${actorLabel(next, attacker)} 或 ${actorLabel(next, target)} 受中毒影响，${poisonNotes.join('；')}。`, deps);
   return { attackerTotal: attackerRoll.total, targetTotal: targetRoll.total, attackerNatural: attackerRoll.natural, targetNatural: targetRoll.natural, success };
 }
 
@@ -3296,8 +3310,9 @@ export function escapeGrapple(battle: Battle, actorId: string, deps: CombatDeps 
   const dc = grappler ? 8 + abilityModifier(grapplerAbilities?.str ?? 10) + proficiencyBonus(grapplerLevel) : 10;
   const random = deps.random ?? Math.random;
   const bonus = Math.max(abilityCheckBonus(actor, 'str', '运动'), abilityCheckBonus(actor, 'dex', '体操'));
-  const natural = 1 + Math.floor(random() * 20);
-  const total = natural + bonus;
+  const escapeRoll = poisonedCheckRoll(next, actorId, bonus, random);
+  const natural = escapeRoll.natural;
+  const total = escapeRoll.total;
   const success = natural === 20 || (natural !== 1 && total >= dc);
   state.actionUsed = true;
   if (success) {
@@ -3305,8 +3320,9 @@ export function escapeGrapple(battle: Battle, actorId: string, deps: CombatDeps 
     delete state.grappledBy;
   }
   addLog(next, success
-    ? `${actorLabel(next, actor)} 挣脱了擒抱（d20 ${natural}+${bonus}=${total} 对 DC ${dc}）。`
-    : `${actorLabel(next, actor)} 未能挣脱擒抱（d20 ${natural}+${bonus}=${total} 对 DC ${dc}）。`, deps,
+    ? `${actorLabel(next, actor)} 挣脱了擒抱（d20 ${natural}+${bonus}=${total} 对 DC ${dc}）。${escapeRoll.notes ? `（${escapeRoll.notes}）` : ''}`
+    : `${actorLabel(next, actor)} 未能挣脱擒抱（d20 ${natural}+${bonus}=${total} 对 DC ${dc}）。${escapeRoll.notes ? `（${escapeRoll.notes}）` : ''}`,
+    deps,
     '力量（运动）或敏捷（体操）检定对抗擒抱者的力量豁免 DC');
   return { battle: next, outcome: { attackerTotal: total, targetTotal: dc, attackerNatural: natural, targetNatural: 0, success } };
 }
