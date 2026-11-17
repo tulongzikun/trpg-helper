@@ -235,9 +235,27 @@ export function initiativeAdvantage(actor: Actor): boolean {
 export function actorSpeed(actor: Actor): number {
   return actor.characterSnapshot?.sheet.speedFt ?? actor.template.speedFt?.walk ?? 30;
 }
-/** 本回合可用的移动力：基础速度加上疾跑带来的额外移动力。 */
+/** 力竭惩罚：每级 -2（攻击、豁免、属性检定）与 -5 尺速度。 */
+function exhaustionPenalty(actor: Actor): number {
+  return 2 * (actor.combat?.exhaustion ?? 0);
+}
+function exhaustionSpeedPenalty(actor: Actor): number {
+  return 5 * (actor.combat?.exhaustion ?? 0);
+}
+/** 本回合可用的移动力：基础速度加上疾跑带来的额外移动力，并扣除减速与力竭。 */
 function movementAllowance(actor: Actor): number {
-  return Math.max(0, actorSpeed(actor) - (actor.combat?.speedPenaltyFt ?? 0)) + (actor.combat?.dashMovement ?? 0);
+  return Math.max(0, actorSpeed(actor) - (actor.combat?.speedPenaltyFt ?? 0) - exhaustionSpeedPenalty(actor)) + (actor.combat?.dashMovement ?? 0);
+}
+/** 设置某单位的力竭等级（0 表示没有力竭）。 */
+export function setExhaustion(battle: Battle, actorId: string, level: number, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (!Number.isInteger(level) || level < 0 || level > 6) throw new Error('力竭等级须为 0 至 6 的整数。');
+  if (level === 0) delete state.exhaustion;
+  else state.exhaustion = level;
+  addLog(next, level === 0 ? `${actorLabel(next, actor)} 的力竭解除。` : `${actorLabel(next, actor)} 的力竭等级为 ${level}：攻击、豁免与属性检定 -${2 * level}，速度 -${5 * level} 尺。`, deps);
+  return next;
 }
 export function actorAttackProfile(actor: Actor): { attackBonus: number; damage: string; damageType: DamageType } {
   const abilities = actor.characterSnapshot?.sheet.abilities ?? actor.template.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
@@ -1274,7 +1292,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const first = rollDie(20, random);
   const second = mode === 'normal' ? first : rollDie(20, random);
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
-  const total = natural + options.attackBonus - (options.powerAttack ? 5 : 0);
+  const total = natural + options.attackBonus - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
   const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac');
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
@@ -1537,7 +1555,7 @@ export function abilityCheck(battle: Battle, options: CheckOptions, deps: Combat
   requireCombat(next);
   const actor = actorOf(next, options.actorId);
   if (combatantOf(actor).status !== 'active') throw new Error('只有在场的单位可以进行检定。');
-  const bonus = options.bonus ?? abilityCheckBonus(actor, options.ability, options.skill ?? '');
+  const bonus = (options.bonus ?? abilityCheckBonus(actor, options.ability, options.skill ?? '')) - exhaustionPenalty(actor);
   const adjustment = checkAdjustment(actor, options.ability);
   const combined = combineAttackModes(options.mode ?? 'normal', adjustment ? [adjustment] : []);
   const random = randomOf(deps);
@@ -1849,7 +1867,7 @@ export function savingThrow(battle: Battle, options: SaveOptions, deps: CombatDe
   if (!Number.isInteger(bonus) || bonus < -10 || bonus > 30) throw new Error('豁免加值须为 -10 至 30 的整数。');
   const auraSave = auraBonus(next, actor.id, 'saves');
   const coverBonus = options.ability === 'dex' && options.cover ? coverAcBonus(options.cover) : 0;
-  const withAura = { ...options, bonus: (options.bonus ?? defaultSaveBonus(actor, options.ability) + auraSave) + coverBonus };
+  const withAura = { ...options, bonus: (options.bonus ?? defaultSaveBonus(actor, options.ability) + auraSave) + coverBonus - exhaustionPenalty(actor) };
   const outcome = resolveSave(actor, withAura, randomOf(deps));
   addLog(next, `${actorLabel(next, actor)} 的${saveNames[options.ability]}豁免${outcome.success ? '成功' : '失败'}。`, deps, saveDetail(actor, next, withAura, outcome));
   return { battle: next, outcome };

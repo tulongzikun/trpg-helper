@@ -54,6 +54,8 @@ export type CombatantState = {
   /** 是否在使用闪避：直到自己下个回合开始前，针对它的攻击检定具有劣势。 */
   dodging?: boolean;
   nickUsed?: boolean;
+  /** 力竭等级（0–6）：每级使攻击、豁免、属性检定 -2，速度 -5 尺。 */
+  exhaustion?: number;
   /** 已记录的法术位（剩余个数，索引 0 为 1 环）；未设置时不追踪法术位。 */
   spellSlots?: number[];
   /** 记录时的法术位上限（长休恢复到这一组数值）。 */
@@ -152,6 +154,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.dodging !== undefined && typeof value.dodging !== 'boolean') return false;
   if (value.nickUsed !== undefined && typeof value.nickUsed !== 'boolean') return false;
   if (value.sneakUsed !== undefined && typeof value.sneakUsed !== 'boolean') return false;
+  if (value.exhaustion !== undefined && !isInteger(value.exhaustion, 0, 6)) return false;
   if (value.spellSlots !== undefined && (!Array.isArray(value.spellSlots) || value.spellSlots.length > 9 || value.spellSlots.some(item => !isInteger(item, 0, 20)))) return false;
   if (value.spellSlotsMax !== undefined && (!Array.isArray(value.spellSlotsMax) || value.spellSlotsMax.length > 9 || value.spellSlotsMax.some(item => !isInteger(item, 0, 20)))) return false;
   if (value.reckless !== undefined && typeof value.reckless !== 'boolean') return false;
