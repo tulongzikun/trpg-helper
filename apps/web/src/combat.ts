@@ -2662,6 +2662,11 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
     }
     victim.position = spot;
     addLog(next, `${actorLabel(next, victim)} 被拖拽到 (${spot.x}, ${spot.y})。`, deps);
+    if (greaseAt(next, spot.x, spot.y)) greaseFall(next, victim, deps);
+    if (sleepCloudAt(next, spot.x, spot.y)) sleepDust(next, victim, deps);
+    applyHazardAt(next, victim, spot.x, spot.y, deps);
+    applyLavaAt(next, victim, deps);
+    applyBrambles(next, victim, Math.max(1, cellDistance(fromVictim, spot)), deps);
   }
   addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && muddy ? '，泥沼使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}${!flying && entwined ? '，藤蔓使消耗翻倍' : ''}${crawling ? '，倒地爬行使消耗翻倍' : ''}${heavilyLoaded && !flying ? '，拖拽被擒抱的单位使消耗翻倍' : ''}。`, deps);
   if (greaseAt(next, x, y) && !flying) greaseFall(next, actor, deps);
