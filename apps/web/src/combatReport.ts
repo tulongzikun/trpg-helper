@@ -167,7 +167,18 @@ export function battleReport(battle: Battle): string {
   lines.push('## 战报');
   lines.push('');
   if (!log.length) lines.push('（暂无记录）');
-  for (const entry of log) lines.push(`- ${entry.text}`);
+  // 战报按轮次分段：长战斗里几十条记录连成一片，找「什么时候发生的」比读内容还费劲。
+  const grouped = new Set(log.map(item => item.round)).size > 1;
+  let printedRound = 0;
+  for (const entry of log) {
+    if (grouped && entry.round > printedRound) {
+      printedRound = entry.round;
+      lines.push('');
+      lines.push(`#### 第 ${entry.round} 轮`);
+      lines.push('');
+    }
+    lines.push(`- ${entry.text}`);
+  }
   lines.push('');
   return lines.join('\n');
 }
