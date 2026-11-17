@@ -55,6 +55,8 @@ export type CombatantState = {
   dodging?: boolean;
   /** 是否获得了协助：下一次攻击检定具有优势，用掉后清除。 */
   helpedAttack?: boolean;
+  /** 使用疾跑后本回合额外获得的移动力（尺），回合开始时清零。 */
+  dashMovement?: number;
 };
 export type CombatLogEntry = { id: string; round: number; text: string; detail?: string };
 export type CombatState = {
@@ -124,6 +126,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.ready !== undefined && !isReadyAction(value.ready)) return false;
   if (value.dodging !== undefined && typeof value.dodging !== 'boolean') return false;
   if (value.helpedAttack !== undefined && typeof value.helpedAttack !== 'boolean') return false;
+  if (value.dashMovement !== undefined && !isInteger(value.dashMovement, 0, 300)) return false;
   if (value.ongoing !== undefined && (!Array.isArray(value.ongoing) || !value.ongoing.every(isOngoingEffect))) return false;
   if (value.concentration !== undefined && !(isObject(value.concentration) && typeof value.concentration.spell === 'string' && value.concentration.spell.length > 0)) return false;
   if (value.status !== 'active' && value.status !== 'down' && value.status !== 'dead') return false;

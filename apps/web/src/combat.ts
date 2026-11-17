@@ -228,6 +228,10 @@ export function initiativeAdvantage(actor: Actor): boolean {
 export function actorSpeed(actor: Actor): number {
   return actor.characterSnapshot?.sheet.speedFt ?? actor.template.speedFt?.walk ?? 30;
 }
+/** 本回合可用的移动力：基础速度加上疾跑带来的额外移动力。 */
+function movementAllowance(actor: Actor): number {
+  return actorSpeed(actor) + (actor.combat?.dashMovement ?? 0);
+}
 export function actorAttackProfile(actor: Actor): { attackBonus: number; damage: string; damageType: DamageType } {
   const abilities = actor.characterSnapshot?.sheet.abilities ?? actor.template.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
   const level = actor.characterSnapshot?.sheet.level;
@@ -422,7 +426,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   if (lineCells(from, { x, y }).some(cell => isWallCell(next, cell.x, cell.y))) throw new Error('移动路径被墙体阻挡。');
   const rough = isDifficultCell(next, x, y);
   const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1);
-  const speed = actorSpeed(actor);
+  const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
@@ -516,6 +520,23 @@ export function dodge(battle: Battle, actorId: string, deps: CombatDeps = {}): B
   return next;
 }
 
+/** 疾跑：消耗动作，本回合额外获得等同于速度的移动力。 */
+export function dash(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以疾跑。');
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以疾跑。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  state.actionUsed = true;
+  state.dashMovement = actorSpeed(actor);
+  addLog(next, `${actorLabel(next, actor)} 使用疾跑，本回合移动力增加 ${state.dashMovement} 尺。`, deps);
+  return next;
+}
+
 /** 协助：消耗动作，让同阵营的另一个单位下一次攻击检定具有优势。 */
 export function help(battle: Battle, helperId: string, targetId: string, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -546,6 +567,7 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.movementUsed = 0;
   combat.disengaged = false;
   combat.dodging = false;
+  combat.dashMovement = 0;
 }
 function nextTurnIndex(battle: Battle) {
   const combat = requireCombat(battle);
@@ -694,7 +716,7 @@ export function spendMovement(battle: Battle, actorId: string, feet: number, dep
   if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法移动。');
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
-  const speed = actorSpeed(actor);
+  const speed = movementAllowance(actor);
   if (state.movementUsed + feet > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += feet;
   addLog(next, `${actorLabel(next, actor)} 移动了 ${feet} 尺（共 ${state.movementUsed}/${speed} 尺）。`, deps);
@@ -1675,8 +1697,8 @@ export function standUp(battle: Battle, actorId: string, deps: CombatDeps = {}):
   if (currentActorId(next) !== actor.id) throw new Error('只有当前回合的单位可以起身。');
   if (!state.conditions.includes('倒地')) throw new Error('该单位没有倒地。');
   if (state.status !== 'active') throw new Error('只有在场的单位可以起身。');
-  const speed = actorSpeed(actor);
-  const cost = Math.floor(speed / 2);
+  const speed = movementAllowance(actor);
+  const cost = Math.floor(actorSpeed(actor) / 2);
   const remaining = Math.max(0, speed - state.movementUsed);
   if (remaining < cost) throw new Error(`剩余移动力不足，起身需要 ${cost} 尺。`);
   state.movementUsed += cost;
