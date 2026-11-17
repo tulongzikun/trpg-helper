@@ -115,6 +115,10 @@ export type CombatantState = {
   dashMovement?: number;
   /** 是否处于躲藏状态：攻击时获得优势，攻击或被攻击后现身。 */
   hidden?: boolean;
+  /** 祝福术：剩余轮数（攻击检定与豁免 +1d4）。 */
+  blessed?: number;
+  /** 护盾术：AC 加值，直到自己下个回合开始。 */
+  shield?: number;
 };
 export type CombatLogEntry = { id: string; round: number; text: string; detail?: string };
 export type CombatState = {

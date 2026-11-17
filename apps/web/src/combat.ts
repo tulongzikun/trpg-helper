@@ -480,6 +480,55 @@ export function parry(battle: Battle, actorId: string, deps: CombatDeps = {}): B
   return next;
 }
 
+/** 祝福术的合法目标：30 尺内的友方（不含施法者自己），没有方格战场时不限距离。 */
+export function blessTargets(battle: Battle, casterId: string): Actor[] {
+  const caster = battle.actors.find(item => item.id === casterId);
+  if (!caster) return [];
+  return battle.actors.filter(item => item.side === caster.side
+    && item.side !== '中立'
+    && item.id !== casterId
+    && (item.combat?.status ?? 'active') === 'active'
+    && (!battle.grid || !caster.position || !item.position || (actorDistance(battle, casterId, item.id) ?? 0) <= 30));
+}
+
+/** 祝福术：动作施放，最多 3 名友方在 10 轮内攻击检定与豁免 +1d4，施法者需维持专注。 */
+export function castBless(battle: Battle, casterId: string, targetIds: string[], deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const state = combatantOf(caster);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放祝福术。');
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (state.concentration) throw new Error('施法者已经在维持其他专注。');
+  const ids = [...new Set(targetIds)];
+  if (!ids.length) throw new Error('请选择祝福的目标。');
+  if (ids.length > 3) throw new Error('祝福术最多影响 3 名单位。');
+  for (const id of ids) {
+    if (combatantOf(actorOf(next, id)).status !== 'active') throw new Error('只能祝福在场的单位。');
+  }
+  state.actionUsed = true;
+  state.concentration = { spell: '祝福术' };
+  for (const id of ids) combatantOf(actorOf(next, id)).blessed = 10;
+  addLog(next, `${actorLabel(next, caster)} 施放祝福术：${ids.map(id => actorLabel(next, actorOf(next, id))).join('、')} 的攻击检定与豁免 +1d4，持续 10 轮。`, deps);
+  return next;
+}
+
+/** 护盾术：反应触发，自己的 AC +5 直到下个回合开始。 */
+export function castShieldReaction(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放护盾术。');
+  if (state.reactionUsed) throw new Error('该单位本回合已经使用过反应。');
+  state.reactionUsed = true;
+  state.shield = 5;
+  addLog(next, `${actorLabel(next, actor)} 施放护盾术，AC +5 直到自己下个回合开始。`, deps);
+  return next;
+}
+
 /** 切换「双持战斗者」专长：AC +1，且副手攻击不再要求轻型武器。 */
 export function setDualWielder(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -1105,7 +1154,15 @@ function resetTurnResources(battle: Battle, actorId: string) {
   combat.delayed = false;
   combat.nickUsed = false;
   delete combat.parryBonus;
+  delete combat.shield;
   delete combat.guarding;
+  if (typeof combat.blessed === 'number') {
+    combat.blessed -= 1;
+    if (combat.blessed <= 0) {
+      delete combat.blessed;
+      addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 身上的祝福术结束了。`, {});
+    }
+  }
   combat.sneakUsed = false;
   combat.reckless = false;
   for (const other of battle.actors) {
@@ -1911,8 +1968,10 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
   const archery = archeryBonus(attacker, options, context.range);
   if (archery > 0) notes.push('射术：远程攻击检定 +2');
-  const total = natural + options.attackBonus + archery - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
-  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + defenseBonus(target);
+  const blessDie = combatantOf(attacker).blessed ? rollDie(4, random) : 0;
+  if (blessDie) notes.push(`祝福：攻击检定 +${blessDie}`);
+  const total = natural + options.attackBonus + archery + blessDie - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
+  const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0) + (combatantOf(target).shield ?? 0) + defenseBonus(target);
   if (guard) delete combatantOf(guard).guarding;
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
@@ -2532,7 +2591,7 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
 }
 
 export type SaveOptions = { actorId: string; ability: Ability; dc: number; bonus?: number; mode?: AttackMode; /** 掩体：仅对敏捷豁免提供 +2／+5。 */ cover?: CoverType };
-export type SaveOutcome = { natural: number; total: number; dc: number; success: boolean; mode: AttackMode; notes: string[]; automaticFailure: boolean };
+export type SaveOutcome = { natural: number; total: number; dc: number; success: boolean; mode: AttackMode; notes: string[]; automaticFailure: boolean; bless?: number };
 export type AreaSaveOptions = {
   targetIds: string[];
   ability: Ability;
@@ -2564,7 +2623,8 @@ export function defaultSaveBonus(actor: Actor, ability: Ability): number {
 
 function resolveSave(actor: Actor, options: SaveOptions, random: Random): SaveOutcome {
   const conditions = actor.combat?.conditions ?? [];
-  const bonus = options.bonus ?? defaultSaveBonus(actor, options.ability);
+  const bless = actor.combat?.blessed ? rollDie(4, random) : 0;
+  const bonus = (options.bonus ?? defaultSaveBonus(actor, options.ability)) + bless;
   const automaticFailure = (options.ability === 'str' || options.ability === 'dex') && ['麻痹', '昏迷', '石化'].some(condition => conditions.includes(condition));
   const adjustments: ModeAdjustment[] = [];
   if (options.ability === 'dex' && conditions.includes('束缚')) adjustments.push({ mode: 'disadvantage', notes: ['目标束缚：敏捷豁免劣势'] });
@@ -2578,11 +2638,12 @@ function resolveSave(actor: Actor, options: SaveOptions, random: Random): SaveOu
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
   const total = natural + bonus;
   const success = natural === 20 || (natural !== 1 && total >= options.dc);
-  return { natural, total, dc: options.dc, success, mode, automaticFailure: false, notes: combined.notes };
+  const notes = bless ? [...combined.notes, `祝福：豁免 +${bless}`] : combined.notes;
+  return { natural, total, dc: options.dc, success, mode, automaticFailure: false, notes, bless };
 }
 
 function saveDetail(actor: Actor, battle: Battle, options: SaveOptions, outcome: SaveOutcome): string {
-  const bonus = options.bonus ?? defaultSaveBonus(actor, options.ability);
+  const bonus = (options.bonus ?? defaultSaveBonus(actor, options.ability)) + (outcome.bless ?? 0);
   const rollText = outcome.automaticFailure ? '自动失败' : outcome.mode === 'normal' ? `d20(${outcome.natural})` : `${outcome.mode === 'advantage' ? '优势' : '劣势'} d20→${outcome.natural}`;
   return [
     `${actorLabel(battle, actor)} 的${saveNames[options.ability]}豁免`,
