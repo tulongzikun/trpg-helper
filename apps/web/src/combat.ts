@@ -2159,6 +2159,7 @@ export function creatureCover(battle: Battle, attackerId: string, targetId: stri
   return battle.actors.find(item => item.id !== attackerId
     && item.id !== targetId
     && (item.combat?.status ?? 'active') === 'active'
+    && item.combat?.fled !== true
     && !!item.position
     && cells.some(cell => cell.x === item.position!.x && cell.y === item.position!.y)) ?? null;
 }
@@ -2555,7 +2556,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   if (x < 0 || y < 0 || x >= battle.grid.width || y >= battle.grid.height) throw new Error('目标格子超出战场范围。');
   const from = positionOf(battle, actorId);
   if (from && from.x === x && from.y === y) throw new Error('单位已经在该格。');
-  const occupied = battle.actors.find(actor => actor.id !== actorId && actor.position?.x === x && actor.position?.y === y);
+  const occupied = battle.actors.find(actor => actor.id !== actorId && actor.combat?.fled !== true && actor.position?.x === x && actor.position?.y === y);
   if (occupied) throw new Error(`该格已有单位：${occupied.name}。`);
   if (isWallCell(battle, x, y)) throw new Error('不能移动到墙体格子。');
   const next = recordUndo(structuredClone(battle));
@@ -3306,7 +3307,7 @@ export function jumpToCell(battle: Battle, actorId: string, x: number, y: number
   const from = positionOf(battle, actorId);
   if (!from) throw new Error('请先把单位放到方格战场上。');
   if (from.x === x && from.y === y) throw new Error('单位已经在该格。');
-  const occupied = battle.actors.find(actor => actor.id !== actorId && actor.position?.x === x && actor.position?.y === y);
+  const occupied = battle.actors.find(actor => actor.id !== actorId && actor.combat?.fled !== true && actor.position?.x === x && actor.position?.y === y);
   if (occupied) throw new Error(`该格已有单位：${occupied.name}。`);
   if (isWallCell(battle, x, y)) throw new Error('不能跳到墙体格子。');
   const next = recordUndo(structuredClone(battle));
@@ -4457,7 +4458,7 @@ export function shove(battle: Battle, options: ContestOptions & { effect: ShoveE
   const toX = targetPosition.x + stepX;
   const toY = targetPosition.y + stepY;
   if (toX < 0 || toY < 0 || toX >= grid.width || toY >= grid.height) throw new Error('推撞方向超出战场边界。');
-  const occupied = next.actors.find(actor => actor.id !== target.id && actor.position?.x === toX && actor.position?.y === toY);
+  const occupied = next.actors.find(actor => actor.id !== target.id && actor.combat?.fled !== true && actor.position?.x === toX && actor.position?.y === toY);
   if (occupied) throw new Error(`推撞方向已有单位：${actorLabel(next, occupied)}。`);
   if (isWallCell(next, toX, toY)) throw new Error('推撞方向是墙体。');
   target.position = { x: toX, y: toY };
