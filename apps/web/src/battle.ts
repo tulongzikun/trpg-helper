@@ -124,6 +124,8 @@ export type Actor = {
   summon?: Summon;
   /** 在方格战场上的位置；未放置时不参与距离校验。 */
   position?: Position;
+  /** 相对地面的高度（尺），用于高低差判定。 */
+  elevation?: number;
 };
 export type Aura = { id: string; name: string; ownerId: string; radiusFt: number; bonus: number; kind: 'ac' | 'saves' };
 export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; auras?: Aura[] };
@@ -233,7 +235,8 @@ function isActor(value: unknown): boolean {
     && typeof value.source.source.name === 'string' && typeof value.template.armorClass === 'number'
     && (value.combat === undefined || isCombatant(value.combat))
     && (value.summon === undefined || isSummon(value.summon))
-    && (value.position === undefined || isPosition(value.position));
+    && (value.position === undefined || isPosition(value.position))
+    && (value.elevation === undefined || isInteger(value.elevation, 0, 500));
 }
 function isAura(value: unknown): boolean {
   if (!isObject(value)) return false;

@@ -293,6 +293,17 @@ export function setSentinel(battle: Battle, actorId: string, enabled: boolean, d
   return next;
 }
 
+/** 设置单位高度（尺），用于高低差判定：远程攻击从 10 尺以上高处射击有优势，仰射则有劣势。 */
+export function setElevation(battle: Battle, actorId: string, feet: number, deps: CombatDeps = {}): Battle {
+  if (!Number.isInteger(feet) || feet < 0 || feet > 500) throw new Error('高度须为 0 至 500 尺的整数。');
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  if (feet === 0) delete actor.elevation;
+  else actor.elevation = feet;
+  addLog(next, feet === 0 ? `${actorLabel(next, actor)} 回到地面。` : `${actorLabel(next, actor)} 的高度设为 ${feet} 尺。`, deps);
+  return next;
+}
 /** 切换「防守决斗」专长标记。 */
 export function setDefensiveDuelist(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -1401,6 +1412,12 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const sapped = combatantOf(attacker).sapped === true;
   const vexed = combatantOf(attacker).vexTargetId === target.id;
   const hiddenAttacker = combatantOf(attacker).hidden === true;
+  const elevationDelta = (attacker.elevation ?? 0) - (target.elevation ?? 0);
+  const elevationAdjustment: ModeAdjustment | null = context.range === 'ranged' && elevationDelta >= 10
+    ? { mode: 'advantage', notes: [`从高处（高 ${elevationDelta} 尺）射击：攻击检定优势`] }
+    : context.range === 'ranged' && elevationDelta <= -10
+      ? { mode: 'disadvantage', notes: [`仰射高处目标（低 ${-elevationDelta} 尺）：攻击检定劣势`] }
+      : null;
   const engagedInMelee = context.range === 'ranged' && !!attacker.position && battle.actors.some(item => item.id !== attacker.id && item.side !== attacker.side && item.side !== '中立' && item.combat?.status === 'active' && !!item.position && cellDistance(item.position, attacker.position!) <= 1);
   const engagedAdjustment: ModeAdjustment | null = engagedInMelee ? { mode: 'disadvantage', notes: ['远程攻击时敌人贴身：攻击检定劣势'] } : null;
   const hiddenTarget = combatantOf(target).hidden === true;
@@ -1413,7 +1430,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const obscuredAdjustment: ModeAdjustment | null = battle.obscured === 'heavy' ? { mode: 'disadvantage', notes: ['重度遮蔽：攻击检定劣势'] } : null;
   const hideAdjustment: ModeAdjustment | null = hiddenAttacker ? { mode: 'advantage', notes: ['攻击者处于躲藏：攻击检定优势'] } : null;
   const unseenAdjustment: ModeAdjustment | null = hiddenTarget ? { mode: 'disadvantage', notes: ['目标处于躲藏：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
   if (vexed) delete combatantOf(attacker).vexTargetId;
