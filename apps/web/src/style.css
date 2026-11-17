@@ -165,3 +165,9 @@
 
 .cmb-help { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; background: #fbfcfe; }
 .cmb-ai-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
+
+
+.cmb-cell.hazard {
+  background: repeating-linear-gradient(135deg, rgba(214, 74, 45, 0.28) 0 4px, rgba(214, 74, 45, 0.08) 4px 8px);
+  box-shadow: inset 0 0 0 1px rgba(214, 74, 45, 0.5);
+}

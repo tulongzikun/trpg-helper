@@ -84,6 +84,8 @@ export type ActorTemplate = Partial<Block> & Pick<Block, 'armorClass'>;
 export type GridConfig = { width: number; height: number; cellFt: number };
 /** 战场环境：水下会让远程攻击变得困难。 */
 export type Terrain = 'normal' | 'underwater';
+/** 危险地形格：单位进入该格时立即受到伤害。 */
+export type Hazard = { x: number; y: number; damageExpression: string; damageType: DamageType };
 /** 单位在方格上的位置，左上角为 (0,0)。 */
 export type Position = { x: number; y: number };
 export type Actor = {
@@ -102,7 +104,7 @@ export type Actor = {
   position?: Position;
 };
 export type Aura = { id: string; name: string; ownerId: string; radiusFt: number; bonus: number; kind: 'ac' | 'saves' };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; auras?: Aura[] };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; auras?: Aura[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -181,6 +183,11 @@ function isGrid(value: unknown): value is GridConfig {
 function isTerrain(value: unknown): value is Terrain {
   return value === 'normal' || value === 'underwater';
 }
+function isHazard(value: unknown): value is Hazard {
+  return isObject(value) && isInteger(value.x, 0, 59) && isInteger(value.y, 0, 59)
+    && typeof value.damageExpression === 'string' && value.damageExpression.trim().length > 0 && value.damageExpression.length <= 40
+    && typeof value.damageType === 'string' && (damageTypes as readonly string[]).includes(value.damageType);
+}
 function isPosition(value: unknown): value is Position {
   return isObject(value) && isInteger(value.x, 0, 59) && isInteger(value.y, 0, 59);
 }
@@ -210,6 +217,7 @@ function isBattle(value: unknown): boolean {
     && (value.terrain === undefined || isTerrain(value.terrain))
     && (value.difficult === undefined || (Array.isArray(value.difficult) && value.difficult.length <= 400 && value.difficult.every(isPosition)))
     && (value.walls === undefined || (Array.isArray(value.walls) && value.walls.length <= 400 && value.walls.every(isPosition)))
+    && (value.hazards === undefined || (Array.isArray(value.hazards) && value.hazards.length <= 200 && value.hazards.every(isHazard)))
   && (value.auras === undefined || (Array.isArray(value.auras) && value.auras.length <= 8 && value.auras.every(isAura)));
 }
 

@@ -3,7 +3,7 @@ import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Terrain } from './battle.ts';
 import type { Ability } from './characters';
-import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
+import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
 import { actionBlocker, actionSurgeMax, attackerAdjustment, attacksPerAction, combineAttackModes, coverAcBonus, coverNote, coverTypes, hasSecondWind, isAutomaticCritical, targetAdjustment } from './combatModifiers.ts';
@@ -368,6 +368,59 @@ export function toggleWallCell(battle: Battle, x: number, y: number, deps: Comba
   else delete next.walls;
   return next;
 }
+
+/** 危险地形：进入该格时立即受到伤害。 */
+export type HazardInput = { x: number; y: number; damageExpression: string; damageType: DamageType };
+
+export function hazardAt(battle: Battle, x: number, y: number): Hazard | undefined {
+  return (battle.hazards ?? []).find(cell => cell.x === x && cell.y === y);
+}
+
+export function hazardsOf(battle: Battle): Hazard[] {
+  return battle.hazards ?? [];
+}
+
+/** 标记或覆盖一格的危险地形。 */
+export function addHazard(battle: Battle, input: HazardInput, deps: CombatDeps = {}): Battle {
+  const grid = battle.grid;
+  if (!grid) throw new Error('请先启用方格战场。');
+  if (!Number.isInteger(input.x) || !Number.isInteger(input.y)) throw new Error('格子坐标须为整数。');
+  if (input.x < 0 || input.y < 0 || input.x >= grid.width || input.y >= grid.height) throw new Error('目标格子超出战场范围。');
+  const expression = (input.damageExpression ?? '').trim();
+  if (!expression) throw new Error('请填写危险地形的伤害骰。');
+  parseDice(expression);
+  if (!(damageTypes as readonly DamageType[]).includes(input.damageType)) throw new Error('危险地形的伤害类型无效。');
+  const next = recordUndo(structuredClone(battle));
+  const list = [...(next.hazards ?? [])];
+  const index = list.findIndex(cell => cell.x === input.x && cell.y === input.y);
+  const hazard: Hazard = { x: input.x, y: input.y, damageExpression: expression, damageType: input.damageType };
+  if (index >= 0) list[index] = hazard;
+  else list.push(hazard);
+  next.hazards = list.slice(-200);
+  addLog(next, `(${input.x}, ${input.y}) 设为危险地形（${expression} ${input.damageType}）。`, deps);
+  return next;
+}
+
+/** 清除一格的危险地形。 */
+export function removeHazard(battle: Battle, x: number, y: number, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const before = next.hazards ?? [];
+  const list = before.filter(cell => !(cell.x === x && cell.y === y));
+  if (list.length === before.length) throw new Error('该格没有危险地形。');
+  if (list.length) next.hazards = list;
+  else delete next.hazards;
+  addLog(next, `(${x}, ${y}) 的危险地形已清除。`, deps);
+  return next;
+}
+
+function applyHazardAt(battle: Battle, actor: Actor, x: number, y: number, deps: CombatDeps): void {
+  const hazard = hazardAt(battle, x, y);
+  if (!hazard) return;
+  if (combatantOf(actor).status === 'dead') return;
+  const rolled = rollDamage(hazard.damageExpression, deps.random ?? Math.random, false);
+  const result = applyDamageToActor(actor, rolled.total, hazard.damageType, battle);
+  addLog(battle, `${actorLabel(battle, actor)} 踏入危险地形 (${x}, ${y})，受到 ${result.damage} 点${hazard.damageType}伤害。`, deps);
+}
 /** 启用、调整或关闭方格战场；关闭时清除所有位置。 */
 export function setTerrain(battle: Battle, terrain: Terrain, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -388,6 +441,7 @@ export function configureGrid(battle: Battle, grid: GridConfig | null, deps: Com
     delete next.difficult;
     delete next.walls;
     next.actors.forEach(actor => { delete actor.position; });
+    delete next.hazards;
     addLog(next, '关闭方格战场，清除所有单位位置。', deps);
     return next;
   }
@@ -430,6 +484,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   if (!from) {
     actor.position = { x, y };
     addLog(next, `${actorLabel(next, actor)} 放置在 (${x}, ${y})。`, deps);
+    applyHazardAt(next, actor, x, y, deps);
     return next;
   }
   requireCombat(next);
@@ -447,6 +502,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   state.movementUsed += cost;
   actor.position = { x, y };
   addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}${swimming ? '，水下游泳使消耗翻倍' : ''}。`, deps);
+  applyHazardAt(next, actor, x, y, deps);
   const triggered = threatPrompts(next, actor, from, { x, y });
   if (triggered.length) {
     const combat = requireCombat(next);
