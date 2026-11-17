@@ -868,7 +868,7 @@ function terrainDefense(battle: Battle | undefined, type: DamageType): { multipl
   if (battle?.terrain === 'underwater' && type === '火焰') return { multiplier: 0.5, label: '水下：火焰抗性' };
   return { multiplier: 1, label: '' };
 }
-function applyDamageToActor(actor: Actor, amount: number, type: DamageType, battle?: Battle): DamageOutcome {
+function applyDamageToActor(actor: Actor, amount: number, type: DamageType, battle?: Battle, deps: CombatDeps = {}): DamageOutcome {
   if (!Number.isInteger(amount) || amount < 0) throw new Error('伤害须为非负整数。');
   const state = combatantOf(actor);
   const defense = defenseOf(actor, type);
@@ -880,6 +880,7 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
   if (actor.currentHp === 0 && state.status === 'down') {
     if (remaining > 0) state.deathSaves.failures = Math.min(3, state.deathSaves.failures + 1);
     if (state.deathSaves.failures >= 3) state.status = 'dead';
+    if (battle && state.status === 'dead') settleDeath(battle, actor, deps);
     return { damage: adjusted, tempAbsorbed: absorbed, status: state.status };
   }
   const before = actor.currentHp;
@@ -889,7 +890,34 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
     state.status = actor.characterSnapshot && overflow < actor.maxHp ? 'down' : 'dead';
     state.deathSaves = { successes: 0, failures: 0 };
   }
+  if (battle && state.status === 'dead') settleDeath(battle, actor, deps);
   return { damage: adjusted, tempAbsorbed: absorbed, status: state.status };
+}
+/** 单位死亡后的收尾：中断专注并驱散召唤物、清除自身持续效果与回合标记、移除其产生的灵光。 */
+function settleDeath(battle: Battle, actor: Actor, deps: CombatDeps = {}): void {
+  const state = actor.combat;
+  if (!state || state.status !== 'dead') return;
+  if (state.concentration) {
+    const spell = state.concentration.spell;
+    delete state.concentration;
+    dismissSummonsOf(battle, actor.id, `施法者死亡，无法维持「${spell}」`, deps);
+    addLog(battle, `${actorLabel(battle, actor)} 死亡，中断了对「${spell}」的专注。`, deps);
+  }
+  if (state.ongoing?.length) {
+    delete state.ongoing;
+    addLog(battle, `${actorLabel(battle, actor)} 死亡，身上的持续效果一并清除。`, deps);
+  }
+  delete state.ready;
+  state.dodging = false;
+  state.helpedAttack = false;
+  delete state.vexTargetId;
+  const auras = battle.auras ?? [];
+  const lost = auras.filter(aura => aura.ownerId === actor.id);
+  if (lost.length) {
+    const rest = auras.filter(aura => aura.ownerId !== actor.id);
+    if (rest.length) battle.auras = rest; else delete battle.auras;
+    for (const aura of lost) addLog(battle, `${actorLabel(battle, actor)} 倒下，「${aura.name}」灵光随之消失。`, deps);
+  }
 }
 export function damageActor(battle: Battle, actorId: string, amount: number, type: DamageType, deps: CombatDeps = {}): { battle: Battle; outcome: DamageOutcome } {
   if (!damageTypes.includes(type)) throw new Error('请选择有效的伤害类型。');
