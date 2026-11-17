@@ -1644,6 +1644,66 @@ export function drinkAntitoxin(battle: Battle, actorId: string, deps: CombatDeps
   return next;
 }
 
+const BLIND_DC = 13;
+const BLIND_RANGE_FT = 30;
+
+/** 致盲术的候选目标：30 尺内的敌对单位。 */
+export function blindTargets(battle: Battle, casterId: string, rangeFt = BLIND_RANGE_FT): Actor[] {
+  const caster = battle.actors.find(item => item.id === casterId);
+  if (!caster) return [];
+  return battle.actors.filter(item => item.side !== caster.side && item.side !== '中立'
+    && item.id !== casterId && item.combat?.status === 'active'
+    && (actorDistance(battle, casterId, item.id) ?? 0) <= rangeFt);
+}
+
+/** 目标回合开始时重复体质豁免，成功即恢复视力。 */
+function blindRecover(battle: Battle, actor: Actor, deps: CombatDeps = {}): void {
+  const state = actor.combat;
+  if (!state || state.blinded === undefined || state.blinded <= 0) return;
+  const save = resolveSave(actor, { actorId: actor.id, ability: 'con', dc: BLIND_DC }, randomOf(deps));
+  if (!save.success) {
+    addLog(battle, `${actorLabel(battle, actor)} 仍然看不见（体质 ${save.natural} → ${save.total}，DC ${BLIND_DC}）。`, deps);
+    return;
+  }
+  delete state.blinded;
+  delete state.blindedBy;
+  state.conditions = state.conditions.filter(condition => condition !== '目盲');
+  addLog(battle, `${actorLabel(battle, actor)} 恢复了视力（体质 ${save.natural} → ${save.total}，DC ${BLIND_DC}）。`, deps);
+}
+
+/** 致盲术：动作 + 专注，30 尺内单体体质豁免，失败目盲 10 轮。 */
+export function castBlindness(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): { battle: Battle; outcome: SaveOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
+  const casterState = combatantOf(caster);
+  if (casterState.status !== 'active') throw new Error('只有在场的单位可以施放致盲术。');
+  const target = actorOf(next, targetId);
+  if (target.id === casterId) throw new Error('致盲术不能对自己施放。');
+  if (target.side === caster.side) throw new Error('致盲术只能影响敌对单位。');
+  const targetState = combatantOf(target);
+  if (targetState.status !== 'active') throw new Error('只能对在场的单位施放致盲术。');
+  const distance = actorDistance(next, casterId, target.id);
+  if (distance !== undefined && distance > BLIND_RANGE_FT) throw new Error(`致盲术的射程是 ${BLIND_RANGE_FT} 尺。`);
+  const blocked = actionBlocker(caster);
+  if (blocked) throw new Error(blocked);
+  if (casterState.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (casterState.concentration && casterState.concentration.spell !== '致盲术') throw new Error('施法者已经在维持其他专注。');
+  casterState.actionUsed = true;
+  casterState.concentration = { spell: '致盲术' };
+  const save = resolveSave(target, { actorId: target.id, ability: 'con', dc: BLIND_DC }, randomOf(deps));
+  if (!save.success) {
+    targetState.blinded = 10;
+    targetState.blindedBy = casterId;
+    if (!targetState.conditions.includes('目盲')) targetState.conditions.push('目盲');
+    addLog(next, `${actorLabel(next, target)} 被致盲（体质 ${save.natural} → ${save.total}，DC ${BLIND_DC}），持续 10 轮。`, deps);
+  } else {
+    addLog(next, `${actorLabel(next, target)} 抵抗了致盲术（体质 ${save.natural} → ${save.total}，DC ${BLIND_DC}）。`, deps);
+  }
+  return { battle: next, outcome: save };
+}
+
 /** 施法者失去专注（或改用别的专注法术）时，立即结束其施加的祝福。 */
 function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps: CombatDeps = {}): void {
   for (const [field, byField, name] of [['blessed', 'blessedBy', '祝福术'], ['hasted', 'hastedBy', '加速术'], ['invisible', 'invisibleBy', '隐形术'], ['slowed', 'slowedBy', '缓慢术'], ['frightened', 'frightenedBy', '恐惧术'], ['barkskin', 'barkskinBy', '树肤术']] as const) {
@@ -1687,6 +1747,15 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
       item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '麻痹');
     }
     addLog(battle, `${reason}，${held.map(item => actorLabel(battle, item)).join('、')} 的定身术结束了。`, deps);
+  }
+  const blindedOnes = battle.actors.filter(item => item.combat?.blindedBy === casterId);
+  if (blindedOnes.length) {
+    for (const item of blindedOnes) {
+      delete item.combat!.blinded;
+      delete item.combat!.blindedBy;
+      item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '目盲');
+    }
+    addLog(battle, `${reason}，${blindedOnes.map(item => actorLabel(battle, item)).join('、')} 的致盲术结束了。`, deps);
   }
   const shaped = battle.actors.filter(item => item.combat?.polymorphedBy === casterId);
   if (shaped.length) {
@@ -2606,6 +2675,15 @@ function resetTurnResources(battle: Battle, actorId: string) {
       addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 的毒素失效了。`, {});
     }
   }
+  if (typeof combat.blinded === 'number') {
+    combat.blinded -= 1;
+    if (combat.blinded <= 0) {
+      delete combat.blinded;
+      delete combat.blindedBy;
+      combat.conditions = combat.conditions.filter(condition => condition !== '目盲');
+      addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 的致盲术结束了。`, {});
+    }
+  }
   if (typeof combat.charmed === 'number') {
     combat.charmed -= 1;
     if (combat.charmed <= 0) {
@@ -2763,6 +2841,7 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   holdRecover(next, actor, deps);
   charmRecover(next, actor, deps);
   fearRecover(next, actor, deps);
+  blindRecover(next, actor, deps);
   if (actor.position) {
     applyHazardAt(next, actor, actor.position.x, actor.position.y, deps, '回合开始');
     applyLavaAt(next, actor, deps, '回合开始');
@@ -4222,6 +4301,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.charmed;
     delete actor.combat.charmedBy;
     delete actor.combat.frightened;
+    delete actor.combat.blinded;
+    delete actor.combat.blindedBy;
     delete actor.combat.frightenedBy;
     delete actor.combat.surprised;
     delete actor.combat.poisoned;

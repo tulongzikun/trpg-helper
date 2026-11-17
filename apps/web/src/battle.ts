@@ -141,6 +141,10 @@ export type CombatantState = {
   charmed?: number;
   /** 施加魅惑术的施法者 id。 */
   charmedBy?: string;
+  /** 致盲术：剩余轮数（目盲：攻击劣势，被攻击时对方优势）。 */
+  blinded?: number;
+  /** 施加致盲术的施法者 id。 */
+  blindedBy?: string;
   /** 恐惧术：剩余轮数（无法靠近恐惧源，对其攻击劣势）。 */
   frightened?: number;
   /** 施加恐惧术的施法者 id。 */
@@ -324,6 +328,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.slowedBy !== undefined && (typeof value.slowedBy !== 'string' || value.slowedBy.length === 0 || value.slowedBy.length > 64)) return false;
   if (value.charmed !== undefined && !isInteger(value.charmed, 0, 100)) return false;
   if (value.charmedBy !== undefined && (typeof value.charmedBy !== 'string' || value.charmedBy.length === 0 || value.charmedBy.length > 64)) return false;
+  if (value.blinded !== undefined && !isInteger(value.blinded, 0, 100)) return false;
+  if (value.blindedBy !== undefined && (typeof value.blindedBy !== 'string' || value.blindedBy.length === 0 || value.blindedBy.length > 64)) return false;
   if (value.frightened !== undefined && !isInteger(value.frightened, 0, 100)) return false;
   if (value.frightenedBy !== undefined && (typeof value.frightenedBy !== 'string' || value.frightenedBy.length < 1 || value.frightenedBy.length > 64)) return false; if (value.surprised !== undefined && typeof value.surprised !== 'boolean') return false;
   if (value.aimed !== undefined && typeof value.aimed !== 'boolean') return false;

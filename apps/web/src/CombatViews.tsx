@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
-import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
@@ -63,6 +63,7 @@ export type CombatHandlers = {
   onSlow: (actorId: string, targetIds: string[]) => void;
   onCharm: (actorId: string, targetId: string) => void;
   onFear: (actorId: string, targetIds: string[]) => void;
+  onBlind: (actorId: string, targetId: string) => void;
   onSuppress: (actorId: string, targetId: string) => void;
   onMount: (actorId: string, mountId: string) => void;
   onDismount: (actorId: string) => void;
@@ -336,6 +337,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       {state.status === 'active' && !state.actionUsed && !state.concentration && hostileTargets(battle, actor.id, 60).length ? <button type="button" className="button-secondary" onClick={() => handlers.onPolymorph(actor.id, hostileTargets(battle, actor.id, 60)[0]?.id ?? '')} aria-label="变形术">变形术（动作，DC 13 感知，60 尺内敌人）</button> : null}
       {state.polymorphed ? <span className="cmb-hint">变形术：剩余 {state.polymorphed} 轮（失能，AC 10，速度 25 尺）</span> : null}
       {healTargets(battle, actor.id).length ? <button type="button" className="button-secondary" onClick={() => handlers.onMassHeal(actor.id)} aria-label="群体治疗术">群体治疗术（附赠动作，60 尺内至多 6 个友方，1d4+施法属性）</button> : null}
+      {blindTargets(battle, actor.id, 30).length ? <button type="button" className="button-secondary" onClick={() => handlers.onBlind(actor.id, blindTargets(battle, actor.id, 30)[0]?.id ?? '')} aria-label="致盲术">致盲术（动作，DC 13 体质，30 尺内敌人）</button> : null}
+      {state.blinded ? <span className="cmb-hint">致盲术：剩余 {state.blinded} 轮（目盲：攻击劣势，被攻击时对方优势）</span> : null}
       {aidTargets(battle, actor.id).length ? <button type="button" className="button-secondary" onClick={() => handlers.onAid(actor.id)} aria-label="援助术">援助术（动作，30 尺内至多 3 个友方，生命上限 +5）</button> : null}
       {state.aided ? <span className="cmb-hint">援助术：生命上限 +{state.aided}</span> : null}
       {barkskinTargets(battle, actor.id).length ? <button type="button" className="button-secondary" onClick={() => handlers.onBarkskin(actor.id, barkskinTargets(battle, actor.id)[0]?.id ?? actor.id)} aria-label="树肤术">树肤术（动作，专注，AC 不低于 17）</button> : null}
