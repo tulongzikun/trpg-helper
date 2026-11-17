@@ -1,4 +1,4 @@
-﻿import { abilityModifier, proficiencyBonus } from './characterRules.ts';
+import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
@@ -985,8 +985,40 @@ export function grapple(battle: Battle, options: ContestOptions, deps: CombatDep
   if (outcome.success) {
     if (!target.combat) throw new Error('目标不在战斗中。');
     if (!target.combat.conditions.includes('擒抱')) target.combat.conditions.push('擒抱');
+    target.combat.grappledBy = attacker.id;
   }
   return { battle: next, outcome };
+}
+
+export function escapeGrapple(battle: Battle, actorId: string, deps: CombatDeps = {}): { battle: Battle; outcome: ContestOutcome } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以挣脱擒抱。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  const state = combatantOf(actor);
+  if (!state.conditions.includes('擒抱')) throw new Error('该单位没有被擒抱。');
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  const grappler = state.grappledBy ? next.actors.find(item => item.id === state.grappledBy) : undefined;
+  const grapplerLevel = grappler?.characterSnapshot?.sheet?.level ?? 1;
+  const grapplerAbilities = grappler?.characterSnapshot?.sheet?.abilities ?? grappler?.template.abilities;
+  const dc = grappler ? 8 + abilityModifier(grapplerAbilities?.str ?? 10) + proficiencyBonus(grapplerLevel) : 10;
+  const random = deps.random ?? Math.random;
+  const bonus = Math.max(abilityCheckBonus(actor, 'str', '运动'), abilityCheckBonus(actor, 'dex', '体操'));
+  const natural = 1 + Math.floor(random() * 20);
+  const total = natural + bonus;
+  const success = natural === 20 || (natural !== 1 && total >= dc);
+  state.actionUsed = true;
+  if (success) {
+    state.conditions = state.conditions.filter(condition => condition !== '擒抱');
+    delete state.grappledBy;
+  }
+  addLog(next, success
+    ? `${actorLabel(next, actor)} 挣脱了擒抱（d20 ${natural}+${bonus}=${total} 对 DC ${dc}）。`
+    : `${actorLabel(next, actor)} 未能挣脱擒抱（d20 ${natural}+${bonus}=${total} 对 DC ${dc}）。`, deps,
+    '力量（运动）或敏捷（体操）检定对抗擒抱者的力量豁免 DC');
+  return { battle: next, outcome: { attackerTotal: total, targetTotal: dc, attackerNatural: natural, targetNatural: 0, success } };
 }
 
 export function shove(battle: Battle, options: ContestOptions & { effect: ShoveEffect }, deps: CombatDeps = {}): { battle: Battle; outcome: ContestOutcome } {

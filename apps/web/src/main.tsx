@@ -8,7 +8,7 @@ import { Characters } from './CharacterViews';
 import type { CharacterSnapshot } from './characters';
 import { addCharacter, addMonsters, emptyStore, readBattles, removeActor, writeBattles, type BattleStore, type Side } from './battle';
 import { importBattle } from './battleTransfer';
-import { addOngoingEffect, areaSave, attack, attackSequence, currentActorId, offhandAttack, grapple, shove, addReinforcement, configureGrid, declineOpportunity, standUp, disengage, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
+import { addOngoingEffect, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, declineOpportunity, standUp, disengage, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -40,6 +40,7 @@ function App() {
   onOffhand:options=>tryBattle(()=>changeBattle(battleId,battle=>offhandAttack(battle,options).battle)),
   onGrapple:targetId=>tryBattle(()=>changeBattle(battleId,battle=>grapple(battle,{attackerId:currentActorId(battle)??'',targetId}).battle)),
   onShove:(targetId,effect)=>tryBattle(()=>changeBattle(battleId,battle=>shove(battle,{attackerId:currentActorId(battle)??'',targetId,effect}).battle)),
+  onEscapeGrapple:actorId=>tryBattle(()=>changeBattle(battleId,battle=>escapeGrapple(battle,actorId).battle)),
   onSave:options=>tryBattle(()=>changeBattle(battleId,battle=>savingThrow(battle,options).battle)),
   onAreaSave:options=>tryBattle(()=>changeBattle(battleId,battle=>areaSave(battle,options).battle)),
   onConcentration:(actorId,spell)=>tryBattle(()=>changeBattle(battleId,battle=>spell?startConcentration(battle,actorId,spell):endConcentration(battle,actorId))),
@@ -81,6 +82,7 @@ function App() {
 }
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+
 
 
 

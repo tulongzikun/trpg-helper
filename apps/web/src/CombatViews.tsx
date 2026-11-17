@@ -24,6 +24,7 @@ export type CombatHandlers = {
   onOffhand: (options: AttackOptions) => void;
   onGrapple: (targetId: string) => void;
   onShove: (targetId: string, effect: 'prone' | 'push') => void;
+  onEscapeGrapple: (actorId: string) => void;
   onSave: (options: SaveOptions) => void;
   onAreaSave: (options: AreaSaveOptions) => void;
   onConcentration: (actorId: string, spell: string | null) => void;
@@ -153,6 +154,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <AiPanel key={`ai-${actor.id}`} battle={battle} actor={actor} onApply={setSuggestion} />
     <AttackForm key={actor.id} battle={battle} attacker={actor} suggestion={suggestion} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} onOffhand={handlers.onOffhand} />
         <GrapplePanel key={`grapple-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
+    {actor.combat?.conditions.includes('擒抱') ? <div className="cmb-attack-actions"><span className="cmb-hint">被擒抱：可用一个动作挣脱（力量／敏捷对抗擒抱者的豁免 DC）。</span><button className="button-secondary" type="button" onClick={() => handlers.onEscapeGrapple(actor.id)} aria-label="挣脱擒抱">挣脱擒抱</button></div> : null}
     <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
     <OngoingPanel key={`ongoing-${actor.id}`} battle={battle} handlers={handlers} />
     <SummonPanel key={`summon-${actor.id}`} battle={battle} handlers={handlers} />
@@ -716,6 +718,7 @@ export function ReinforcePanel({ battle, cards, onReinforce }: { battle: Battle;
     <div className="cmb-reinforce-actions"><button type="submit" className="button-secondary">加入增援</button>{message && <span className="cmb-muted">{message}</span>}</div>
   </form>;
 }
+
 
 
 

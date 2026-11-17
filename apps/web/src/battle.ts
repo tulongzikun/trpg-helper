@@ -1,4 +1,4 @@
-import type { Card, Block, Entry } from './catalog';
+﻿import type { Card, Block, Entry } from './catalog';
 import type { Ability, CharacterSnapshot } from './characters';
 
 export type Side = '友方' | '敌方' | '中立';
@@ -45,6 +45,8 @@ export type CombatantState = {
   concentration?: Concentration;
   /** 本回合是否已撤离（移动不引发借机攻击）。 */
   disengaged?: boolean;
+  /** 擒抱者 id，用于计算挣脱 DC。 */
+  grappledBy?: string;
   /** 准备动作：已经准备好了什么，以及触发的条件。 */
   ready?: ReadyAction;
 };
@@ -110,6 +112,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.actionSurgeUsed !== undefined && !isInteger(value.actionSurgeUsed, 0, 2)) return false;
   if (value.secondWindUsed !== undefined && typeof value.secondWindUsed !== 'boolean') return false;
   if (value.disengaged !== undefined && typeof value.disengaged !== 'boolean') return false;
+  if (value.grappledBy !== undefined && (typeof value.grappledBy !== 'string' || value.grappledBy.length === 0 || value.grappledBy.length > 64)) return false;
   if (value.ready !== undefined && !isReadyAction(value.ready)) return false;
   if (value.ongoing !== undefined && (!Array.isArray(value.ongoing) || !value.ongoing.every(isOngoingEffect))) return false;
   if (value.concentration !== undefined && !(isObject(value.concentration) && typeof value.concentration.spell === 'string' && value.concentration.spell.length > 0)) return false;
@@ -242,4 +245,5 @@ export function replaceBattle(store: BattleStore, battle: Battle): BattleStore {
   result.battles[index] = battle;
   return result;
 }
+
 
