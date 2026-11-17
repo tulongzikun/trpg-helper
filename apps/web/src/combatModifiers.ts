@@ -41,8 +41,8 @@ const summarize = (advantages: string[], disadvantages: string[]): ModeAdjustmen
   return { mode, notes };
 };
 
-/** 攻击者自身状态带来的检定修正。 */
-export function attackerAdjustment(actor: Actor): ModeAdjustment {
+/** 攻击者自身状态带来的检定修正；擒抱的劣势对擒抱者本人不成立。 */
+export function attackerAdjustment(actor: Actor, target?: Actor): ModeAdjustment {
   const advantages: string[] = [];
   const disadvantages: string[] = [];
   if (conditionOf(actor, '隐形')) advantages.push('隐形');
@@ -50,7 +50,9 @@ export function attackerAdjustment(actor: Actor): ModeAdjustment {
   if (conditionOf(actor, '中毒')) disadvantages.push('中毒');
   if (conditionOf(actor, '恐慌')) disadvantages.push('恐慌（能看到恐惧源）');
   if (conditionOf(actor, '束缚')) disadvantages.push('束缚');
-  if (conditionOf(actor, '擒抱')) disadvantages.push('擒抱（目标不是擒抱者）');
+  if (conditionOf(actor, '擒抱') && actor.combat?.grappledBy !== target?.id) {
+    disadvantages.push(target ? '擒抱（目标不是擒抱者）' : '擒抱');
+  }
   if (conditionOf(actor, '倒地')) disadvantages.push('倒地');
   return summarize(advantages, disadvantages);
 }
