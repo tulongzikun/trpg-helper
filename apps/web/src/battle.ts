@@ -173,6 +173,8 @@ export type CombatStats = {
   misses: number;
   damageDealt: number;
   damageTaken: number;
+  /** 承受伤害按类型累计（类型 → 点数）。 */
+  damageByType?: Record<string, number>;
   healing: number;
 };
 export type CombatLogEntry = { id: string; round: number; text: string; detail?: string };

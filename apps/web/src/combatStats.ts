@@ -12,6 +12,7 @@ export type StatRow = {
   accuracy: number;
   damageDealt: number;
   damageTaken: number;
+  damageByType: Record<string, number>;
   healing: number;
 };
 
@@ -24,6 +25,7 @@ export type BattleStatistics = {
     crits: number;
     damageDealt: number;
     damageTaken: number;
+    damageByType: Record<string, number>;
     healing: number;
   };
 };
@@ -45,6 +47,7 @@ export function battleStatistics(battle: Battle): BattleStatistics {
       accuracy: attacks === 0 ? 0 : Math.round((hits / attacks) * 100) / 100,
       damageDealt: stats?.damageDealt ?? 0,
       damageTaken: stats?.damageTaken ?? 0,
+      damageByType: { ...(stats?.damageByType ?? {}) },
       healing: stats?.healing ?? 0,
     };
   });
@@ -56,9 +59,10 @@ export function battleStatistics(battle: Battle): BattleStatistics {
       crits: sum.crits + row.crits,
       damageDealt: sum.damageDealt + row.damageDealt,
       damageTaken: sum.damageTaken + row.damageTaken,
+      damageByType: mergeType(sum.damageByType, row.damageByType),
       healing: sum.healing + row.healing,
     }),
-    { attacks: 0, hits: 0, crits: 0, damageDealt: 0, damageTaken: 0, healing: 0 },
+    { attacks: 0, hits: 0, crits: 0, damageDealt: 0, damageTaken: 0, damageByType: {}, healing: 0 },
   );
   return { round: battle.combat?.round ?? 0, rows, totals };
 }
@@ -75,10 +79,11 @@ export function sideStatistics(battle: Battle, side: Side): BattleStatistics['to
         crits: sum.crits + (stats?.crits ?? 0),
         damageDealt: sum.damageDealt + (stats?.damageDealt ?? 0),
         damageTaken: sum.damageTaken + (stats?.damageTaken ?? 0),
+        damageByType: mergeType(sum.damageByType, stats?.damageByType),
         healing: sum.healing + (stats?.healing ?? 0),
       };
     },
-    { attacks: 0, hits: 0, crits: 0, damageDealt: 0, damageTaken: 0, healing: 0 },
+    { attacks: 0, hits: 0, crits: 0, damageDealt: 0, damageTaken: 0, damageByType: {}, healing: 0 },
   );
 }
 
@@ -93,4 +98,35 @@ export function statsText(battle: Battle): string {
   parts.push(`造成 ${totals.damageDealt} 点伤害`);
   if (totals.healing) parts.push(`治疗 ${totals.healing} 点`);
   return parts.join(' · ');
+}
+
+/** 合并两个「伤害类型 → 点数」表。 */
+function mergeType(into: Record<string, number>, add?: Record<string, number>): Record<string, number> {
+  const merged: Record<string, number> = { ...into };
+  for (const [type, amount] of Object.entries(add ?? {})) merged[type] = (merged[type] ?? 0) + amount;
+  return merged;
+}
+
+export type DamageTypeShare = { type: string; amount: number; share: number };
+
+/** 承受伤害按类型占比，降序；占比为 0–1 并保留两位小数。 */
+export function damageTypeShares(battle: Battle, limit = 4): DamageTypeShare[] {
+  const totals = battleStatistics(battle).totals;
+  const entries = Object.entries(totals.damageByType).filter(([, amount]) => amount > 0);
+  const sum = entries.reduce((acc, [, amount]) => acc + amount, 0);
+  if (sum === 0) return [];
+  const shares = entries
+    .map(([type, amount]) => ({ type, amount, share: Math.round((amount / sum) * 100) / 100 }))
+    .sort((left, right) => right.amount - left.amount || left.type.localeCompare(right.type, 'zh-Hans-CN'));
+  if (shares.length <= limit) return shares;
+  const head = shares.slice(0, limit - 1);
+  const rest = shares.slice(limit - 1).reduce((acc, item) => acc + item.amount, 0);
+  return [...head, { type: '其他', amount: rest, share: Math.round((rest / sum) * 100) / 100 }];
+}
+
+/** 一句话伤害构成，例如「伤害构成：挥砍 42（50%）· 火焰 30（36%）」。 */
+export function typeText(battle: Battle, limit = 3): string {
+  const shares = damageTypeShares(battle, limit);
+  if (!shares.length) return '伤害构成：尚无伤害记录。';
+  return `伤害构成：${shares.map(item => `${item.type} ${item.amount}（${Math.round(item.share * 100)}%）`).join(' · ')}`;
 }

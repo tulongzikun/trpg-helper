@@ -20,7 +20,7 @@ import { replayFrames } from './combatReplay';
 import { spellAreaTargets } from './combatSpells';
 import { mountCandidates } from './combat';
 import { difficultyText } from './encounterDifficulty';
-import { statsText } from './combatStats';
+import { statsText, typeText } from './combatStats';
 import { settlementText } from './combatSettlement';
 
 const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
@@ -187,7 +187,7 @@ export function CombatToolbar({ battle, onEndTurn, onUndo, onReset, onTerrain, o
   if (!combat) return null;
   const current = currentActor(battle);
   return <div className="cmb-toolbar">
-    <div className="cmb-toolbar-info"><strong>第 {combat.round} 轮</strong><span>{current ? `当前：${current.name}` : '等待行动'}</span><span className="cmb-hint">{statsText(battle)}</span></div>
+    <div className="cmb-toolbar-info"><strong>第 {combat.round} 轮</strong><span>{current ? `当前：${current.name}` : '等待行动'}</span><span className="cmb-hint">{statsText(battle)}</span><span className="cmb-hint">{typeText(battle)}</span></div>
     <div className="cmb-toolbar-actions">
       <button className="button-primary" type="button" onClick={onEndTurn}>结束回合</button>
       <button className="button-secondary" type="button" onClick={onUndo} disabled={!combat.undo.length}>撤销上一步</button>

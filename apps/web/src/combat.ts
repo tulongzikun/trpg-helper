@@ -2853,7 +2853,9 @@ function applyDamageToActor(actor: Actor, amount: number, type: DamageType, batt
   const defense = defenseOf(actor, type);
   const terrain = terrainDefense(battle, type);
   const adjusted = Math.floor(amount * defense.multiplier * terrain.multiplier);
-  statsOf(state).damageTaken += adjusted;
+  const takenStats = statsOf(state);
+  takenStats.damageTaken += adjusted;
+  if (adjusted > 0) takenStats.damageByType = { ...(takenStats.damageByType ?? {}), [type]: (takenStats.damageByType?.[type] ?? 0) + adjusted };
   const absorbed = Math.min(state.tempHp, adjusted);
   state.tempHp -= absorbed;
   const remaining = adjusted - absorbed;
