@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, SaveOptions, OngoingInput } from './combat';
@@ -330,6 +330,9 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence }
   const [distance, setDistance] = useState(String(first?.distanceFt ?? 5));
   const [cover, setCover] = useState<CoverType>('无');
   const [autoCover, setAutoCover] = useState(true);
+  const [extraDamage, setExtraDamage] = useState('');
+  const [extraType, setExtraType] = useState<DamageType | '无'>('无');
+  const [extraCritical, setExtraCritical] = useState(true);
   const [attacks, setAttacks] = useState('1');
   const [message, setMessage] = useState('');
   useEffect(() => {
@@ -363,11 +366,14 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence }
     if (!/^\s*\d{1,2}\s*d\s*\d{1,3}\s*([+-]\s*\d{1,3})?\s*$/i.test(damage)) { setMessage('伤害骰格式无效，请使用如 2d6+3 的写法。'); return; }
     const distanceFt = Number(distance);
     if (!Number.isInteger(distanceFt) || distanceFt < 0 || distanceFt > 600) { setMessage('距离须为 0 至 600 尺的整数。'); return; }
+    const extra = extraDamage.trim();
+    if (extra && !/^\s*\d{1,2}\s*d\s*\d{1,3}\s*([+-]\s*\d{1,3})?\s*$/i.test(extra)) { setMessage('额外伤害骰格式无效，请使用如 1d6 的写法。'); return; }
+    if (extra && extraType === '无') { setMessage('有额外伤害时请选择它的伤害类型。'); return; }
     const count = Number(attacks);
     if (!Number.isInteger(count) || count < 1 || count > maxAttacks) { setMessage(`本回合的攻击次数须为 1 至 ${maxAttacks} 次。`); return; }
     setMessage('');
     const reachFt = range === 'melee' ? sources.find(item => item.id === sourceId)?.distanceFt : undefined;
-    const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count, ...(reachFt === undefined ? {} : { reachFt }), ...(cover === '无' ? {} : { cover }), ...(autoCover ? { autoCover: true } : {}) };
+    const options: AttackOptions = { attackerId: attacker.id, targetId: target?.id ?? targetId, attackBonus, damageExpression: damage, damageType: type, mode, cost, range, distanceFt, attacks: count, ...(reachFt === undefined ? {} : { reachFt }), ...(cover === '无' ? {} : { cover }), ...(autoCover ? { autoCover: true } : {}), ...(extra ? { extraDamageExpression: extra, extraDamageType: extraType === '无' ? undefined : extraType, extraDamageCritical: extraCritical } : {}) };
     if (count > 1) onAttackSequence(options); else onAttack(options);
   };
   return <form className="cmb-attack" onSubmit={submit}>
@@ -382,6 +388,9 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence }
       <label>距离（尺）<input type="number" min={0} max={600} step={5} value={distance} onChange={event => setDistance(event.target.value)} aria-label="与目标距离" /></label>
       <label>目标掩体<select value={cover} onChange={event => setCover(event.target.value as CoverType)} aria-label="目标掩体">{coverTypes.map(item => <option key={item}>{item}</option>)}</select></label>
       <label className="cmb-check"><input type="checkbox" checked={autoCover} onChange={event => setAutoCover(event.target.checked)} aria-label="自动判定掩体" />按墙体自动判定掩体</label>
+      <label>额外伤害<input value={extraDamage} onChange={event => setExtraDamage(event.target.value)} aria-label="额外伤害骰" placeholder="如 1d6（可留空）" /></label>
+      <label>额外伤害类型<select value={extraType} onChange={event => setExtraType(event.target.value as DamageType | '无')} aria-label="额外伤害类型"><option value="无">无</option>{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
+      <label className="cmb-check"><input type="checkbox" checked={extraCritical} onChange={event => setExtraCritical(event.target.checked)} aria-label="额外伤害随重击翻倍" />额外伤害随重击翻倍</label>
       <label>攻击次数<input type="number" min={1} max={maxAttacks} step={1} value={attacks} onChange={event => setAttacks(event.target.value)} aria-label="攻击次数" title={`额外攻击：本回合最多 ${maxAttacks} 次`} /></label>
       <label>检定<select value={mode} onChange={event => setMode(event.target.value as AttackMode)} aria-label="检定方式"><option value="normal">正常</option><option value="advantage">优势</option><option value="disadvantage">劣势</option></select></label>
       <label>消耗<select value={cost} onChange={event => setCost(event.target.value as AttackCost)} aria-label="消耗动作"><option value="action">动作</option><option value="bonus">附赠动作</option><option value="reaction">反应</option></select></label>
@@ -610,6 +619,7 @@ export function BattleIo({ battle, onImport }: { battle: Battle; onImport: (text
     </details>
   </section>;
 }
+
 
 
 

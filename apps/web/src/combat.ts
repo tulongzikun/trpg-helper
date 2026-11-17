@@ -32,6 +32,11 @@ export type AttackOptions = {
   autoCover?: boolean;
   /** 借机攻击等场合：跳过方格距离与触及校验（触发时机在离开触及范围的瞬间）。 */
   ignoreDistanceCheck?: boolean;
+  /** 附带的额外伤害骰（如猎人印记、至圣斩），随重击一起翻倍。 */
+  extraDamageExpression?: string;
+  extraDamageType?: DamageType;
+  /** 额外伤害骰是否随重击翻倍，默认是（如至圣斩）；猎人印记等亦然。 */
+  extraDamageCritical?: boolean;
   /** 一次攻击动作内的攻击次数，默认 1，不能超过该单位的额外攻击次数。 */
   attacks?: number;
 };
@@ -48,6 +53,8 @@ export type AttackOutcome = {
   defense: string;
   mode: AttackMode;
   notes: string[];
+  /** 其中来自额外伤害骰（如猎人印记）的部分。 */
+  extraDamage: number;
 };
 export type DamageOutcome = { damage: number; tempAbsorbed: number; status: CombatStatus };
 export type DeathSaveOutcome = { natural: number; successes: number; failures: number; status: CombatStatus; revived: boolean };
@@ -700,6 +707,11 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (blocker) throw new Error(blocker);
   if (target.combat?.status === 'dead') throw new Error('目标已经死亡。');
   parseDice(options.damageExpression);
+  if (options.extraDamageExpression !== undefined) {
+    if (!options.extraDamageExpression.trim()) throw new Error('请填写额外伤害的骰式。');
+    parseDice(options.extraDamageExpression);
+    if (!options.extraDamageType || !damageTypes.includes(options.extraDamageType)) throw new Error('请选择额外伤害的类型。');
+  }
   if (!Number.isInteger(options.attackBonus) || options.attackBonus < -20 || options.attackBonus > 40) throw new Error('攻击加值须为 -20 至 40 的整数。');
   if (!damageTypes.includes(options.damageType)) throw new Error('请选择有效的伤害类型。');
   const cost: AttackCost = options.cost ?? 'action';
@@ -748,6 +760,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   let status: CombatStatus = combatantOf(target).status;
   let defense = '';
   let concentration = '';
+  let extraDamage = 0;
+  let extraNote = '';
   if (hit) {
     const rolled = rollDamage(options.damageExpression, random, critical);
     const defenseResult = defenseOf(target, options.damageType);
@@ -756,6 +770,16 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     damage = result.damage;
     tempAbsorbed = result.tempAbsorbed;
     status = result.status;
+    if (options.extraDamageExpression && options.extraDamageType) {
+      const extraRoll = rollDamage(options.extraDamageExpression, random, critical && options.extraDamageCritical !== false);
+      const extraDefense = defenseOf(target, options.extraDamageType);
+      const extraResult = applyDamageToActor(target, extraRoll.total, options.extraDamageType);
+      extraDamage = extraResult.damage;
+      damage += extraDamage;
+      tempAbsorbed += extraResult.tempAbsorbed;
+      status = extraResult.status;
+      extraNote = `额外 ${extraRoll.total} 点${options.extraDamageType}伤害${extraDefense.label ? `（${extraDefense.label}）` : ''}`;
+    }
     concentration = concentrationCheck(battle, target, damage, random, deps)?.text ?? '';
   }
   if (consumeCost) {
@@ -772,6 +796,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     context.cover ? coverNote(context.cover) : '',
     hit ? (critical ? '重击' : '命中') : (natural === 1 ? '大失败' : '未命中'),
     damageText,
+    extraNote,
     defense,
     `目标剩余 ${target.currentHp}/${target.maxHp}`,
     tempAbsorbed ? `临时生命吸收 ${tempAbsorbed}` : '',
@@ -780,8 +805,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     concentration,
     notes.join('；'),
   ].filter(Boolean).join(' · ');
-  addLog(battle, `${actorLabel(battle, attacker)} 攻击 ${actorLabel(battle, target)}：${hit ? `命中，造成 ${damage} 点${options.damageType}伤害` : '未命中'}。`, deps, detail);
-  return { natural, total, targetAc, hit, critical, damage, tempAbsorbed, targetHp: target.currentHp, status, defense, mode, notes };
+  addLog(battle, `${actorLabel(battle, attacker)} 攻击 ${actorLabel(battle, target)}：${hit ? `命中，造成 ${damage} 点伤害${extraDamage > 0 ? `（含额外 ${extraDamage} 点${options.extraDamageType}伤害）` : ''}` : '未命中'}。`, deps, detail);
+  return { natural, total, targetAc, hit, critical, damage, tempAbsorbed, targetHp: target.currentHp, status, defense, mode, notes, extraDamage };
 }
 
 export function attack(battle: Battle, options: AttackOptions, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
