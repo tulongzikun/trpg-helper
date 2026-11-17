@@ -354,6 +354,7 @@ function exhaustionSpeedPenalty(actor: Actor): number {
 }
 /** 本回合可用的移动力：基础速度加上疾跑带来的额外移动力，并扣除减速与力竭。 */
 function movementAllowance(actor: Actor): number {
+  if (actor.combat?.grappledBy) return 0;
   const mountSpeed = actor.combat?.mountSpeedFt ?? 0;
   const mountBase = mountSpeed > actorSpeed(actor) ? mountSpeed : actorSpeed(actor);
   const base = actor.combat?.hasted ? mountBase * 2 : mountBase;
@@ -2622,7 +2623,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   requireCombat(next);
   if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以移动。');
   const state = combatantOf(actor);
-  if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法移动。');
+  if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法移动，需先挣脱擒抱。');
   if (actor.combat?.conditions.includes('束缚')) throw new Error('被蛛网束缚的单位无法移动，需先用动作挣脱。');
   if (actor.combat?.conditions.includes('麻痹')) throw new Error('处于麻痹状态的单位无法移动。');
   const fearSource = actor.combat?.frightenedBy ? next.actors.find(item => item.id === actor.combat!.frightenedBy) : undefined;
@@ -3424,7 +3425,7 @@ export function spendMovement(battle: Battle, actorId: string, feet: number, dep
   if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以移动。');
   const actor = actorOf(next, actorId);
   const state = combatantOf(actor);
-  if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法移动。');
+  if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法移动，需先挣脱擒抱。');
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
   const speed = movementAllowance(actor);
