@@ -1000,6 +1000,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   let extraNote = '';
   let masteryNote = '';
   const damageExpression = effectiveDamageExpression(attacker, options);
+  const weaponSource = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
   if (hit) {
     const rolled = rollDamage(damageExpression, random, critical);
     const defenseResult = defenseOf(target, options.damageType);
@@ -1019,7 +1020,6 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
       extraNote = `额外 ${extraRoll.total} 点${options.extraDamageType}伤害${extraDefense.label ? `（${extraDefense.label}）` : ''}`;
     }
     concentration = concentrationCheck(battle, target, damage, random, deps)?.text ?? '';
-    const weaponSource = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
     const mastery = weaponSource?.mastery;
     if (mastery && combatantOf(target).status === 'active') {
       const targetState = combatantOf(target);
@@ -1063,13 +1063,24 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
       }
     }
   }
+  if (!hit && weaponSource?.mastery === '擦伤' && combatantOf(target).status === 'active') {
+    const abilities = attacker.characterSnapshot?.sheet.abilities ?? attacker.template.abilities ?? { str: 10 };
+    const graze = Math.max(0, abilityModifier(abilities.str ?? 10));
+    if (graze > 0) {
+      const result = applyDamageToActor(target, graze, options.damageType);
+      damage = result.damage;
+      tempAbsorbed = result.tempAbsorbed;
+      status = result.status;
+      masteryNote = `精通·擦伤：未命中仍造成 ${damage} 点${options.damageType}伤害`;
+    }
+  }
   if (consumeCost) {
     if (context.cost === 'action') state.actionUsed = true;
     if (context.cost === 'bonus') state.bonusUsed = true;
     if (context.cost === 'reaction') state.reactionUsed = true;
   }
   const rollText = mode === 'normal' ? `d20(${natural})` : `${mode === 'advantage' ? '优势' : '劣势'} d20(${first},${second})→${natural}`;
-  const damageText = hit ? `${damage} 点${options.damageType}伤害` : '未造成伤害';
+  const damageText = hit ? `${damage} 点${options.damageType}伤害` : damage > 0 ? `${damage} 点${options.damageType}伤害（擦伤）` : '未造成伤害';
   const detail = [
     `${actorLabel(battle, attacker)} → ${actorLabel(battle, target)}`,
     `攻击检定 ${rollText}${options.attackBonus >= 0 ? '+' : ''}${options.attackBonus} = ${total} vs AC ${targetAc}`,
