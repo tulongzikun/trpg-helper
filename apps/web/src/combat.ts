@@ -1,7 +1,7 @@
 import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
-import type { Terrain } from './battle.ts';
+import type { Terrain, Weather } from './battle.ts';
 import type { Ability } from './characters';
 import type { Actor, Aura, Battle, CombatLogEntry, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side, AttackPreset } from './battle';
 import type { Card } from './catalog';
@@ -1272,6 +1272,50 @@ export function castDispelMagic(battle: Battle, casterId: string, targetId: stri
   return { battle: next, outcome: { success: true, natural, total, dc: DISPEL_DC, dispelled } };
 }
 
+/** 设置天气：传 null 表示放晴。暴雨让远程攻击劣势且火焰伤害减半；强风让远程攻击劣势，并会吹落飞行单位。 */
+export function setWeather(battle: Battle, weather: Weather | null, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  if (weather === null) {
+    if (!next.weather) throw new Error('当前没有特殊天气。');
+    delete next.weather;
+    addLog(next, '天气放晴了。', deps);
+    return next;
+  }
+  if (weather !== 'rain' && weather !== 'wind') throw new Error('请选择有效的天气。');
+  next.weather = weather;
+  addLog(next, weather === 'rain'
+    ? '天气转为暴雨：远程攻击检定劣势，火焰伤害减半。'
+    : '天气转为强风：远程攻击检定劣势，飞行单位每回合开始时需通过 DC 10 力量豁免，否则被吹落。', deps);
+  return next;
+}
+
+/** 强风：飞行单位回合开始时做 DC 10 力量豁免，失败则失去飞行并按坠落结算。 */
+function windGust(battle: Battle, actor: Actor, deps: CombatDeps): Battle {
+  if (battle.weather !== 'wind') return battle;
+  const state = actor.combat;
+  if (!state || state.flying !== true || state.status !== 'active') return battle;
+  const save = resolveSave(actor, { actorId: actor.id, ability: 'str', dc: 10, bonus: defaultSaveBonus(actor, 'str') + auraBonus(battle, actor.id, 'saves') }, randomOf(deps));
+  if (save.success) {
+    addLog(battle, `${actorLabel(battle, actor)} 在强风中稳住身形（力量 ${save.natural} → ${save.total}，DC 10）。`, deps);
+    return battle;
+  }
+  const feet = actor.elevation ?? 0;
+  delete state.flying;
+  if (feet < 10) {
+    delete actor.elevation;
+    addLog(battle, `${actorLabel(battle, actor)} 被强风压回地面，失去了飞行。`, deps);
+    return battle;
+  }
+  const fall = applyFallDamage(battle, actor.id, feet, deps);
+  const fallen = fall.battle.actors.find(item => item.id === actor.id);
+  if (fallen) {
+    delete fallen.elevation;
+    if (fallen.combat) fallen.combat.flying = false;
+    addLog(fall.battle, `${actorLabel(fall.battle, fallen)} 在强风中被吹落，从 ${feet} 尺坠落（${fall.expression ?? '0'}）。`, deps);
+  }
+  return fall.battle;
+}
+
 const POISON_DC = 13;
 
 /**
@@ -2398,6 +2442,7 @@ function defenseOf(actor: Actor, type: DamageType): { multiplier: number; label:
 }
 function terrainDefense(battle: Battle | undefined, type: DamageType): { multiplier: number; label: string } {
   if (battle?.terrain === 'underwater' && type === '火焰') return { multiplier: 0.5, label: '水下：火焰抗性' };
+  if (battle?.weather === 'rain' && type === '火焰') return { multiplier: 0.5, label: '暴雨：火焰抗性' };
   return { multiplier: 1, label: '' };
 }
 function applyDamageToActor(actor: Actor, amount: number, type: DamageType, battle?: Battle, deps: CombatDeps = {}): DamageOutcome {
@@ -2917,8 +2962,9 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const targetFog = inFog(target);
   const fogAdjustment: ModeAdjustment | null = attackerFog !== targetFog ? { mode: 'disadvantage', notes: ['云雾遮蔽：攻击检定劣势'] } : null;
   const darknessAdjustment: ModeAdjustment | null = inDarkness(battle, attacker.id) !== inDarkness(battle, target.id) ? { mode: 'disadvantage', notes: ['魔法黑暗：看不清目标'] } : null;
+  const weatherAdjustment: ModeAdjustment | null = battle.weather && context.range === 'ranged' ? { mode: 'disadvantage', notes: [battle.weather === 'rain' ? '暴雨：远程攻击检定劣势' : '强风：远程攻击检定劣势'] } : null;
   const invisibleAdjustment: ModeAdjustment | null = invisibleAttacker ? { mode: 'advantage', notes: ['攻击者处于隐形：攻击检定优势'] } : invisibleTarget ? { mode: 'disadvantage', notes: ['目标处于隐形：攻击检定劣势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(darknessAdjustment ? [darknessAdjustment] : []), ...(frightenedAdjustment ? [frightenedAdjustment] : []),
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(underwaterAdjustment ? [underwaterAdjustment] : []), ...(engagedAdjustment ? [engagedAdjustment] : []), ...(elevationAdjustment ? [elevationAdjustment] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(guardAdjustment ? [guardAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(sapAdjustment ? [sapAdjustment] : []), ...(vexAdjustment ? [vexAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : []), ...(invisibleAdjustment ? [invisibleAdjustment] : []), ...(fogAdjustment ? [fogAdjustment] : []), ...(darknessAdjustment ? [darknessAdjustment] : []), ...(weatherAdjustment ? [weatherAdjustment] : []), ...(frightenedAdjustment ? [frightenedAdjustment] : []),
     ...(poisonAdjustment ? [poisonAdjustment] : []), ...(obscuredAdjustment ? [obscuredAdjustment] : []), ...(recklessAdjustment ? [recklessAdjustment] : []), ...(recklessTargetAdjustment ? [recklessTargetAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
   if (sapped) combatantOf(attacker).sapped = false;
@@ -4016,12 +4062,12 @@ function applyOngoingDamage(battle: Battle, deps: CombatDeps, timing: 'start' | 
 
 export function tickTurnStart(battle: Battle, deps: CombatDeps = {}): Battle {
   requireCombat(battle);
-  const next = recordUndo(structuredClone(battle));
+  let next = recordUndo(structuredClone(battle));
   applyOngoingDamage(next, deps);
   const current = currentActorId(next);
   if (current) {
     const actor = next.actors.find(item => item.id === current);
-    if (actor && (actor.combat?.status ?? 'active') === 'active') { greaseFall(next, actor, deps); webStuck(next, actor, deps); holdRecover(next, actor, deps); sleepDust(next, actor, deps); }
+    if (actor && (actor.combat?.status ?? 'active') === 'active') { greaseFall(next, actor, deps); webStuck(next, actor, deps); holdRecover(next, actor, deps); sleepDust(next, actor, deps); next = windGust(next, actor, deps); }
   }
   return next;
 }

@@ -168,6 +168,8 @@ export type GridConfig = { width: number; height: number; cellFt: number };
 export type Obscured = 'light' | 'heavy';
 
 export type Terrain = 'normal' | 'underwater' | 'climbing' | 'ice' | 'lava' | 'brambles';
+/** 天气：暴雨让远程攻击变难、火焰伤害减半；强风让远程攻击变难，还会吹落飞行单位。 */
+export type Weather = 'rain' | 'wind';
 /** 危险地形格：单位进入该格时立即受到伤害。 */
 export type Hazard = { x: number; y: number; damageExpression: string; damageType: DamageType };
 /** 单位在方格上的位置，左上角为 (0,0)。 */
@@ -204,7 +206,7 @@ export type AttackPreset = {
   powerAttack?: boolean;
   twoHanded?: boolean;
 };
-export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; grease?: Position[]; fog?: Position[]; fogBy?: string; darkness?: Position[]; darknessBy?: string; silence?: Position[]; silenceBy?: string; sleepCloud?: Position[]; sleepCloudBy?: string; webs?: Position[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
+export type Battle = { id: string; name: string; createdAt: string; actors: Actor[]; combat?: CombatState; grid?: GridConfig; autoDeathSaves?: boolean; enterReachOpportunity?: boolean; obscured?: Obscured; terrain?: Terrain; weather?: Weather; difficult?: Position[]; walls?: Position[]; hazards?: Hazard[]; grease?: Position[]; fog?: Position[]; fogBy?: string; darkness?: Position[]; darknessBy?: string; silence?: Position[]; silenceBy?: string; sleepCloud?: Position[]; sleepCloudBy?: string; webs?: Position[]; auras?: Aura[]; pendingCast?: PendingCastPlan; attackPresets?: AttackPreset[] };
 export type BattleStore = { version: 1; battles: Battle[] };
 export const storageKey = 'trpg-helper.battles.v1';
 export const emptyStore = (): BattleStore => ({ version: 1, battles: [] });
@@ -408,6 +410,7 @@ function isBattle(value: unknown): boolean {
     && (value.enterReachOpportunity === undefined || typeof value.enterReachOpportunity === 'boolean')
     && (value.obscured === undefined || value.obscured === 'light' || value.obscured === 'heavy')
     && (value.terrain === undefined || isTerrain(value.terrain))
+    && (value.weather === undefined || value.weather === 'rain' || value.weather === 'wind')
     && (value.difficult === undefined || (Array.isArray(value.difficult) && value.difficult.length <= 400 && value.difficult.every(isPosition)))
     && (value.walls === undefined || (Array.isArray(value.walls) && value.walls.length <= 400 && value.walls.every(isPosition)))
     && (value.hazards === undefined || (Array.isArray(value.hazards) && value.hazards.length <= 200 && value.hazards.every(isHazard)))
