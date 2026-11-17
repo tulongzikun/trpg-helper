@@ -1490,7 +1490,9 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const first = rollDie(20, random);
   const second = mode === 'normal' ? first : rollDie(20, random);
   const natural = mode === 'advantage' ? Math.max(first, second) : mode === 'disadvantage' ? Math.min(first, second) : first;
-  const total = natural + options.attackBonus - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
+  const archery = archeryBonus(attacker, options, context.range);
+  if (archery > 0) notes.push('射术：远程攻击检定 +2');
+  const total = natural + options.attackBonus + archery - (options.powerAttack ? 5 : 0) - exhaustionPenalty(attacker);
   const targetAc = target.template.armorClass + (context.cover ? coverAcBonus(context.cover) : 0) + auraBonus(battle, target.id, 'ac') + (combatantOf(target).dualWielder ? 1 : 0) + (combatantOf(target).parryBonus ?? 0);
   const hit = !underwaterMiss && (natural === 20 || (natural !== 1 && total >= targetAc));
   if (underwaterMiss) notes.push('水下：远程攻击超出常规射程，自动失手');
@@ -1513,7 +1515,9 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     const defenseResult = defenseOf(target, options.damageType);
     const terrainResult = terrainDefense(battle, options.damageType);
     defense = [defenseResult.label, terrainResult.label].filter(Boolean).join('，');
-    const result = applyDamageToActor(target, rolled.total + (options.powerAttack ? 10 : 0), options.damageType, battle);
+    const dueling = duelingBonus(attacker, options);
+    if (dueling > 0) notes.push('对决：单手近战伤害 +2');
+    const result = applyDamageToActor(target, rolled.total + (options.powerAttack ? 10 : 0) + dueling, options.damageType, battle);
     damage = result.damage;
     tempAbsorbed = result.tempAbsorbed;
     status = result.status;
@@ -1704,6 +1708,33 @@ function lightProperty(source: AttackSource): boolean {
 
 function offhandDamageExpression(source: AttackSource): string {
   return source.damageExpression.replace(/\s*([+-])\s*(\d+)\s*$/, (_match: string, sign: string, value: string) => (sign === '-' ? `-${value}` : ''));
+}
+
+function fightingStylesOf(actor: Actor): string[] {
+  const details = actor.characterSnapshot?.sheet?.details as { fighterCalculator?: { fightingStyle?: string; fightingStyles?: string[] }; fightingStyle?: string; fightingStyles?: string[] } | undefined;
+  const config = details?.fighterCalculator ?? details;
+  if (!config) return [];
+  const list = Array.isArray(config.fightingStyles) ? [...config.fightingStyles] : [];
+  if (config.fightingStyle && !list.includes(config.fightingStyle)) list.push(config.fightingStyle);
+  return list;
+}
+
+/** 射术：远程武器攻击检定 +2。 */
+function archeryBonus(actor: Actor, options: AttackOptions, range: AttackRange): number {
+  if (range !== 'ranged') return 0;
+  if (!fightingStylesOf(actor).includes('射术')) return 0;
+  const source = options.weaponId ? attackSources(actor).find(item => item.id === options.weaponId) : undefined;
+  return source && source.range === 'ranged' ? 2 : 0;
+}
+
+/** 对决：单手持用近战武器且未双手持用时伤害 +2。 */
+function duelingBonus(actor: Actor, options: AttackOptions): number {
+  if (!fightingStylesOf(actor).includes('对决')) return 0;
+  if (options.twoHanded === true) return 0;
+  const source = options.weaponId ? attackSources(actor).find(item => item.id === options.weaponId) : undefined;
+  if (!source || source.range !== 'melee') return 0;
+  if (source.properties?.includes('双手')) return 0;
+  return 2;
 }
 
 function hasTwoWeaponFighting(actor: Actor): boolean {
