@@ -994,6 +994,70 @@ export function spellTargets(battle: Battle, casterId: string, rangeFt = 30): Ac
   });
 }
 
+const MASS_HEAL_RANGE_FT = 60;
+const MASS_HEAL_MAX_TARGETS = 6;
+
+/** 治疗目标：同阵营（含自己）、未死亡、60 尺内的单位。 */
+export function healTargets(battle: Battle, casterId: string, rangeFt = MASS_HEAL_RANGE_FT): Actor[] {
+  const caster = battle.actors.find(item => item.id === casterId);
+  if (!caster) return [];
+  return battle.actors.filter(item => {
+    if (item.side !== caster.side || item.side === '中立') return false;
+    if ((item.combat?.status ?? 'active') === 'dead') return false;
+    if (actorDistance(battle, casterId, item.id) === undefined) return true;
+    return (actorDistance(battle, casterId, item.id) ?? 0) <= rangeFt;
+  });
+}
+
+function spellHealBonus(actor: Actor): number {
+  const abilities = actor.template.abilities ?? actor.characterSnapshot?.sheet.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+  const mod = (score: number) => Math.floor((score - 10) / 2);
+  return Math.max(0, mod(abilities.int), mod(abilities.wis), mod(abilities.cha));
+}
+
+/** 群体治疗术：附赠动作，60 尺内至多 6 个同阵营单位各恢复 1d4 + 施法属性加值。 */
+export function castMassHealingWord(battle: Battle, casterId: string, targetIds: string[], deps: CombatDeps = {}): { battle: Battle; healed: { id: string; amount: number }[] } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  const state = combatantOf(caster);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放群体治疗术。');
+  requireVoice(next, casterId);
+  if (currentActorId(next) !== casterId) throw new Error('只有当前回合的单位可以施放群体治疗术。');
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (state.bonusUsed) throw new Error('该单位本回合已经使用过附赠动作。');
+  if (!targetIds.length) throw new Error('请选择群体治疗术的目标。');
+  const unique = [...new Set(targetIds)];
+  if (unique.length > MASS_HEAL_MAX_TARGETS) throw new Error(`群体治疗术最多影响 ${MASS_HEAL_MAX_TARGETS} 名单位。`);
+  const allowed = new Set(healTargets(next, casterId).map(item => item.id));
+  const targets = unique.map(id => {
+    const target = next.actors.find(item => item.id === id);
+    if (!target) throw new Error('群体治疗术的目标不存在。');
+    if (!allowed.has(id)) throw new Error('群体治疗术只能影响 60 尺内的同阵营单位。');
+    return target;
+  });
+  const bonus = spellHealBonus(caster);
+  const random = randomOf(deps);
+  state.bonusUsed = true;
+  const healed: { id: string; amount: number }[] = [];
+  for (const target of targets) {
+    const targetState = combatantOf(target);
+    const amount = rollDie(4, random) + bonus;
+    const restored = Math.min(target.maxHp - target.currentHp, amount);
+    target.currentHp += restored;
+    const rose = targetState.status === 'down' && target.currentHp > 0;
+    if (rose) {
+      targetState.status = 'active';
+      targetState.deathSaves = { successes: 0, failures: 0 };
+      delete targetState.stable;
+    }
+    healed.push({ id: target.id, amount: restored });
+    addLog(next, `${actorLabel(next, target)} 被群体治疗术治愈，恢复 ${restored} 点生命值（1d4+${bonus} 掷出 ${amount}）${rose ? '并重新站起' : ''}，当前 ${target.currentHp}/${target.maxHp}。`, deps);
+  }
+  return { battle: next, healed };
+}
+
 /** 加速术：动作施放，单体，10 轮内速度翻倍、AC +2、敏捷豁免优势，需维持专注。 */
 export function castHaste(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
