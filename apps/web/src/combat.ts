@@ -268,6 +268,31 @@ export function buttEndAttack(battle: Battle, options: AttackOptions, deps: Comb
   return attack(next, buttOptions, deps);
 }
 
+/** 哨兵：被长武器打中的敌人本回合剩余移动力清零。 */
+function sentinelSlowdown(target: Actor, source: AttackSource | undefined): void {
+  if (!source) return;
+  const polearm = source.properties?.includes('长武器') || ['戟', '长棍', '长矛'].some(name => source.label.includes(name));
+  if (!polearm) return;
+  const state = combatantOf(target);
+  const allowance = movementAllowance(target);
+  state.movementUsed = Math.max(state.movementUsed, allowance);
+}
+
+/** 切换「哨兵」专长标记：被长武器打中的目标本回合移动力清零，且邻近敌人攻击他人时会被盯上。 */
+export function setSentinel(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
+  const next = structuredClone(battle);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (enabled) {
+    state.sentinel = true;
+    addLog(next, `${actorLabel(next, actor)} 启用哨兵专长。`, deps);
+  } else {
+    delete state.sentinel;
+    addLog(next, `${actorLabel(next, actor)} 停用哨兵专长。`, deps);
+  }
+  return next;
+}
+
 /** 切换「防守决斗」专长标记。 */
 export function setDefensiveDuelist(battle: Battle, actorId: string, enabled: boolean, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -1442,6 +1467,7 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
       combatantOf(attacker).sneakUsed = true;
       sneakNote = `偷袭 ${sneakRoll.total} 点${options.damageType}伤害（${sneakDice}d6${critical ? '，重击翻倍' : ''}）`;
     }
+    if (status === 'active' && state.sentinel === true) sentinelSlowdown(target, weaponSource);
     concentration = concentrationCheck(battle, target, damage, random, deps)?.text ?? '';
     const mastery = weaponSource?.mastery;
     if (mastery && (combatantOf(target).status === 'active' || mastery === '顺劈')) {
@@ -1545,6 +1571,23 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
     concentration,
     notes.join('；'),
   ].filter(Boolean).join(' · ');
+  const sentinel = battle.actors.find(item =>
+    item.id !== attacker.id &&
+    item.id !== target.id &&
+    item.combat?.status === 'active' &&
+    item.combat?.sentinel === true &&
+    item.side !== attacker.side &&
+    item.side !== '中立' &&
+    !!item.position && !!attacker.position &&
+    cellDistance(item.position, attacker.position!) <= 1 &&
+    item.combat.reactionUsed !== true);
+  if (sentinel && options.cost !== 'reaction' && battle.combat) {
+    const pending = battle.combat.pendingOpportunity ?? [];
+    if (!pending.some(entry => entry.reactorId === sentinel.id && entry.targetId === attacker.id)) {
+      battle.combat.pendingOpportunity = [...pending, { reactorId: sentinel.id, targetId: attacker.id }].slice(-8);
+      addLog(battle, `${actorLabel(battle, sentinel)} 用哨兵专长盯住 ${actorLabel(battle, attacker)}（可花反应攻击）。`, deps);
+    }
+  }
   addLog(battle, `${actorLabel(battle, attacker)} 攻击 ${actorLabel(battle, target)}：${hit ? `命中，造成 ${damage} 点伤害${extraDamage > 0 ? `（含额外 ${extraDamage} 点${options.extraDamageType}伤害）` : ''}` : '未命中'}。`, deps, detail);
   return { natural, total, targetAc, hit, critical, damage, tempAbsorbed, targetHp: target.currentHp, status, defense, mode, notes, extraDamage };
 }

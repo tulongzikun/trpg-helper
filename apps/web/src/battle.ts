@@ -60,6 +60,7 @@ export type CombatantState = {
   parryBonus?: number;
   /** 是否持有「双持战斗者」专长：AC +1，且副手攻击可用非轻型武器。 */
   dualWielder?: boolean;
+  sentinel?: boolean;
   /** 力竭等级（0–6）：每级使攻击、豁免、属性检定 -2，速度 -5 尺。 */
   exhaustion?: number;
   /** 已记录的法术位（剩余个数，索引 0 为 1 环）；未设置时不追踪法术位。 */
@@ -163,6 +164,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.defensiveDuelist !== undefined && typeof value.defensiveDuelist !== 'boolean') return false;
   if (value.parryBonus !== undefined && !isInteger(value.parryBonus, 0, 10)) return false;
   if (value.dualWielder !== undefined && typeof value.dualWielder !== 'boolean') return false;
+  if (value.sentinel !== undefined && typeof value.sentinel !== 'boolean') return false;
+
   if (value.exhaustion !== undefined && !isInteger(value.exhaustion, 0, 6)) return false;
   if (value.spellSlots !== undefined && (!Array.isArray(value.spellSlots) || value.spellSlots.length > 9 || value.spellSlots.some(item => !isInteger(item, 0, 20)))) return false;
   if (value.spellSlotsMax !== undefined && (!Array.isArray(value.spellSlotsMax) || value.spellSlotsMax.length > 9 || value.spellSlotsMax.some(item => !isInteger(item, 0, 20)))) return false;
