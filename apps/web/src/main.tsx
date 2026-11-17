@@ -11,7 +11,7 @@ import { importBattle } from './battleTransfer';
 import { autoAct, autoSide, autoTurn } from './combatAuto';
 import { applyFallDamage } from './combatMovement';
 import { castSpell } from './combatSpells';
-import { addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, declineOpportunity, standUp, disengage, dodge, dash, help, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
+import { addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, declineOpportunity, standUp, disengage, dodge, dash, help, hide, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -66,6 +66,7 @@ function App() {
   onDisengage:actorId=>tryBattle(()=>changeBattle(battleId,battle=>disengage(battle,actorId))),
   onDodge:actorId=>tryBattle(()=>changeBattle(battleId,battle=>dodge(battle,actorId))),
   onDash:actorId=>tryBattle(()=>changeBattle(battleId,battle=>dash(battle,actorId))),
+  onHide:actorId=>tryBattle(()=>changeBattle(battleId,battle=>hide(battle,actorId))),
   onHelp:(helperId,targetId)=>tryBattle(()=>changeBattle(battleId,battle=>help(battle,helperId,targetId))),
   onStand:actorId=>tryBattle(()=>changeBattle(battleId,battle=>standUp(battle,actorId))),
   onReady:(actorId,input)=>tryBattle(()=>changeBattle(battleId,battle=>readyAction(battle,actorId,input))),

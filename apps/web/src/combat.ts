@@ -537,6 +537,29 @@ export function dash(battle: Battle, actorId: string, deps: CombatDeps = {}): Ba
   return next;
 }
 
+/** 躲藏：消耗动作，用敏捷（隐匿）对抗敌人的被动察觉，成功则进入躲藏状态。 */
+export function hide(battle: Battle, actorId: string, stealthTotal?: number, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (currentActorId(next) !== actorId) throw new Error('只有当前回合的单位可以躲藏。');
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以躲藏。');
+  const blocker = actionBlocker(actor);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (stealthTotal !== undefined && (!Number.isInteger(stealthTotal) || stealthTotal < 0 || stealthTotal > 60)) throw new Error('隐匿检定结果须为 0 至 60 的整数。');
+  const stealth = stealthTotal ?? abilityCheckBonus(actor, 'dex', '隐匿');
+  const passive = next.actors
+    .filter(item => item.id !== actor.id && item.side !== actor.side && item.combat?.status === 'active')
+    .reduce((best, item) => Math.max(best, 10 + abilityCheckBonus(item, 'wis', '察觉')), 0);
+  state.actionUsed = true;
+  const success = stealth > passive;
+  state.hidden = success;
+  addLog(next, `${actorLabel(next, actor)} 躲藏${success ? '成功' : '失败'}（隐匿 ${stealth} 对被动察觉 ${passive || '无'}）。`, deps);
+  return next;
+}
+
 /** 协助：消耗动作，让同阵营的另一个单位下一次攻击检定具有优势。 */
 export function help(battle: Battle, helperId: string, targetId: string, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
@@ -932,10 +955,16 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const far = longRangeAdjustment(attacker, options, context.distanceFt);
   const dodging = combatantOf(target).dodging === true;
   const helped = combatantOf(attacker).helpedAttack === true;
+  const hiddenAttacker = combatantOf(attacker).hidden === true;
+  const hiddenTarget = combatantOf(target).hidden === true;
   const dodgeAdjustment: ModeAdjustment | null = dodging ? { mode: 'disadvantage', notes: ['目标在使用闪避：攻击检定劣势'] } : null;
   const helpAdjustment: ModeAdjustment | null = helped ? { mode: 'advantage', notes: ['得到协助：攻击检定优势'] } : null;
-  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : [])]);
+  const hideAdjustment: ModeAdjustment | null = hiddenAttacker ? { mode: 'advantage', notes: ['攻击者处于躲藏：攻击检定优势'] } : null;
+  const unseenAdjustment: ModeAdjustment | null = hiddenTarget ? { mode: 'disadvantage', notes: ['目标处于躲藏：攻击检定劣势'] } : null;
+  const combined = combineAttackModes(options.mode ?? 'normal', [attackerAdjustment(attacker), targetAdjustment(target, context.range), ...(heavy ? [heavy] : []), ...(far ? [far] : []), ...(dodgeAdjustment ? [dodgeAdjustment] : []), ...(helpAdjustment ? [helpAdjustment] : []), ...(hideAdjustment ? [hideAdjustment] : []), ...(unseenAdjustment ? [unseenAdjustment] : [])]);
   if (helped) combatantOf(attacker).helpedAttack = false;
+  if (hiddenAttacker) combatantOf(attacker).hidden = false;
+  if (hiddenTarget) combatantOf(target).hidden = false;
   const mode = combined.mode;
   const notes = [...combined.notes];
   const first = rollDie(20, random);
