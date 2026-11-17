@@ -9,6 +9,7 @@ import type { AttackSuggestion } from './combatAi';
 import { suggestAttacks } from './combatAi';
 import { actionSurgeMax, attacksPerAction, coverTypes, hasCunningAction, hasRecklessAttack, hasSecondWind } from './combatModifiers';
 import { battleTranscript, exportBattle } from './battleTransfer';
+import { battleReport, reportFileName } from './combatReport';
 import type { AttackRange, CoverType } from './combatModifiers';
 import type { Ability } from './characters';
 import type { Card } from './catalog';
@@ -919,6 +920,7 @@ export function BattleIo({ battle, onImport }: { battle: Battle; onImport: (text
   const [importText, setImportText] = useState('');
   const [transcript, setTranscript] = useState('');
   const [notice, setNotice] = useState('');
+  const [report, setReport] = useState('');
   const exportText = exportBattle(battle);
   const download = () => {
     const blob = new Blob([exportText], { type: 'application/json' });
@@ -941,8 +943,11 @@ export function BattleIo({ battle, onImport }: { battle: Battle; onImport: (text
           <button className="button-secondary" type="button" onClick={download}>下载 JSON</button>
           <button className="button-secondary" type="button" onClick={async () => { try { await navigator.clipboard.writeText(exportText); setNotice('已复制到剪贴板。'); } catch { setNotice('当前环境不支持复制，请手动选择文本。'); } }}>复制</button>
           <button className="button-secondary" type="button" onClick={() => setTranscript(battleTranscript(battle))}>生成战报</button>
+          <button className="button-secondary" type="button" onClick={() => setReport(battleReport(battle))}>生成 Markdown 战报</button>
+          <button className="button-secondary" type="button" disabled={!report} onClick={() => { const blob = new Blob([report], { type: 'text/markdown' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = reportFileName(battle); link.click(); URL.revokeObjectURL(url); setNotice('已开始下载战报。'); }}>下载战报</button>
         </div>
         {transcript && <textarea readOnly rows={8} value={transcript} onFocus={event => event.currentTarget.select()} />}
+        {report && <textarea readOnly rows={10} value={report} onFocus={event => event.currentTarget.select()} />}
         <label>导入档案
           <textarea rows={5} value={importText} placeholder="粘贴导出的 JSON，或导出文件的内容" onChange={event => setImportText(event.target.value)} />
         </label>
