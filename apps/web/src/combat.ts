@@ -2288,6 +2288,15 @@ export function grapple(battle: Battle, options: ContestOptions, deps: CombatDep
     if (!target.combat.conditions.includes('擒抱')) target.combat.conditions.push('擒抱');
     target.combat.grappledBy = attacker.id;
   }
+    if (target.combat?.flying === true && (target.elevation ?? 0) >= 10) {
+      const feet = target.elevation ?? 0;
+      const fall = applyFallDamage(next, target.id, feet, deps);
+      const dropped = actorOf(fall.battle, target.id);
+      if (dropped.combat) dropped.combat.flying = false;
+      delete dropped.elevation;
+      addLog(fall.battle, `${actorLabel(fall.battle, dropped)} 被擒抱，失去飞行并从 ${feet} 尺坠落。`, deps);
+      return { battle: fall.battle, outcome };
+    }
   return { battle: next, outcome };
 }
 
@@ -2994,7 +3003,16 @@ export function setFlying(battle: Battle, actorId: string, enabled: boolean, dep
     state.flying = true;
     addLog(next, `${actorLabel(next, actor)} 起飞：移动忽略地形消耗与危险地形伤害。`, deps);
   } else {
+    const feet = actor.elevation ?? 0;
     delete state.flying;
+    if (feet >= 10) {
+      const fall = applyFallDamage(next, actorId, feet, deps);
+      const fallen = actorOf(fall.battle, actorId);
+      delete fallen.elevation;
+      addLog(fall.battle, `${actorLabel(fall.battle, fallen)} 失去飞行，从 ${feet} 尺坠落。`, deps);
+      return fall.battle;
+    }
+    delete actor.elevation;
     addLog(next, `${actorLabel(next, actor)} 落地。`, deps);
   }
   return next;
