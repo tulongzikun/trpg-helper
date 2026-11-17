@@ -171,7 +171,7 @@ export type GridConfig = { width: number; height: number; cellFt: number };
 /** 战场环境：水下会让远程攻击变得困难。 */
 export type Obscured = 'light' | 'heavy';
 
-export type Terrain = 'normal' | 'underwater' | 'climbing' | 'ice' | 'lava' | 'brambles';
+export type Terrain = 'normal' | 'underwater' | 'climbing' | 'ice' | 'lava' | 'brambles' | 'mud';
 /** 天气：暴雨让远程攻击变难、火焰伤害减半；强风让远程攻击变难，还会吹落飞行单位。 */
 export type Weather = 'rain' | 'wind';
 /** 危险地形格：单位进入该格时立即受到伤害。 */

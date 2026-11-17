@@ -1754,7 +1754,7 @@ function applyHazardAt(battle: Battle, actor: Actor, x: number, y: number, deps:
 export function setTerrain(battle: Battle, terrain: Terrain, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
-  if (terrain !== 'normal' && terrain !== 'underwater' && terrain !== 'climbing' && terrain !== 'ice' && terrain !== 'lava' && terrain !== 'brambles') throw new Error('战场地形取值无效。');
+  if (terrain !== 'normal' && terrain !== 'underwater' && terrain !== 'climbing' && terrain !== 'ice' && terrain !== 'lava' && terrain !== 'brambles' && terrain !== 'mud') throw new Error('战场地形取值无效。');
   if (terrain === 'normal') delete next.terrain;
   else next.terrain = terrain;
   addLog(next, terrain === 'underwater'
@@ -1767,7 +1767,9 @@ export function setTerrain(battle: Battle, terrain: Terrain, deps: CombatDeps = 
           ? '战场进入岩浆：站在其中的单位在踏入与回合开始时受到 1d10 点火焰伤害，移动消耗翻倍。'
           : terrain === 'brambles'
             ? '战场进入荆棘：移动消耗翻倍，每次移动每 5 尺受到 1 点穿刺伤害。'
-            : '战场恢复为普通地形。', deps);
+            : terrain === 'mud'
+              ? '战场进入泥沼：移动消耗翻倍，移动后需通过敏捷豁免（DC 12），失败倒地。'
+              : '战场恢复为普通地形。', deps);
   return next;
 }
 
@@ -1816,6 +1818,21 @@ function applyLavaAt(battle: Battle, actor: Actor, deps: CombatDeps, phase: '踏
   addLog(battle, `${actorLabel(battle, actor)} ${phase === '踏入' ? '踏入' : '在'}岩浆，受到 ${result.damage} 点火焰伤害。`, deps);
 }
 
+/** 泥沼：移动后需通过敏捷豁免，失败倒地。 */
+function mudSlip(battle: Battle, actor: Actor, deps: CombatDeps): void {
+  if (battle.terrain !== 'mud') return;
+  if (combatantOf(actor).flying === true) return;
+  if (combatantOf(actor).status !== 'active') return;
+  const slip = resolveSave(actor, { actorId: actor.id, ability: 'dex', dc: 12, bonus: defaultSaveBonus(actor, 'dex') + auraBonus(battle, actor.id, 'saves') }, randomOf(deps));
+  if (slip.success) {
+    addLog(battle, `${actorLabel(battle, actor)} 在泥沼里稳住了脚步。`, deps);
+    return;
+  }
+  const state = combatantOf(actor);
+  if (!state.conditions.includes('倒地')) state.conditions.push('倒地');
+  addLog(battle, `${actorLabel(battle, actor)} 在泥沼中滑倒，倒地。`, deps);
+}
+
 /** 荆棘：每次移动每 5 尺受到 1 点穿刺伤害。 */
 function applyBrambles(battle: Battle, actor: Actor, steps: number, deps: CombatDeps): void {
   if (battle.terrain !== 'brambles' || steps <= 0) return;
@@ -1861,14 +1878,15 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const icy = next.terrain === 'ice';
   const lava = next.terrain === 'lava';
   const brambles = next.terrain === 'brambles';
+  const muddy = next.terrain === 'mud';
   const webbed = webAt(next, x, y);
   const flying = state.flying === true;
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava || brambles || webbed ? 2 : 1);
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (flying ? 1 : rough ? 2 : 1) * (flying ? 1 : swimming || climbing || icy || lava || brambles || muddy || webbed ? 2 : 1);
   const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}。`, deps);
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${flying ? '，飞行忽略地形消耗' : ''}${!flying && rough ? '，困难地形使消耗翻倍' : ''}${!flying && swimming ? '，水下游泳使消耗翻倍' : ''}${!flying && climbing ? '，攀爬使消耗翻倍' : ''}${!flying && icy ? '，冰面使消耗翻倍' : ''}${!flying && lava ? '，岩浆使消耗翻倍' : ''}${!flying && brambles ? '，荆棘使消耗翻倍' : ''}${!flying && muddy ? '，泥沼使消耗翻倍' : ''}${!flying && webbed ? '，蛛网使消耗翻倍' : ''}。`, deps);
   if (greaseAt(next, x, y) && !flying) greaseFall(next, actor, deps);
   if (sleepCloudAt(next, x, y)) sleepDust(next, actor, deps);
   if (webbed && !flying) webStuck(next, actor, deps);
@@ -1880,6 +1898,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
       addLog(next, `${actorLabel(next, actor)} 在冰面上滑倒，倒地。`, deps);
     }
   }
+  if (muddy && !flying) mudSlip(next, actor, deps);
   if (!flying) {
     applyHazardAt(next, actor, x, y, deps);
     applyLavaAt(next, actor, deps);
