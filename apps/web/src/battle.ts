@@ -156,6 +156,8 @@ export type CombatantState = {
   /** 本场战斗的统计（攻击、命中、伤害与治疗）。 */
   stats?: CombatStats;
   aimed?: boolean;
+  /** 援助术：额外生命上限（长休时移除）。 */
+  aided?: number;
   /** 变形术：剩余轮数（变成小兽：失能、AC 10、速度上限 25 尺）。 */
   polymorphed?: number;
   /** 施加变形术的施法者 id。 */
@@ -333,6 +335,7 @@ function isCombatant(value: unknown): value is CombatantState {
       if (entry !== undefined && !isInteger(entry, 0, 1000000)) return false;
     }
   }
+  if (value.aided !== undefined && !isInteger(value.aided, 0, 100)) return false;
   if (value.polymorphed !== undefined && !isInteger(value.polymorphed, 0, 100)) return false;
   if (value.polymorphedBy !== undefined && (typeof value.polymorphedBy !== 'string' || value.polymorphedBy.length === 0 || value.polymorphedBy.length > 64)) return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;

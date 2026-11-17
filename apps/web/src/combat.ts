@@ -1047,6 +1047,54 @@ export function spellTargets(battle: Battle, casterId: string, rangeFt = 30): Ac
   });
 }
 
+const AID_BONUS = 5;
+const AID_RANGE_FT = 30;
+const AID_MAX_TARGETS = 3;
+
+/** 援助术目标：同阵营（含自己）、未死亡、30 尺内的单位。 */
+export function aidTargets(battle: Battle, casterId: string, rangeFt = AID_RANGE_FT): Actor[] {
+  const caster = battle.actors.find(actor => actor.id === casterId);
+  if (!caster) return [];
+  return battle.actors.filter(item => {
+    if (item.side !== caster.side || item.side === '中立') return false;
+    if ((item.combat?.status ?? 'active') !== 'active') return false;
+    if (actorDistance(battle, casterId, item.id) === undefined) return true;
+    return (actorDistance(battle, casterId, item.id) ?? 0) <= rangeFt;
+  });
+}
+
+/** 援助术：动作，最多 3 个 30 尺内的友方各自获得 5 点额外生命上限与当前生命，持续到长休。 */
+export function castAid(battle: Battle, casterId: string, targetIds: string[], deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  if ((caster.combat?.status ?? 'active') !== 'active') throw new Error('只有在场的单位可以施放援助术。');
+  requireVoice(next, casterId);
+  const unique = [...new Set(targetIds)].filter(id => id);
+  if (!unique.length) throw new Error('请选择援助术的目标。');
+  if (unique.length > AID_MAX_TARGETS) throw new Error(`援助术最多影响 ${AID_MAX_TARGETS} 名单位。`);
+  for (const id of unique) {
+    const target = actorOf(next, id);
+    if ((target.combat?.status ?? 'active') !== 'active') throw new Error('只能援助还在场的单位。');
+    if (target.combat?.aided) throw new Error('该单位已经受到援助术的影响。');
+    const distance = actorDistance(next, casterId, id);
+    if (distance !== undefined && distance > AID_RANGE_FT) throw new Error(`援助术的射程是 ${AID_RANGE_FT} 尺。`);
+  }
+  const state = combatantOf(next.actors.find(item => item.id === casterId)!);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  state.actionUsed = true;
+  const names: string[] = [];
+  for (const id of unique) {
+    const target = next.actors.find(item => item.id === id)!;
+    target.maxHp += AID_BONUS;
+    target.currentHp += AID_BONUS;
+    combatantOf(target).aided = AID_BONUS;
+    names.push(actorLabel(next, target));
+  }
+  addLog(next, `${actorLabel(next, caster)} 施放援助术：${names.join('、')} 的生命上限提高 ${AID_BONUS} 点。`, deps);
+  return next;
+}
+
 const MASS_HEAL_RANGE_FT = 60;
 const MASS_HEAL_MAX_TARGETS = 6;
 
@@ -4089,7 +4137,15 @@ export function recoverClassResources(battle: Battle, deps: CombatDeps = {}): Ba
 export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
   let next = recoverClassResources(battle, deps);
   for (const actor of next.actors) {
+    const aidBonus = actor.combat?.aided ?? 0;
+    if (aidBonus > 0) {
+      actor.maxHp = Math.max(1, actor.maxHp - aidBonus);
+      actor.currentHp = Math.min(actor.currentHp, actor.maxHp);
+    }
+  }
+  for (const actor of next.actors) {
     if (!actor.combat) continue;
+    delete actor.combat.aided;
     actor.combat.nickUsed = false;
     actor.combat.sneakUsed = false;
     actor.combat.dodging = false;
