@@ -59,6 +59,16 @@ export function battleTranscript(battle: Battle): string {
   } else {
     lines.push('- 进度：尚未开始');
   }
+  const terrainLabels: Record<string, string> = { underwater: '水下', climbing: '攀爬', ice: '冰面', lava: '岩浆' };
+  const field: string[] = [];
+  if (battle.grid) field.push(`方格 ${battle.grid.width}×${battle.grid.height}（每格 ${battle.grid.cellFt} 尺）`);
+  if (battle.terrain) field.push(`地形：${terrainLabels[battle.terrain] ?? battle.terrain}`);
+  if (battle.obscured) field.push(`遮蔽：${battle.obscured === 'heavy' ? '重度' : '轻度'}`);
+  if (battle.walls?.length) field.push(`墙体 ${battle.walls.length} 格`);
+  if (battle.difficult?.length) field.push(`困难地形 ${battle.difficult.length} 格`);
+  if (battle.hazards?.length) field.push(`危险地形 ${battle.hazards.length} 格`);
+  if (battle.auras?.length) field.push(`灵光：${battle.auras.map(item => `${item.name}（${item.kind === 'ac' ? 'AC' : '豁免'} +${item.bonus}，半径 ${item.radiusFt} 尺）`).join('、')}`);
+  if (field.length) lines.push('', '## 战场', '', ...field.map(item => `- ${item}`));
   lines.push('', '## 参战单位', '');
   for (const actor of battle.actors) {
     const parts = [`${actor.name}（${actor.side}）`, `AC ${actor.template.armorClass}`, `HP ${actor.currentHp}/${actor.maxHp}`];
@@ -67,6 +77,8 @@ export function battleTranscript(battle: Battle): string {
       if (actor.combat.conditions.length > 0) parts.push(`状态：${actor.combat.conditions.join('、')}`);
       if (actor.combat.concentration) parts.push(`专注：${actor.combat.concentration.spell}`);
       if (actor.combat.ongoing && actor.combat.ongoing.length > 0) parts.push(`持续：${actor.combat.ongoing.map(x => x.name).join('、')}`);
+      parts.push(`资源：动作${actor.combat.actionUsed ? '已用' : '未用'}／附赠${actor.combat.bonusUsed ? '已用' : '未用'}／反应${actor.combat.reactionUsed ? '已用' : '未用'}／移动已用 ${actor.combat.movementUsed ?? 0} 尺`);
+      if (actor.combat.spellSlots?.length) parts.push(`法术位：${actor.combat.spellSlots.join('/')}`);
     }
     lines.push(`- ${parts.join(' · ')}`);
   }

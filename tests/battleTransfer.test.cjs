@@ -1,7 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { emptyStore, addMonsters, validateBattle } = require('../apps/web/src/battle.ts');
-const { startCombat, attack, currentActorId } = require('../apps/web/src/combat.ts');
+const { startCombat, attack, currentActorId, configureGrid, setTerrain, setObscured, toggleWallCell, addAura } = require('../apps/web/src/combat.ts');
+const { setSpellSlots } = require('../apps/web/src/combatSpells.ts');
 const { battleExportSchema, exportBattle, importBattle, battleTranscript } = require('../apps/web/src/battleTransfer.ts');
 const entry = require('../packages/contracts/examples/monster-entry.json');
 const card = { entry, block: entry.statBlocks[0] };
@@ -75,4 +76,38 @@ test('未开始的战斗也能导出与生成战报', () => {
   const text = battleTranscript(battle);
   assert.match(text, /- 进度：尚未开始/);
   assert.match(text, /（暂无记录）/);
+});
+
+test('战报包含战场信息：地形、遮蔽、墙体与灵光', () => {
+  const battle = setup();
+  let next = configureGrid(battle, { width: 8, height: 8, cellFt: 5 });
+  next = setTerrain(next, 'underwater');
+  next = setObscured(next, 'heavy');
+  next = toggleWallCell(next, 2, 2);
+  const owner = next.actors[0];
+  next = addAura(next, { name: '守护灵光', ownerId: owner.id, radiusFt: 10, bonus: 2, kind: 'ac' });
+  const text = battleTranscript(next);
+  assert.match(text, /## 战场/);
+  assert.match(text, /地形：水下/);
+  assert.match(text, /遮蔽：重度/);
+  assert.match(text, /墙体 1 格/);
+  assert.match(text, /灵光：守护灵光（AC \+2，半径 10 尺）/);
+  assert.ok(text.indexOf('## 战场') < text.indexOf('## 参战单位'));
+});
+
+test('战报的单位行记录动作资源', () => {
+  const battle = setup();
+  const text = battleTranscript(battle);
+  assert.match(text, /资源：动作/);
+  assert.match(text, /附赠/);
+  assert.match(text, /反应/);
+  assert.match(text, /移动已用 \d+ 尺/);
+});
+
+test('记录了法术位时战报会显示剩余法术位', () => {
+  const battle = setup();
+  const actorId = battle.actors[0].id;
+  const next = setSpellSlots(battle, actorId, [2, 1]);
+  const text = battleTranscript(next);
+  assert.match(text, /法术位：2\/1/);
 });
