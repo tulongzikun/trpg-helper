@@ -132,7 +132,7 @@ export type GridConfig = { width: number; height: number; cellFt: number };
 /** 战场环境：水下会让远程攻击变得困难。 */
 export type Obscured = 'light' | 'heavy';
 
-export type Terrain = 'normal' | 'underwater' | 'climbing' | 'ice' | 'lava';
+export type Terrain = 'normal' | 'underwater' | 'climbing' | 'ice' | 'lava' | 'brambles';
 /** 危险地形格：单位进入该格时立即受到伤害。 */
 export type Hazard = { x: number; y: number; damageExpression: string; damageType: DamageType };
 /** 单位在方格上的位置，左上角为 (0,0)。 */
