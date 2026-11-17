@@ -56,3 +56,54 @@ export function reportFileName(battle: Battle): string {
   const safe = battle.name.replace(/[\\/:*?"<>|]/g, '_').trim() || '战斗';
   return `${safe}-战报.md`;
 }
+
+/** CSV 单元格：含逗号、引号或换行时用双引号包裹，内部引号翻倍。 */
+function csvCell(value: string | number): string {
+  const text = String(value ?? '');
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function typeSummary(entry: { damageByType?: Record<string, number> }): string {
+  const pairs = Object.entries(entry.damageByType ?? {});
+  return pairs.length ? pairs.map(([type, amount]) => `${type} ${amount}`).join('；') : '';
+}
+
+/** 把统计表导出成 CSV（带 BOM，Excel 直接打开不乱码）。 */
+export function battleCsv(battle: Battle): string {
+  const stats = battleStatistics(battle);
+  const header = ['单位', '阵营', '状态', '攻击', '命中', '重击', '命中率', '造成伤害', '承受伤害', '治疗', '伤害构成'];
+  const rows = stats.rows.map(row => [
+    row.name,
+    row.side,
+    statusLabels[row.status] ?? row.status,
+    row.attacks,
+    row.hits,
+    row.crits,
+    row.accuracy,
+    row.damageDealt,
+    row.damageTaken,
+    row.healing,
+    typeSummary(row),
+  ]);
+  const totals = [
+    '合计',
+    '',
+    '',
+    stats.totals.attacks,
+    stats.totals.hits,
+    stats.totals.crits,
+    stats.totals.attacks === 0 ? 0 : Math.round((stats.totals.hits / stats.totals.attacks) * 100) / 100,
+    stats.totals.damageDealt,
+    stats.totals.damageTaken,
+    stats.totals.healing,
+    typeSummary(stats.totals),
+  ];
+  const lines = [header, ...rows, totals].map(cells => cells.map(csvCell).join(','));
+  return `\uFEFF${lines.join('\r\n')}\r\n`;
+}
+
+/** 导出 CSV 时用的文件名。 */
+export function csvFileName(battle: Battle): string {
+  const safe = battle.name.replace(/[\\/:*?"<>|]/g, '_').trim() || '战斗';
+  return `${safe}-统计.csv`;
+}

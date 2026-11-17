@@ -9,7 +9,7 @@ import type { AttackSuggestion } from './combatAi';
 import { suggestAttacks, suggestTurn } from './combatAi';
 import { actionSurgeMax, attacksPerAction, coverTypes, hasCunningAction, hasRecklessAttack, hasSecondWind } from './combatModifiers';
 import { battleTranscript, exportBattle } from './battleTransfer';
-import { battleReport, reportFileName } from './combatReport';
+import { battleReport, reportFileName, battleCsv, csvFileName } from './combatReport';
 import type { AttackRange, CoverType } from './combatModifiers';
 import type { Ability } from './characters';
 import type { Card } from './catalog';
@@ -1070,6 +1070,7 @@ export function BattleIo({ battle, onImport }: { battle: Battle; onImport: (text
           <button className="button-secondary" type="button" onClick={() => setTranscript(battleTranscript(battle))}>生成战报</button>
           <button className="button-secondary" type="button" onClick={() => setReport(battleReport(battle))}>生成 Markdown 战报</button>
           <button className="button-secondary" type="button" disabled={!report} onClick={() => { const blob = new Blob([report], { type: 'text/markdown' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = reportFileName(battle); link.click(); URL.revokeObjectURL(url); setNotice('已开始下载战报。'); }}>下载战报</button>
+          <button className="button-secondary" type="button" onClick={() => { const csv = battleCsv(battle); const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = csvFileName(battle); link.click(); URL.revokeObjectURL(url); setNotice('已开始下载统计 CSV。'); }}>下载统计 CSV</button>
         </div>
         {transcript && <textarea readOnly rows={8} value={transcript} onFocus={event => event.currentTarget.select()} />}
         {report && <textarea readOnly rows={10} value={report} onFocus={event => event.currentTarget.select()} />}
