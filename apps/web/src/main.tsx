@@ -11,7 +11,7 @@ import { importBattle } from './battleTransfer';
 import { autoAct, autoSide, autoTurn } from './combatAuto';
 import { applyFallDamage } from './combatMovement';
 import { castSpell } from './combatSpells';
-import { addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, declineOpportunity, standUp, disengage, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, removeAura, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
+import { addOngoingEffect, addAura, areaSave, attack, attackSequence, currentActorId, escapeGrapple, offhandAttack, grapple, shove, addReinforcement, configureGrid, declineOpportunity, standUp, disengage, dismissSummon, endConcentration, endTurn, markSummon, moveActorToCell, opportunityAttack, readyAction, cancelReadyAction, triggerReadyAction, reloadAmmo, removeAura, removeOngoingEffect, resetCombat, rollDeathSave, savingThrow, secondWind, setActorHp, setTempHp, spendMovement, spendResource, startCombat, startConcentration, toggleCondition, toggleDifficultCell, toggleWallCell, undoCombat, useActionSurge } from './combat';
 import type { CombatHandlers } from './CombatViews';
 
 const unique = (xs: string[]) => [...new Set(xs)].sort((a,b) => a.localeCompare(b, 'zh-CN'));
@@ -56,6 +56,7 @@ function App() {
   onRemoveOngoing:(targetId,effectId)=>tryBattle(()=>changeBattle(battleId,battle=>removeOngoingEffect(battle,targetId,effectId))),
   onSummon:(actorId,ownerId,spell,rounds)=>tryBattle(()=>changeBattle(battleId,battle=>markSummon(battle,actorId,{ownerId,spell,rounds}))),
   onDismissSummon:actorId=>tryBattle(()=>changeBattle(battleId,battle=>dismissSummon(battle,actorId))),
+  onReloadAmmo:actorId=>tryBattle(()=>changeBattle(battleId,battle=>reloadAmmo(battle,actorId))),
   onAura:input=>tryBattle(()=>changeBattle(battleId,battle=>addAura(battle,input))),
   onRemoveAura:auraId=>tryBattle(()=>changeBattle(battleId,battle=>removeAura(battle,auraId))),
   onGrid:grid=>tryBattle(()=>changeBattle(battleId,battle=>configureGrid(battle,grid))),

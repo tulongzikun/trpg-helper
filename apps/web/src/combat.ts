@@ -66,6 +66,7 @@ export type DeathSaveOutcome = { natural: number; successes: number; failures: n
 
 export const conditions = ['目盲', '魅惑', '耳聋', '力竭', '恐慌', '擒抱', '失能', '隐形', '麻痹', '石化', '中毒', '倒地', '束缚', '昏迷', '稳定'] as const;
 
+export const defaultAmmo = 20;
 const randomOf = (deps: CombatDeps): Random => deps.random ?? Math.random;
 const makeIdOf = (deps: CombatDeps): (() => string) => deps.makeId ?? (() => crypto.randomUUID());
 const clampRandom = (value: number) => Math.min(Math.max(value, 0), 0.999999999);
@@ -164,6 +165,17 @@ export function removeAura(battle: Battle, auraId: string, deps: CombatDeps = {}
   addLog(next, `「${aura.name}」的灵光结束。`, deps);
   return next;
 }
+export function reloadAmmo(battle: Battle, actorId: string, count: number = defaultAmmo, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  if (!Number.isInteger(count) || count < 1 || count > 999) throw new Error('弹药数量须为 1 至 999 的整数。');
+  if (actor.combat?.status !== 'active') throw new Error('只有在场的单位可以补充弹药。');
+  combatantOf(actor).ammo = count;
+  addLog(next, `${actorLabel(next, actor)} 补充弹药至 ${count} 发。`, deps);
+  return next;
+}
+
 export function appendLog(battle: Battle, text: string, deps: CombatDeps = {}, detail?: string): Battle {
   addLog(battle, text, deps, detail);
   return battle;
@@ -797,6 +809,11 @@ function validateAttackOptions(battle: Battle, options: AttackOptions): AttackCo
   if (options.weaponId !== undefined) {
     const weapon = attackSources(attacker).find(item => item.id === options.weaponId);
     if (weapon?.properties?.includes('装填') && (options.attacks ?? 1) > 1) throw new Error('装填武器每个动作只能射击一次。');
+      if (weapon?.properties?.includes('弹药')) {
+        const shots = options.attacks ?? 1;
+        const remaining = attacker.combat?.ammo ?? defaultAmmo;
+        if (remaining < shots) throw new Error(`弹药不足：剩余 ${remaining} 发，需要 ${shots} 发。`);
+      }
   }
   if (options.twoHanded) {
     const versatile = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId)?.versatileDamage : undefined;
@@ -847,6 +864,8 @@ function resolveOneAttack(battle: Battle, options: AttackOptions, context: Attac
   const target = actorOf(battle, options.targetId);
   const state = combatantOf(attacker);
   const targetWasDown = combatantOf(target).status === 'down';
+  const ammoWeapon = options.weaponId ? attackSources(attacker).find(item => item.id === options.weaponId) : undefined;
+  if (ammoWeapon?.properties?.includes('弹药')) state.ammo = Math.max(0, (state.ammo ?? defaultAmmo) - 1);
   const random = randomOf(deps);
   const heavy = heavyWeaponAdjustment(attacker, options.weaponId);
   const far = longRangeAdjustment(attacker, options, context.distanceFt);

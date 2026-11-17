@@ -40,6 +40,7 @@ export type CombatHandlers = {
   onRemoveOngoing: (targetId: string, effectId: string) => void;
   onSummon: (actorId: string, ownerId: string, spell: string, rounds?: number) => void;
   onDismissSummon: (actorId: string) => void;
+  onReloadAmmo: (actorId: string) => void;
   onAura: (input: AuraInput) => void;
   onRemoveAura: (auraId: string) => void;
   onGrid: (grid: GridConfig | null) => void;
@@ -167,7 +168,7 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
     <ReadyPanel key={`ready-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <AiPanel key={`ai-${actor.id}`} battle={battle} actor={actor} onApply={setSuggestion} />
-    <AttackForm key={actor.id} battle={battle} attacker={actor} suggestion={suggestion} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} onOffhand={handlers.onOffhand} />
+    <AttackForm key={actor.id} battle={battle} attacker={actor} suggestion={suggestion} onAttack={handlers.onAttack} onAttackSequence={handlers.onAttackSequence} onOffhand={handlers.onOffhand} onReloadAmmo={handlers.onReloadAmmo} />
         <GrapplePanel key={`grapple-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     {actor.combat?.conditions.includes('擒抱') ? <div className="cmb-attack-actions"><span className="cmb-hint">被擒抱：可用一个动作挣脱（力量／敏捷对抗擒抱者的豁免 DC）。</span><button className="button-secondary" type="button" onClick={() => handlers.onEscapeGrapple(actor.id)} aria-label="挣脱擒抱">挣脱擒抱</button></div> : null}
     <AreaEffectForm key={`area-${actor.id}`} battle={battle} onSave={handlers.onSave} onAreaSave={handlers.onAreaSave} />
@@ -339,7 +340,7 @@ function AiPanel({ battle, actor, onApply }: { battle: Battle; actor: Actor; onA
   </div>;
 }
 
-function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, onOffhand }: { battle: Battle; attacker: Actor; suggestion?: AttackSuggestion | null; onAttack: (options: AttackOptions) => void; onAttackSequence: (options: AttackOptions) => void; onOffhand: (options: AttackOptions) => void }) {
+function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, onOffhand, onReloadAmmo }: { battle: Battle; attacker: Actor; suggestion?: AttackSuggestion | null; onAttack: (options: AttackOptions) => void; onAttackSequence: (options: AttackOptions) => void; onOffhand: (options: AttackOptions) => void; onReloadAmmo: (actorId: string) => void }) {
   const sources = attackSources(attacker);
   const first = sources[0];
   const targets = availableTargets(battle, attacker.id);
@@ -432,6 +433,7 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
       <label>额外伤害类型<select value={extraType} onChange={event => setExtraType(event.target.value as DamageType | '无')} aria-label="额外伤害类型"><option value="无">无</option>{damageTypes.map(item => <option key={item}>{item}</option>)}</select></label>
       <label className="cmb-check"><input type="checkbox" checked={extraCritical} onChange={event => setExtraCritical(event.target.checked)} aria-label="额外伤害随重击翻倍" />额外伤害随重击翻倍</label>
       <label>攻击次数<input type="number" min={1} max={maxAttacks} step={1} value={attacks} onChange={event => setAttacks(event.target.value)} aria-label="攻击次数" title={loading ? '装填武器每次动作只能射击一次' : `额外攻击：本回合最多 ${maxAttacks} 次`} />{loading ? <small>装填：每次动作只能射击一次</small> : null}</label>
+      {sources.find(item => item.id === sourceId)?.properties?.includes('弹药') ? <label className="cmb-inline-action">弹药：{attacker.combat?.ammo ?? 20} 发<button type="button" className="button-secondary" onClick={() => onReloadAmmo(attacker.id)} aria-label="补充弹药">补充弹药</button></label> : null}
       <label>检定<select value={mode} onChange={event => setMode(event.target.value as AttackMode)} aria-label="检定方式"><option value="normal">正常</option><option value="advantage">优势</option><option value="disadvantage">劣势</option></select></label>
       <label>消耗<select value={cost} onChange={event => setCost(event.target.value as AttackCost)} aria-label="消耗动作"><option value="action">动作</option><option value="bonus">附赠动作</option><option value="reaction">反应</option></select></label>
     </div>

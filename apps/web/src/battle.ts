@@ -39,6 +39,8 @@ export type CombatantState = {
   actionSurgeUsed?: number;
   /** 本场战斗是否已经使用过回气（战士），短休或长休恢复。 */
   secondWindUsed?: boolean;
+  /** 剩余弹药（带「弹药」特性的远程武器每次攻击消耗 1 发）。 */
+  ammo?: number;
   /** 回合开始时结算的持续伤害效果。 */
   ongoing?: OngoingEffect[];
   /** 正在维持的专注。 */
@@ -112,6 +114,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (![value.actionUsed, value.bonusUsed, value.reactionUsed].every(x => typeof x === 'boolean')) return false;
   if (value.actionSurgeUsed !== undefined && !isInteger(value.actionSurgeUsed, 0, 2)) return false;
   if (value.secondWindUsed !== undefined && typeof value.secondWindUsed !== 'boolean') return false;
+  if (value.ammo !== undefined && !isInteger(value.ammo, 0, 999)) return false;
   if (value.disengaged !== undefined && typeof value.disengaged !== 'boolean') return false;
   if (value.grappledBy !== undefined && (typeof value.grappledBy !== 'string' || value.grappledBy.length === 0 || value.grappledBy.length > 64)) return false;
   if (value.ready !== undefined && !isReadyAction(value.ready)) return false;
