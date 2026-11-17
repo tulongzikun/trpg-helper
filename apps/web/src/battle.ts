@@ -137,6 +137,8 @@ export type CombatantState = {
   deafened?: number;
   /** 耳聋术的施法者。 */
   deafenedBy?: string;
+  /** 撤离战场：仍留在战斗记录里，但不再行动、不计入胜负判定。 */
+  fled?: boolean;
   /** 缓慢术：剩余轮数（速度减半、AC -2、无法使用反应）。 */
   slowed?: number;
   /** 施加缓慢术的施法者 id。 */
@@ -331,6 +333,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.paralyzedBy !== undefined && (typeof value.paralyzedBy !== 'string' || value.paralyzedBy.length === 0 || value.paralyzedBy.length > 64)) return false;
   if (value.commanded !== undefined && value.commanded !== 'halt') return false;
   if (value.deafened !== undefined && !isInteger(value.deafened, 0, 100)) return false;
+  if (value.fled !== undefined && typeof value.fled !== 'boolean') return false;
   if (value.deafenedBy !== undefined && (typeof value.deafenedBy !== 'string' || value.deafenedBy.length === 0 || value.deafenedBy.length > 64)) return false;
   if (value.slowed !== undefined && !isInteger(value.slowed, 0, 100)) return false;
   if (value.slowedBy !== undefined && (typeof value.slowedBy !== 'string' || value.slowedBy.length === 0 || value.slowedBy.length > 64)) return false;

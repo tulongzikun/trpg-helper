@@ -2947,7 +2947,7 @@ function nextTurnIndex(battle: Battle) {
   }
   for (let guard = 0; guard <= combat.order.length; guard++) {
     const actor = battle.actors.find(a => a.id === combat.order[combat.turnIndex]);
-    if (actor && actor.combat?.status !== 'dead') return actor;
+    if (actor && actor.combat?.status !== 'dead' && actor.combat?.fled !== true) return actor;
     combat.turnIndex += 1;
     if (combat.turnIndex >= combat.order.length) { combat.turnIndex = 0; combat.round += 1; }
   }
@@ -3035,6 +3035,22 @@ export function rerollInitiative(battle: Battle, deps: CombatDeps = {}): Battle 
   const index = combat.order.indexOf(current);
   combat.turnIndex = index >= 0 ? index : 0;
   addLog(next, `重新掷先攻：${combat.order.map(id => `${actorLabel(next, next.actors.find(item => item.id === id)!)} ${initiativeOf(id)}`).join('、')}。`, deps);
+  return next;
+}
+
+/** 撤离战场：该单位退出战斗，不再占回合，也不计入胜负判定。 */
+export function fleeBattle(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const actor = actorOf(next, actorId);
+  const state = combatantOf(actor);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以撤离战场。');
+  if (state.fled === true) throw new Error('该单位已经撤离了战场。');
+  state.fled = true;
+  if (next.combat) {
+    next.combat.pendingOpportunity = (next.combat.pendingOpportunity ?? []).filter(item => item.reactorId !== actorId && item.targetId !== actorId);
+  }
+  addLog(next, `${actorLabel(next, actor)} 撤离了战场。`, deps);
   return next;
 }
 
