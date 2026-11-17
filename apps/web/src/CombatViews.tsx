@@ -53,6 +53,7 @@ export type CombatHandlers = {
   onBless: (actorId: string) => void;
   onShield: (actorId: string) => void;
   onGrease: (actorId: string, cells: { x: number; y: number }[]) => void;
+  onIgnite: (actorId: string, x: number, y: number) => void;
   onWeb: (actorId: string, cells: { x: number; y: number }[]) => void;
   onEntangle: (actorId: string, cells: { x: number; y: number }[]) => void;
   onEscapeWeb: (actorId: string) => void;
@@ -549,6 +550,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" disabled={!selectedActor?.position} onClick={() => { const position = selectedActor?.position; if (!position) return; const cells = [-1, 0, 1].flatMap(dx => [-1, 0, 1].map(dy => ({ x: position.x + dx, y: position.y + dy }))).filter(cell => cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height); setMessage(''); handlers.onSilence(selectedActor.id, cells); }} aria-label="沉默术">沉默术（3×3，禁止言语施法）</button>
       <button type="button" className="button-secondary" disabled={!selectedActor?.position} onClick={() => { const position = selectedActor?.position; if (!position) return; const cells = [-1, 0, 1].flatMap(dx => [-1, 0, 1].map(dy => ({ x: position.x + dx, y: position.y + dy }))).filter(cell => cell.x >= 0 && cell.y >= 0 && cell.x < grid.width && cell.y < grid.height); setMessage(''); handlers.onSleepCloud(selectedActor.id, cells); }} aria-label="睡眠云">睡眠云（3×3，DC 13 感知）</button>
       <button type="button" className="button-secondary" disabled={!selectedActor?.position} onClick={() => { const position = selectedActor?.position; if (!position) return; setMessage(''); handlers.onBuildCover(selectedActor.id, position); }} aria-label="架设掩体">架设掩体（动作，半掩体 AC +2）</button>
+      <button type="button" className="button-secondary" disabled={!selectedActor?.position} onClick={() => { const position = selectedActor?.position; if (!position) return; setMessage(''); handlers.onIgnite(selectedActor.id, position.x, position.y); }} aria-label="点燃油污">点燃脚下油污（1d6 火焰）</button>
       {selectedActor?.combat?.conditions.includes('束缚') ? <button type="button" className="button-secondary" onClick={() => { setMessage(''); handlers.onEscapeWeb(selectedActor.id); }} aria-label="挣脱蛛网">挣脱蛛网（动作，DC 12 力量）</button> : null}
       {selectedActor?.combat?.entangled ? <button type="button" className="button-secondary" onClick={() => { setMessage(''); handlers.onEscapeEntangle(selectedActor.id); }} aria-label="挣脱藤蔓">挣脱藤蔓（动作，DC 13 力量）</button> : null}
       <label className="cmb-check"><input type="checkbox" checked={jumpMode} onChange={event => setJumpMode(event.target.checked)} aria-label="跳跃移动" />跳跃移动（按直线距离消耗，忽略困难与危险地形）</label>

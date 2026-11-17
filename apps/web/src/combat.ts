@@ -566,6 +566,38 @@ export function greaseAt(battle: Battle, x: number, y: number): boolean {
   return (battle.grease ?? []).some(cell => cell.x === x && cell.y === y);
 }
 
+/** 点燃油污：火焰沿着连成一片的油污蔓延，每格上的单位受到 1d6 火焰伤害，随后油污烧尽。 */
+export function igniteGrease(battle: Battle, x: number, y: number, deps: CombatDeps = {}): { battle: Battle; burned: number; victims: string[] } {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  if (!greaseAt(next, x, y)) throw new Error('该格没有油污可供点燃。');
+  const cells = next.grease ?? [];
+  const inPool = (px: number, py: number) => cells.some(cell => cell.x === px && cell.y === py);
+  const queue: Position[] = [{ x, y }];
+  const burned: Position[] = [];
+  while (queue.length) {
+    const cell = queue.shift() as Position;
+    if (burned.some(item => item.x === cell.x && item.y === cell.y)) continue;
+    burned.push(cell);
+    for (const neighbour of [{ x: cell.x + 1, y: cell.y }, { x: cell.x - 1, y: cell.y }, { x: cell.x, y: cell.y + 1 }, { x: cell.x, y: cell.y - 1 }]) {
+      if (inPool(neighbour.x, neighbour.y) && !burned.some(item => item.x === neighbour.x && item.y === neighbour.y)) queue.push(neighbour);
+    }
+  }
+  const victims: string[] = [];
+  for (const actor of next.actors) {
+    const position = actor.position;
+    if (!position || (combatantOf(actor).status ?? 'active') !== 'active') continue;
+    if (!burned.some(item => item.x === position.x && item.y === position.y)) continue;
+    const damage = rollDamage('1d6', randomOf(deps));
+    applyDamageToActor(actor, damage.total, '火焰', next, deps);
+    victims.push(actor.name);
+  }
+  next.grease = cells.filter(cell => !burned.some(item => item.x === cell.x && item.y === cell.y));
+  if (!next.grease.length) delete next.grease;
+  const names = victims.length ? `，${victims.join('、')} 受到 1d6 火焰伤害` : '';
+  addLog(next, `点燃了 ${burned.length} 格油污${names}，随后油污烧尽。`, deps);
+  return { battle: next, burned: burned.length, victims };
+}
 /** 站在油污上的单位做 DC 13 敏捷豁免，失败倒地；飞行单位不受影响。 */
 function greaseFall(battle: Battle, actor: Actor, deps: CombatDeps): boolean {
   const state = combatantOf(actor);
