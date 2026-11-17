@@ -3248,6 +3248,14 @@ export function removeCombatant(battle: Battle, actorId: string, deps: CombatDep
   if (index < 0) throw new Error('未找到战斗单位。');
   const actor = next.actors[index];
   const wasCurrent = combat.order[combat.turnIndex] === actorId;
+  // 移出战场等同离场：先中断专注、驱散它维持的效果与召唤物，避免场上留下无人维持的法术。
+  dismissSummonsOf(next, actorId, `${actor.name} 离开战场`, deps);
+  if (actor.combat?.concentration) {
+    const spell = actor.combat.concentration.spell;
+    delete actor.combat.concentration;
+    clearFocusBuffs(next, actorId, `${actor.name} 离开战场`, deps);
+    addLog(next, `${actor.name} 离开战场，中断了对「${spell}」的专注。`, deps);
+  }
   for (const item of next.actors) {
     if (item.combat?.grappledBy === actorId) {
       delete item.combat.grappledBy;
