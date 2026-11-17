@@ -583,6 +583,7 @@ export function hostileTargets(battle: Battle, casterId: string, rangeFt = HOLD_
   const caster = battle.actors.find(item => item.id === casterId);
   if (!caster) return [];
   return battle.actors.filter(item => {
+    if (item.combat?.fled === true) return false;
     if (item.id === casterId || item.side === caster.side || item.side === '中立') return false;
     if ((item.combat?.status ?? 'active') !== 'active') return false;
     const feet = actorDistance(battle, casterId, item.id);
@@ -1131,6 +1132,7 @@ export function spellTargets(battle: Battle, casterId: string, rangeFt = 30): Ac
   const caster = battle.actors.find(item => item.id === casterId);
   if (!caster) return [];
   return battle.actors.filter(item => {
+    if (item.combat?.fled === true) return false;
     if (item.id === casterId || item.side !== caster.side || item.side === '中立') return false;
     if ((item.combat?.status ?? 'active') !== 'active') return false;
     if (actorDistance(battle, casterId, item.id) === undefined) return true;
@@ -1147,6 +1149,7 @@ export function aidTargets(battle: Battle, casterId: string, rangeFt = AID_RANGE
   const caster = battle.actors.find(actor => actor.id === casterId);
   if (!caster) return [];
   return battle.actors.filter(item => {
+    if (item.combat?.fled === true) return false;
     if (item.side !== caster.side || item.side === '中立') return false;
     if ((item.combat?.status ?? 'active') !== 'active') return false;
     if (actorDistance(battle, casterId, item.id) === undefined) return true;
@@ -1195,6 +1198,7 @@ export function barkskinTargets(battle: Battle, casterId: string): Actor[] {
   const caster = battle.actors.find(item => item.id === casterId);
   if (!caster) return [];
   return battle.actors.filter(item => {
+    if (item.combat?.fled === true) return false;
     if (item.side !== caster.side || item.side === '中立') return false;
     if ((item.combat?.status ?? 'active') !== 'active') return false;
     if (actorDistance(battle, casterId, item.id) === undefined) return true;
@@ -1236,6 +1240,7 @@ export function healTargets(battle: Battle, casterId: string, rangeFt = MASS_HEA
   const caster = battle.actors.find(item => item.id === casterId);
   if (!caster) return [];
   return battle.actors.filter(item => {
+    if (item.combat?.fled === true) return false;
     if (item.side !== caster.side || item.side === '中立') return false;
     if ((item.combat?.status ?? 'active') === 'dead') return false;
     if (actorDistance(battle, casterId, item.id) === undefined) return true;
@@ -1743,7 +1748,7 @@ export function blindTargets(battle: Battle, casterId: string, rangeFt = BLIND_R
   const caster = battle.actors.find(item => item.id === casterId);
   if (!caster) return [];
   return battle.actors.filter(item => item.side !== caster.side && item.side !== '中立'
-    && item.id !== casterId && item.combat?.status === 'active'
+    && item.id !== casterId && item.combat?.status === 'active' && item.combat?.fled !== true
     && (actorDistance(battle, casterId, item.id) ?? 0) <= rangeFt);
 }
 
@@ -1776,7 +1781,7 @@ export function deafenTargets(battle: Battle, casterId: string, rangeFt = DEAFEN
   const caster = battle.actors.find(item => item.id === casterId);
   if (!caster) return [];
   return battle.actors.filter(item => item.id !== casterId && item.side !== caster.side && item.side !== '中立'
-    && (item.combat?.status ?? 'active') === 'active'
+    && (item.combat?.status ?? 'active') === 'active' && item.combat?.fled !== true
     && (battle.grid === undefined || (actorDistance(battle, casterId, item.id) ?? 0) <= rangeFt));
 }
 
@@ -5141,7 +5146,7 @@ export function resetCombat(battle: Battle): Battle {
   return next;
 }
 export function availableTargets(battle: Battle, attackerId: string): Actor[] {
-  return battle.actors.filter(actor => actor.id !== attackerId && actor.combat?.status !== 'dead');
+  return battle.actors.filter(actor => actor.id !== attackerId && actor.combat?.status !== 'dead' && actor.combat?.fled !== true);
 }
 export function combatantSummary(actor: Actor): string {
   const state = actor.combat;
