@@ -12,6 +12,7 @@ export type ActorSettlement = {
   conditions: string[];
   concentration?: string;
   ongoing: number;
+  items: { total: number; unidentified: number };
   resources: {
     actionUsed: boolean;
     bonusUsed: boolean;
@@ -41,6 +42,7 @@ export function settleBattle(battle: Battle): BattleSettlement {
     conditions: [...(actor.combat?.conditions ?? [])],
     ...(actor.combat?.concentration ? { concentration: actor.combat.concentration.spell } : {}),
     ongoing: actor.combat?.ongoing?.length ?? 0,
+    items: { total: actor.combat?.items?.length ?? 0, unidentified: (actor.combat?.items ?? []).filter(item => item.identified === false).length },
     resources: {
       actionUsed: actor.combat?.actionUsed ?? false,
       bonusUsed: actor.combat?.bonusUsed ?? false,
@@ -68,6 +70,7 @@ export function settlementText(battle: Battle): string {
   for (const actor of summary.actors) {
     const parts = [`${actor.name}（${actor.side}）`, `${actor.currentHp}/${actor.maxHp} HP`];
     if (actor.tempHp) parts.push(`${actor.tempHp} 临时生命`);
+    if (actor.items.total) parts.push(`物品 ${actor.items.total} 种${actor.items.unidentified ? `（${actor.items.unidentified} 未鉴定）` : ''}`);
     if (actor.status !== 'active') parts.push(actor.status === 'dead' ? '阵亡' : actor.status === 'down' ? '倒地' : actor.status);
     if (actor.conditions.length) parts.push(actor.conditions.join('、'));
     if (actor.concentration) parts.push(`专注「${actor.concentration}」`);
