@@ -2985,6 +2985,8 @@ function resetTurnResources(battle: Battle, actorId: string) {
     if (typeof left !== 'number') continue;
     if (left > 1) { combat[key] = left - 1; continue; }
     delete combat[key];
+    // 变形术到期同样要摘掉「失能」标记，否则小兽变回来了却永远不能行动。
+    if (key === 'polymorphed') combat.conditions = combat.conditions.filter(condition => condition !== '失能');
     addLog(battle, `${actorLabel(battle, actorOf(battle, actorId))} 身上的${name}结束了。`, {});
   }
   if (typeof combat.poisoned === 'number') {
