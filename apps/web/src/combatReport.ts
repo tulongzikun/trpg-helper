@@ -1,8 +1,18 @@
-import type { Battle } from './battle';
+import type { Actor, Battle } from './battle';
 import { encounterXp, defeatedActors, encounterReward } from './encounterReward.ts';
 import { battleStatistics, statsText, typeText } from './combatStats.ts';
 
 const statusLabels: Record<string, string> = { active: '在场', down: '倒地待救', dead: '阵亡' };
+
+/** 战报与导出里的显示状态：阵亡优先，其次撤离、投降，最后才是生命状态。 */
+export function statusOf(actor: Actor): string {
+  const state = actor.combat;
+  if (state?.status === 'dead') return statusLabels.dead;
+  if (state?.fled === true) return '已撤离';
+  if (state?.surrendered === true) return '已投降';
+  const status = state?.status ?? 'active';
+  return statusLabels[status] ?? status;
+}
 
 /** 把一场战斗渲染成可直接贴进跑团记录的 Markdown。 */
 export function battleReport(battle: Battle): string {
@@ -22,7 +32,7 @@ export function battleReport(battle: Battle): string {
     const state = actor.combat?.status ?? 'active';
     const conditions = (actor.combat?.conditions ?? []).join('、') || '—';
     const concentration = actor.combat?.concentration?.spell ?? '—';
-    lines.push(`| ${actor.name} | ${actor.side} | ${actor.currentHp}/${actor.maxHp} | ${statusLabels[state] ?? state} | ${conditions} | ${concentration} |`);
+    lines.push(`| ${actor.name} | ${actor.side} | ${actor.currentHp}/${actor.maxHp} | ${statusOf(actor)} | ${conditions} | ${concentration} |`);
   }
   const stats = battleStatistics(battle);
   const active = stats.rows.filter(row => row.attacks > 0 || row.damageDealt > 0 || row.damageTaken > 0 || row.healing > 0);
@@ -71,11 +81,12 @@ function typeSummary(entry: { damageByType?: Record<string, number> }): string {
 /** 把统计表导出成 CSV（带 BOM，Excel 直接打开不乱码）。 */
 export function battleCsv(battle: Battle): string {
   const stats = battleStatistics(battle);
+  const labelOf = new Map(battle.actors.map(actor => [actor.id, statusOf(actor)]));
   const header = ['单位', '阵营', '状态', '攻击', '命中', '重击', '命中率', '造成伤害', '承受伤害', '治疗', '伤害构成'];
   const rows = stats.rows.map(row => [
     row.name,
     row.side,
-    statusLabels[row.status] ?? row.status,
+    labelOf.get(row.id) ?? statusLabels[row.status] ?? row.status,
     row.attacks,
     row.hits,
     row.crits,
