@@ -160,7 +160,8 @@ export function battleCsv(battle: Battle): string {
   const stats = battleStatistics(battle);
   const labelOf = new Map(battle.actors.map(actor => [actor.id, statusOf(actor)]));
   const defenseById = new Map(battle.actors.map(actor => [actor.id, defenseOf(actor)]));
-  const header = ['单位', '阵营', '状态', '攻击', '命中', '重击', '命中率', '造成伤害', '承受伤害', '治疗', '伤害构成', '防御'];
+  const effectsById = new Map(battle.actors.map(actor => [actor.id, effectsOf(actor).join('；')]));
+  const header = ['单位', '阵营', '状态', '攻击', '命中', '重击', '命中率', '造成伤害', '承受伤害', '治疗', '伤害构成', '防御', '状态效果'];
   const rows = stats.rows.map(row => [
     row.name,
     row.side,
@@ -174,6 +175,7 @@ export function battleCsv(battle: Battle): string {
     row.healing,
     typeSummary(row),
     defenseById.get(row.id) ?? '',
+    effectsById.get(row.id) ?? '',
   ]);
   const totals = [
     '合计',
@@ -187,6 +189,7 @@ export function battleCsv(battle: Battle): string {
     stats.totals.damageTaken,
     stats.totals.healing,
     typeSummary(stats.totals),
+    '',
     '',
   ];
   const lines = [header, ...rows, totals].map(cells => cells.map(csvCell).join(','));
