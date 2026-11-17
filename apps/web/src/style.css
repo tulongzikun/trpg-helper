@@ -171,3 +171,8 @@
   background: repeating-linear-gradient(135deg, rgba(214, 74, 45, 0.28) 0 4px, rgba(214, 74, 45, 0.08) 4px 8px);
   box-shadow: inset 0 0 0 1px rgba(214, 74, 45, 0.5);
 }
+
+.cmb-dice {
+  width: 5.5rem;
+  font-family: monospace;
+}

@@ -63,7 +63,7 @@ function App() {
   onPlace:(actorId,x,y)=>tryBattle(()=>changeBattle(battleId,battle=>moveActorToCell(battle,actorId,x,y))),
   onDifficult:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleDifficultCell(battle,x,y))),
   onWall:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>toggleWallCell(battle,x,y))),
-  onHazard:(x,y)=>tryBattle(()=>changeBattle(battleId,battle=>hazardAt(battle,x,y)?removeHazard(battle,x,y):addHazard(battle,{x,y,damageExpression:'1d6',damageType:'火焰'}))),
+  onHazard:(x,y,expression,type)=>tryBattle(()=>changeBattle(battleId,battle=>hazardAt(battle,x,y)?removeHazard(battle,x,y):addHazard(battle,{x,y,damageExpression:expression,damageType:type}))),
   onDisengage:actorId=>tryBattle(()=>changeBattle(battleId,battle=>disengage(battle,actorId))),
     onTerrain:(terrain:'normal'|'underwater')=>tryBattle(()=>changeBattle(battleId,battle=>setTerrain(battle,terrain))),
   onDodge:actorId=>tryBattle(()=>changeBattle(battleId,battle=>dodge(battle,actorId))),

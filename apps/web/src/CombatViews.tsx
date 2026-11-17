@@ -46,7 +46,7 @@ export type CombatHandlers = {
   onRemoveAura: (auraId: string) => void;
   onGrid: (grid: GridConfig | null) => void;
   onPlace: (actorId: string, x: number, y: number) => void;
-  onHazard: (x: number, y: number) => void;
+  onHazard: (x: number, y: number, damageExpression: string, damageType: DamageType) => void;
   onDifficult: (x: number, y: number) => void;
   onWall: (x: number, y: number) => void;
   onDisengage: (actorId: string) => void;
@@ -241,6 +241,8 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   const [selected, setSelected] = useState('');
   const [mode, setMode] = useState<'move' | 'terrain' | 'wall' | 'hazard'>('move');
   const [message, setMessage] = useState('');
+  const [hazardDice, setHazardDice] = useState('1d6');
+  const [hazardType, setHazardType] = useState<DamageType>('火焰');
   const grid = battle.grid;
   const current = currentActorId(battle);
   if (!grid) {
@@ -278,7 +280,8 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     }
     if (mode === 'hazard') {
       setMessage('');
-      handlers.onHazard(x, y);
+      if (!/^\\s*\\d{1,2}\\s*d\\s*\\d{1,3}\\s*([+-]\\s*\\d{1,3})?\\s*$/i.test(hazardDice)) { setMessage('伤害骰格式无效，请使用如 1d6 的写法。'); return; }
+      handlers.onHazard(x, y, hazardDice.trim(), hazardType);
       return;
     }
     const occupant = placed.get(`${x},${y}`);
@@ -300,7 +303,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     : [];
   return <div className="cmb-grid-panel">
     <div className="cmb-attack-head"><h4>方格战场</h4><small>{grid.width}×{grid.height} · 每格 {grid.cellFt} 尺</small></div>
-    <p className="cmb-hint">点击格子上的单位选中它，再点击空白的格子放置或移动。{mode === 'terrain' ? '地形模式：点击格子切换困难地形（进入时移动消耗翻倍）。' : mode === 'wall' ? '墙体模式：点击格子切换墙体（阻挡移动与远程视线）。' : mode === 'hazard' ? '危险地形模式：点击格子切换危险地形（进入即受到 1d6 火焰伤害）。' : ''}{selectedActor ? `当前选中：${selectedActor.name}${selectedActor.position ? `（${selectedActor.position.x}, ${selectedActor.position.y}）` : '（未放置）'}` : '尚未选中单位。'}</p>
+    <p className="cmb-hint">点击格子上的单位选中它，再点击空白的格子放置或移动。{mode === 'terrain' ? '地形模式：点击格子切换困难地形（进入时移动消耗翻倍）。' : mode === 'wall' ? '墙体模式：点击格子切换墙体（阻挡移动与远程视线）。' : mode === 'hazard' ? `危险地形模式：点击格子切换危险地形（进入即受到 ${hazardDice} ${hazardType}伤害）。` : ''}{selectedActor ? `当前选中：${selectedActor.name}${selectedActor.position ? `（${selectedActor.position.x}, ${selectedActor.position.y}）` : '（未放置）'}` : '尚未选中单位。'}</p>
     {unplaced.length ? <div className="cmb-ongoing-list">{unplaced.map(actor => <button key={actor.id} type="button" className="cmb-chip cmb-chip-action" onClick={() => setSelected(actor.id)}>{actor.name}（未放置）</button>)}</div> : null}
     <div className="cmb-grid" style={{ gridTemplateColumns: `repeat(${grid.width}, 2.4rem)` }}>
       {rows.map(y => columns.map(x => {
@@ -318,6 +321,10 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className={mode === 'terrain' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'terrain'} onClick={() => setMode('terrain')}>标记困难地形</button>
       <button type="button" className={mode === 'wall' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'wall'} onClick={() => setMode('wall')}>标记墙体</button>
       <button type="button" className={mode === 'hazard' ? 'button-primary' : 'button-secondary'} aria-pressed={mode === 'hazard'} onClick={() => setMode('hazard')}>标记危险地形</button>
+      {mode === 'hazard' ? <span className="cmb-inline-action">
+        <input className="cmb-dice" value={hazardDice} onChange={event => setHazardDice(event.target.value)} aria-label="危险地形伤害骰" placeholder="1d6" />
+        <select value={hazardType} onChange={event => setHazardType(event.target.value as DamageType)} aria-label="危险地形伤害类型">{damageTypes.map(type => <option key={type} value={type}>{type}</option>)}</select>
+      </span> : null}
       <button type="button" className="button-secondary" onClick={() => { setSelected(''); setMode('move'); handlers.onGrid(null); }}>关闭方格</button>
     </div>
   </div>;
