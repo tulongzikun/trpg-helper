@@ -1,4 +1,4 @@
-import { abilityModifier, proficiencyBonus } from './characterRules.ts';
+﻿import { abilityModifier, proficiencyBonus } from './characterRules.ts';
 import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Ability } from './characters';
@@ -112,6 +112,11 @@ export function currentActor(battle: Battle): Actor | null {
   const id = currentActorId(battle);
   return id ? battle.actors.find(a => a.id === id) ?? null : null;
 }
+export function appendLog(battle: Battle, text: string, deps: CombatDeps = {}, detail?: string): Battle {
+  addLog(battle, text, deps, detail);
+  return battle;
+}
+
 function addLog(battle: Battle, text: string, deps: CombatDeps, detail?: string) {
   const combat = battle.combat;
   if (!combat) return;
@@ -1561,6 +1566,7 @@ export function standUp(battle: Battle, actorId: string, deps: CombatDeps = {}):
   addLog(next, `${actorLabel(next, actor)} 起身，消耗 ${cost} 尺移动力。`, deps);
   return next;
 }
+
 
 
 

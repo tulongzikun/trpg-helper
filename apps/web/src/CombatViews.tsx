@@ -12,6 +12,7 @@ import type { AttackRange, CoverType } from './combatModifiers';
 import type { Ability } from './characters';
 import type { Card } from './catalog';
 import { fallAverageDamage, jumpDistance } from './combatMovement';
+import type { SpellCastOptions } from './combatSpells';
 
 const abilityNames: Record<Ability, string> = { str: '力量', dex: '敏捷', con: '体质', int: '智力', wis: '感知', cha: '魅力' };
 
@@ -30,6 +31,7 @@ export type CombatHandlers = {
   onAutoTurn: (actorId: string) => void;
   onAutoSide: (side: Side) => void;
   onFall: (actorId: string, feet: number) => void;
+  onCast: (options: SpellCastOptions) => void;
   onSave: (options: SaveOptions) => void;
   onAreaSave: (options: AreaSaveOptions) => void;
   onConcentration: (actorId: string, spell: string | null) => void;
@@ -156,8 +158,9 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" onClick={() => handlers.onAuto(actor.id)}>自动行动（攻击或靠近）</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoTurn(actor.id)}>自动回合（行动后结束）</button>
       <button type="button" className="button-secondary" onClick={() => handlers.onAutoSide(actor.side)}>本阵营整轮自动</button>
-      <FallPanel actor={actor} onFall={handlers.onFall} />
     </div>
+    <SpellPanel key={`spell-${actor.id}`} battle={battle} actor={actor} onCast={handlers.onCast} />
+    <FallPanel actor={actor} onFall={handlers.onFall} />
     <ClassActions actor={actor} onSurge={() => handlers.onActionSurge(actor.id)} onSecondWind={() => handlers.onSecondWind(actor.id)} />
     <ReadyPanel key={`ready-${actor.id}`} battle={battle} actor={actor} handlers={handlers} />
     <AiPanel key={`ai-${actor.id}`} battle={battle} actor={actor} onApply={setSuggestion} />
@@ -754,3 +757,54 @@ function FallPanel({ actor, onFall }: { actor: Actor; onFall: (actorId: string, 
     </div>
   );
 }
+
+function SpellPanel({ battle, actor, onCast }: { battle: Battle; actor: Actor; onCast: (options: SpellCastOptions) => void }) {
+  const [spell, setSpell] = useState('');
+  const [level, setLevel] = useState(1);
+  const [mode, setMode] = useState<'save' | 'attack'>('save');
+  const [targetId, setTargetId] = useState('');
+  const [damage, setDamage] = useState('2d6');
+  const [type, setType] = useState<DamageType>('火焰');
+  const [bonus, setBonus] = useState(7);
+  const [dc, setDc] = useState(15);
+  const [ability, setAbility] = useState<Ability>('dex');
+  const [bonusAction, setBonusAction] = useState(false);
+  const [concentration, setConcentration] = useState(false);
+  const targets = battle.actors.filter(item => item.id !== actor.id && item.combat?.status === 'active');
+  const target = targetId || targets[0]?.id || '';
+  return (
+    <div className="cmb-spell">
+      <span className="cmb-muted">施放法术</span>
+      <label>名称<input value={spell} onChange={event => setSpell(event.target.value)} aria-label="法术名称" /></label>
+      <label>环阶<input type="number" min={0} max={9} value={level} onChange={event => setLevel(Number(event.target.value))} aria-label="法术环阶" /></label>
+      <label>结算<select value={mode} onChange={event => setMode(event.target.value as 'save' | 'attack')} aria-label="结算方式">
+        <option value="save">目标豁免</option>
+        <option value="attack">法术攻击</option>
+      </select></label>
+      <label>目标<select value={target} onChange={event => setTargetId(event.target.value)} aria-label="法术目标">
+        {targets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+      </select></label>
+      <label>伤害骰<input value={damage} onChange={event => setDamage(event.target.value)} aria-label="法术伤害骰" /></label>
+      <label>类型<select value={type} onChange={event => setType(event.target.value as DamageType)} aria-label="法术伤害类型">
+        {damageTypes.map(item => <option key={item} value={item}>{item}</option>)}
+      </select></label>
+      {mode === 'save'
+        ? <><label>DC<input type="number" min={1} max={40} value={dc} onChange={event => setDc(Number(event.target.value))} aria-label="法术豁免 DC" /></label>
+          <label>豁免<select value={ability} onChange={event => setAbility(event.target.value as Ability)} aria-label="豁免属性">
+            {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as Ability[]).map(key => <option key={key} value={key}>{abilityNames[key]}</option>)}
+          </select></label></>
+        : <label>攻击加值<input type="number" value={bonus} onChange={event => setBonus(Number(event.target.value))} aria-label="法术攻击加值" /></label>}
+      <label className="cmb-check"><input type="checkbox" checked={bonusAction} onChange={event => setBonusAction(event.target.checked)} aria-label="附赠动作施法" />附赠动作</label>
+      <label className="cmb-check"><input type="checkbox" checked={concentration} onChange={event => setConcentration(event.target.checked)} aria-label="需要专注" />专注</label>
+      <button type="button" className="button-secondary" aria-label="施放法术" disabled={!spell.trim() || !target} onClick={() => onCast({
+        casterId: actor.id, spell: spell.trim(), level,
+        ...(bonusAction ? { cost: 'bonus' as const } : {}),
+        ...(concentration ? { concentration: true } : {}),
+        ...(mode === 'save'
+          ? { save: { ability, dc, targetIds: [target], damageExpression: damage, damageType: type } }
+          : { attack: { targetId: target, attackBonus: bonus, damageExpression: damage, damageType: type } }),
+      })}>施放</button>
+    </div>
+  );
+}
+
