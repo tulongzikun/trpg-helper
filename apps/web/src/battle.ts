@@ -127,8 +127,10 @@ export type CombatantState = {
   hastedBy?: string;
   /** 隐形术：剩余轮数（针对它的攻击检定劣势，它自己的攻击检定优势）。 */
   invisible?: number;
+  paralyzed?: number;
   /** 施加隐形术的施法者 id。 */
   invisibleBy?: string;
+  paralyzedBy?: string;
   /** 护盾术：AC 加值，直到自己下个回合开始。 */
   shield?: number;
 };
@@ -265,7 +267,8 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.sentinel !== undefined && typeof value.sentinel !== 'boolean') return false;
   if (value.stable !== undefined && typeof value.stable !== 'boolean') return false;
   if (value.sleeping !== undefined && typeof value.sleeping !== 'boolean') return false;
-  if (value.sleeping !== undefined && typeof value.sleeping !== 'boolean') return false;
+  if (value.paralyzed !== undefined && !isInteger(value.paralyzed, 0, 100)) return false;
+  if (value.paralyzedBy !== undefined && (typeof value.paralyzedBy !== 'string' || value.paralyzedBy.length === 0 || value.paralyzedBy.length > 64)) return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
   if (value.warCaster !== undefined && typeof value.warCaster !== 'boolean') return false;
   if (value.counterspell !== undefined && typeof value.counterspell !== 'boolean') return false;

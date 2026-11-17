@@ -515,6 +515,79 @@ function greaseFall(battle: Battle, actor: Actor, deps: CombatDeps): boolean {
   return true;
 }
 
+const HOLD_DC = 13;
+const HOLD_RANGE_FT = 60;
+
+/** 敌对目标：敌方阵营、在场、且在给定距离内（无位置时不限距）。 */
+export function hostileTargets(battle: Battle, casterId: string, rangeFt = HOLD_RANGE_FT): Actor[] {
+  const caster = battle.actors.find(item => item.id === casterId);
+  if (!caster) return [];
+  return battle.actors.filter(item => {
+    if (item.id === casterId || item.side === caster.side || item.side === '中立') return false;
+    if ((item.combat?.status ?? 'active') !== 'active') return false;
+    const feet = actorDistance(battle, casterId, item.id);
+    return feet === undefined || feet <= rangeFt;
+  });
+}
+
+function clearParalysis(battle: Battle, actor: Actor, note: string, deps: CombatDeps = {}): void {
+  const state = actor.combat;
+  if (!state || state.paralyzed === undefined) return;
+  delete state.paralyzed;
+  delete state.paralyzedBy;
+  state.conditions = state.conditions.filter(condition => condition !== '麻痹');
+  addLog(battle, `${actorLabel(battle, actor)} ${note}`, deps);
+}
+
+/** 定身术：目标每回合开始时重新掷感知豁免，成功或持续轮数耗尽即解除。 */
+function holdRecover(battle: Battle, actor: Actor, deps: CombatDeps = {}): void {
+  const state = actor.combat;
+  if (!state?.paralyzed) return;
+  const save = resolveSave(actor, { actorId: actor.id, ability: 'wis', dc: HOLD_DC }, randomOf(deps));
+  if (save.success) {
+    clearParalysis(battle, actor, `挣脱了定身术（感知 ${save.natural} → ${save.total}，DC ${HOLD_DC}）。`, deps);
+    return;
+  }
+  state.paralyzed -= 1;
+  if (state.paralyzed <= 0) clearParalysis(battle, actor, '身上的定身术结束了。', deps);
+  else addLog(battle, `${actorLabel(battle, actor)} 没能挣脱定身术（感知 ${save.natural} → ${save.total}，DC ${HOLD_DC}），还剩 ${state.paralyzed} 轮。`, deps);
+}
+
+/** 定身术：动作施放 + 专注，60 尺内单体感知豁免 DC 13，失败则麻痹 10 轮。 */
+export function castHoldPerson(battle: Battle, casterId: string, targetId: string, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  requireCombat(next);
+  const caster = actorOf(next, casterId);
+  requireVoice(next, casterId);
+  const state = combatantOf(caster);
+  if (state.status !== 'active') throw new Error('只有在场的单位可以施放定身术。');
+  const target = actorOf(next, targetId);
+  const targetState = combatantOf(target);
+  if (targetState.status !== 'active') throw new Error('只能对在场的单位施放定身术。');
+  if (target.id === casterId) throw new Error('定身术不能对自己施放。');
+  if (caster.position && target.position) {
+    const feet = actorDistance(next, casterId, targetId) ?? 0;
+    if (feet > HOLD_RANGE_FT) throw new Error('定身术只能影响 60 尺内的单位。');
+  }
+  if (targetState.conditions.includes('麻痹')) throw new Error('目标已经处于麻痹状态。');
+  const blocker = actionBlocker(caster);
+  if (blocker) throw new Error(blocker);
+  if (state.actionUsed) throw new Error('该单位本回合已经使用过动作。');
+  if (state.concentration) throw new Error('施法者已经在维持其他专注。');
+  state.actionUsed = true;
+  state.concentration = { spell: '定身术' };
+  const save = resolveSave(target, { actorId: target.id, ability: 'wis', dc: HOLD_DC }, randomOf(deps));
+  if (save.success) {
+    addLog(next, `${actorLabel(next, caster)} 施放定身术，${actorLabel(next, target)} 抵抗住了（感知 ${save.natural} → ${save.total}，DC ${HOLD_DC}）。`, deps);
+    return next;
+  }
+  targetState.conditions = [...targetState.conditions, '麻痹'];
+  targetState.paralyzed = 10;
+  targetState.paralyzedBy = casterId;
+  addLog(next, `${actorLabel(next, caster)} 施放定身术，${actorLabel(next, target)} 被定住：麻痹 10 轮（感知 ${save.natural} → ${save.total}，DC ${HOLD_DC}）。`, deps);
+  return next;
+}
+
 const SILENCE_MAX_CELLS = 20;
 
 /** 该格是否被沉默术覆盖。 */
@@ -827,6 +900,15 @@ function clearFocusBuffs(battle: Battle, casterId: string, reason: string, deps:
     delete battle.fog;
     delete battle.fogBy;
     addLog(battle, `${reason}，迷雾消散了。`, deps);
+  }
+  const held = battle.actors.filter(item => item.combat?.paralyzedBy === casterId);
+  if (held.length) {
+    for (const item of held) {
+      delete item.combat!.paralyzed;
+      delete item.combat!.paralyzedBy;
+      item.combat!.conditions = item.combat!.conditions.filter(condition => condition !== '麻痹');
+    }
+    addLog(battle, `${reason}，${held.map(item => actorLabel(battle, item)).join('、')} 的定身术结束了。`, deps);
   }
   if (battle.silence && battle.silenceBy === casterId) {
     delete battle.silence;
@@ -1221,6 +1303,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const state = combatantOf(actor);
   if (actor.combat?.conditions.includes('擒抱')) throw new Error('被擒抱的单位无法移动。');
   if (actor.combat?.conditions.includes('束缚')) throw new Error('被蛛网束缚的单位无法移动，需先用动作挣脱。');
+  if (actor.combat?.conditions.includes('麻痹')) throw new Error('处于麻痹状态的单位无法移动。');
   const blocker = actionBlocker(actor);
   if (blocker) throw new Error(blocker);
   if (lineCells(from, { x, y }).some(cell => isWallCell(next, cell.x, cell.y))) throw new Error('移动路径被墙体阻挡。');
@@ -1645,6 +1728,7 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   addLog(next, `第 ${combat.round} 轮 · 轮到 ${actorLabel(next, actor)}（先攻 ${combatantOf(actor).initiative}）。`, deps);
   if (actor.combat?.ready) { delete actor.combat.ready; addLog(next, `${actorLabel(next, actor)} 的准备动作在回合开始时失效。`, deps); }
   applyOngoingDamage(next, deps);
+  holdRecover(next, actor, deps);
   if (actor.position) {
     applyHazardAt(next, actor, actor.position.x, actor.position.y, deps, '回合开始');
     applyLavaAt(next, actor, deps, '回合开始');
@@ -2937,6 +3021,8 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     actor.combat.hidden = false;
     actor.combat.sapped = false;
     delete actor.combat.sleeping;
+  delete actor.combat.paralyzed;
+  delete actor.combat.paralyzedBy;
     delete actor.combat.vexTargetId;
     delete actor.combat.helpedAttack;
     delete actor.combat.ready;
@@ -3338,7 +3424,7 @@ export function tickTurnStart(battle: Battle, deps: CombatDeps = {}): Battle {
   const current = currentActorId(next);
   if (current) {
     const actor = next.actors.find(item => item.id === current);
-    if (actor && (actor.combat?.status ?? 'active') === 'active') { greaseFall(next, actor, deps); webStuck(next, actor, deps); }
+    if (actor && (actor.combat?.status ?? 'active') === 'active') { greaseFall(next, actor, deps); webStuck(next, actor, deps); holdRecover(next, actor, deps); }
   }
   return next;
 }
