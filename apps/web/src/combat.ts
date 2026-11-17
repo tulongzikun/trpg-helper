@@ -432,7 +432,7 @@ function applyHazardAt(battle: Battle, actor: Actor, x: number, y: number, deps:
 export function setTerrain(battle: Battle, terrain: Terrain, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
-  if (terrain !== 'normal' && terrain !== 'underwater' && terrain !== 'climbing' && terrain !== 'ice') throw new Error('战场地形取值无效。');
+  if (terrain !== 'normal' && terrain !== 'underwater' && terrain !== 'climbing' && terrain !== 'ice' && terrain !== 'lava') throw new Error('战场地形取值无效。');
   if (terrain === 'normal') delete next.terrain;
   else next.terrain = terrain;
   addLog(next, terrain === 'underwater'
@@ -441,7 +441,9 @@ export function setTerrain(battle: Battle, terrain: Terrain, deps: CombatDeps = 
       ? '战场进入攀爬环境：移动消耗翻倍。'
       : terrain === 'ice'
         ? '战场进入冰面：移动消耗翻倍，移动后需通过敏捷豁免（DC 10），失败倒地。'
-        : '战场恢复为普通地形。', deps);
+        : terrain === 'lava'
+          ? '战场进入岩浆：站在其中的单位在踏入与回合开始时受到 1d10 点火焰伤害，移动消耗翻倍。'
+          : '战场恢复为普通地形。', deps);
   return next;
 }
 
@@ -481,6 +483,15 @@ export function configureGrid(battle: Battle, grid: GridConfig | null, deps: Com
  * 把单位放到格子上；已放置的单位会按移动消耗处理。
  * 未开始战斗时只能放置，不消耗移动。
  */
+/** 岩浆：站在其中（或踏入）时受到 1d10 点火焰伤害。 */
+function applyLavaAt(battle: Battle, actor: Actor, deps: CombatDeps, phase: '踏入' | '回合开始' = '踏入'): void {
+  if (battle.terrain !== 'lava') return;
+  if (combatantOf(actor).status === 'dead') return;
+  const burned = rollDamage('1d10', randomOf(deps), false);
+  const result = applyDamageToActor(actor, burned.total, '火焰', battle, deps);
+  addLog(battle, `${actorLabel(battle, actor)} ${phase === '踏入' ? '踏入' : '在'}岩浆，受到 ${result.damage} 点火焰伤害。`, deps);
+}
+
 export function moveActorToCell(battle: Battle, actorId: string, x: number, y: number, deps: CombatDeps = {}): Battle {
   if (!battle.grid) throw new Error('请先启用方格战场。');
   if (!Number.isInteger(x) || !Number.isInteger(y)) throw new Error('格子坐标须为整数。');
@@ -496,6 +507,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
     actor.position = { x, y };
     addLog(next, `${actorLabel(next, actor)} 放置在 (${x}, ${y})。`, deps);
     applyHazardAt(next, actor, x, y, deps);
+    applyLavaAt(next, actor, deps);
     return next;
   }
   requireCombat(next);
@@ -509,12 +521,13 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   const swimming = next.terrain === 'underwater';
   const climbing = next.terrain === 'climbing';
   const icy = next.terrain === 'ice';
-  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1) * (swimming || climbing || icy ? 2 : 1);
+  const lava = next.terrain === 'lava';
+  const cost = cellDistance(from, { x, y }) * next.grid!.cellFt * (rough ? 2 : 1) * (swimming || climbing || icy || lava ? 2 : 1);
   const speed = movementAllowance(actor);
   if (state.movementUsed + cost > speed) throw new Error(`移动距离超出速度上限（${speed} 尺）。`);
   state.movementUsed += cost;
   actor.position = { x, y };
-  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}${swimming ? '，水下游泳使消耗翻倍' : ''}${climbing ? '，攀爬使消耗翻倍' : ''}${icy ? '，冰面使消耗翻倍' : ''}。`, deps);
+  addLog(next, `${actorLabel(next, actor)} 移动到 (${x}, ${y})，消耗 ${cost} 尺（共 ${state.movementUsed}/${speed} 尺）${rough ? '，困难地形使消耗翻倍' : ''}${swimming ? '，水下游泳使消耗翻倍' : ''}${climbing ? '，攀爬使消耗翻倍' : ''}${icy ? '，冰面使消耗翻倍' : ''}${lava ? '，岩浆使消耗翻倍' : ''}。`, deps);
   if (icy) {
     const stumble = resolveSave(actor, { actorId: actor.id, ability: 'dex', dc: 10, bonus: defaultSaveBonus(actor, 'dex') + auraBonus(next, actor.id, 'saves') }, randomOf(deps));
     if (!stumble.success) {
@@ -524,6 +537,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
     }
   }
   applyHazardAt(next, actor, x, y, deps);
+  applyLavaAt(next, actor, deps);
   const triggered = threatPrompts(next, actor, from, { x, y });
   if (triggered.length) {
     const combat = requireCombat(next);
@@ -819,6 +833,7 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   applyOngoingDamage(next, deps);
   if (actor.position) {
     applyHazardAt(next, actor, actor.position.x, actor.position.y, deps, '回合开始');
+    applyLavaAt(next, actor, deps, '回合开始');
   }
   if (next.autoDeathSaves && actor.combat?.status === 'down' && actor.characterSnapshot) {
     resolveDeathSave(next, actor, deps);

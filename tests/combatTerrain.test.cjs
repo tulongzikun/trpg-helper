@@ -72,7 +72,7 @@ test('地形日志与非法取值', () => {
   assert.equal(underwater.terrain, 'underwater');
   const normal = setTerrain(underwater, 'normal');
   assert.match(normal.combat.log.at(-1).text, /普通地形/);
-  assert.throws(() => setTerrain(battle, 'lava'), /战场地形取值无效/);
+  assert.throws(() => setTerrain(battle, 'swamp'), /战场地形取值无效/);
 });
 
 test('水下火焰伤害减半', () => {
