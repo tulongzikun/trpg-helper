@@ -2339,9 +2339,10 @@ function applyHazardAt(battle: Battle, actor: Actor, x: number, y: number, deps:
   if (combatantOf(actor).status === 'dead') return;
   const rolled = rollDamage(hazard.damageExpression, deps.random ?? Math.random, false);
   const result = applyDamageToActor(actor, rolled.total, hazard.damageType, battle);
+  const concentration = result.damage > 0 ? concentrationCheck(battle, actor, result.damage, randomOf(deps), deps) : null;
   addLog(battle, phase === '回合开始'
     ? `${actorLabel(battle, actor)} 在危险地形 (${x}, ${y}) 中开始回合，受到 ${result.damage} 点${hazard.damageType}伤害。`
-    : `${actorLabel(battle, actor)} 踏入危险地形 (${x}, ${y})，受到 ${result.damage} 点${hazard.damageType}伤害。`, deps);
+    : `${actorLabel(battle, actor)} 踏入危险地形 (${x}, ${y})，受到 ${result.damage} 点${hazard.damageType}伤害。`, deps, concentration?.text);
 }
 /** 启用、调整或关闭方格战场；关闭时清除所有位置。 */
 export function setTerrain(battle: Battle, terrain: Terrain, deps: CombatDeps = {}): Battle {
@@ -2408,7 +2409,8 @@ function applyLavaAt(battle: Battle, actor: Actor, deps: CombatDeps, phase: '踏
   if (combatantOf(actor).status === 'dead') return;
   const burned = rollDamage('1d10', randomOf(deps), false);
   const result = applyDamageToActor(actor, burned.total, '火焰', battle, deps);
-  addLog(battle, `${actorLabel(battle, actor)} ${phase === '踏入' ? '踏入' : '在'}岩浆，受到 ${result.damage} 点火焰伤害。`, deps);
+  const concentration = result.damage > 0 ? concentrationCheck(battle, actor, result.damage, randomOf(deps), deps) : null;
+  addLog(battle, `${actorLabel(battle, actor)} ${phase === '踏入' ? '踏入' : '在'}岩浆，受到 ${result.damage} 点火焰伤害。`, deps, concentration?.text);
 }
 
 export type ScrollSpell = '治疗术' | '祝福术' | '加速术' | '群体治疗术';
@@ -2576,7 +2578,8 @@ function applyBrambles(battle: Battle, actor: Actor, steps: number, deps: Combat
   if (battle.terrain !== 'brambles' || steps <= 0) return;
   if (combatantOf(actor).status === 'dead') return;
   const result = applyDamageToActor(actor, steps, '穿刺', battle, deps);
-  addLog(battle, `${actorLabel(battle, actor)} 穿过荆棘，受到 ${result.damage} 点穿刺伤害。`, deps);
+  const concentration = result.damage > 0 ? concentrationCheck(battle, actor, result.damage, randomOf(deps), deps) : null;
+  addLog(battle, `${actorLabel(battle, actor)} 穿过荆棘，受到 ${result.damage} 点穿刺伤害。`, deps, concentration?.text);
 }
 
 export function moveActorToCell(battle: Battle, actorId: string, x: number, y: number, deps: CombatDeps = {}): Battle {
