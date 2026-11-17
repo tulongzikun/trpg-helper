@@ -28,7 +28,13 @@ export function suggestAttacks(battle: Battle, actorId: string, limit = 3): Atta
   const actor = battle.actors.find(item => item.id === actorId);
   if (!actor?.combat || actor.combat.status !== 'active') return [];
   const sources = attackSources(actor);
-  const enemies = battle.actors.filter(item => item.id !== actor.id && item.combat?.status === 'active' && item.side !== '中立' && item.side !== actor.side);
+  // 已撤离、已投降的单位不再计入胜负，也不值得再分配攻击。
+  const enemies = battle.actors.filter(item => item.id !== actor.id
+    && item.combat?.status === 'active'
+    && item.combat?.fled !== true
+    && item.combat?.surrendered !== true
+    && item.side !== '中立'
+    && item.side !== actor.side);
   const suggestions: AttackSuggestion[] = [];
   for (const enemy of enemies) {
     for (const source of sources) {
