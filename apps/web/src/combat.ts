@@ -1127,6 +1127,26 @@ export function castSlow(battle: Battle, casterId: string, targetIds: string[], 
   return next;
 }
 
+/** 突袭：把指定单位标记为措手不及，它们的第一回合直接跳过。 */
+export function markSurprised(battle: Battle, actorIds: string[], deps: CombatDeps = {}): Battle {
+  requireCombat(battle);
+  const unique = [...new Set(actorIds)];
+  if (!unique.length) throw new Error('请选择要标记为措手不及的单位。');
+  const next = recordUndo(structuredClone(battle));
+  const marked: string[] = [];
+  for (const id of unique) {
+    const actor = actorOf(next, id);
+    if (actor.combat?.status !== 'active') throw new Error('只有在场的单位可以被标记为突袭。');
+    const state = combatantOf(actor);
+    if (state.surprised === true) continue;
+    state.surprised = true;
+    marked.push(actorLabel(next, actor));
+  }
+  if (!marked.length) throw new Error('这些单位已经处于突袭状态。');
+  addLog(next, `${marked.join('、')} 遭到突袭：第一回合措手不及，无法行动。`, deps);
+  return next;
+}
+
 const FEAR_DC = 13;
 const FEAR_RANGE_FT = 30;
 const FEAR_MAX_TARGETS = 3;
@@ -2195,6 +2215,11 @@ export function endTurn(battle: Battle, deps: CombatDeps = {}): Battle {
   if (actor.combat?.commanded === 'halt') {
     delete actor.combat.commanded;
     addLog(next, `${actorLabel(next, actor)} 受命令术影响，整个回合无法行动。`, deps);
+    return endTurn(next, deps);
+  }
+  if (actor.combat?.surprised) {
+    delete actor.combat.surprised;
+    addLog(next, `${actorLabel(next, actor)} 措手不及，本回合无法行动。`, deps);
     return endTurn(next, deps);
   }
   if (actor.combat?.ready) { delete actor.combat.ready; addLog(next, `${actorLabel(next, actor)} 的准备动作在回合开始时失效。`, deps); }
@@ -3596,6 +3621,7 @@ export function takeLongRest(battle: Battle, deps: CombatDeps = {}): Battle {
     delete actor.combat.charmedBy;
     delete actor.combat.frightened;
     delete actor.combat.frightenedBy;
+    delete actor.combat.surprised;
     delete actor.combat.poisoned;
     actor.combat.conditions = actor.combat.conditions.filter(condition => condition !== '中毒');
     delete actor.combat.invisible;

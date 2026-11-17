@@ -145,6 +145,7 @@ export type CombatantState = {
   frightened?: number;
   /** 施加恐惧术的施法者 id。 */
   frightenedBy?: string;
+  surprised?: boolean;
   /** 中毒剩余轮数（攻击检定劣势），归零时自动解除。 */
   poisoned?: number;
   /** 护盾术：AC 加值，直到自己下个回合开始。 */
@@ -291,7 +292,7 @@ function isCombatant(value: unknown): value is CombatantState {
   if (value.charmed !== undefined && !isInteger(value.charmed, 0, 100)) return false;
   if (value.charmedBy !== undefined && (typeof value.charmedBy !== 'string' || value.charmedBy.length === 0 || value.charmedBy.length > 64)) return false;
   if (value.frightened !== undefined && !isInteger(value.frightened, 0, 100)) return false;
-  if (value.frightenedBy !== undefined && (typeof value.frightenedBy !== 'string' || value.frightenedBy.length < 1 || value.frightenedBy.length > 64)) return false;
+  if (value.frightenedBy !== undefined && (typeof value.frightenedBy !== 'string' || value.frightenedBy.length < 1 || value.frightenedBy.length > 64)) return false; if (value.surprised !== undefined && typeof value.surprised !== 'boolean') return false;
   if (value.revealed !== undefined && typeof value.revealed !== 'boolean') return false;
   if (value.warCaster !== undefined && typeof value.warCaster !== 'boolean') return false;
   if (value.counterspell !== undefined && typeof value.counterspell !== 'boolean') return false;

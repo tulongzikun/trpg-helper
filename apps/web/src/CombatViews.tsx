@@ -60,6 +60,7 @@ export type CombatHandlers = {
   onCharm: (actorId: string, targetId: string) => void;
   onFear: (actorId: string, targetIds: string[]) => void;
   onDispel: (actorId: string, targetId: string) => void;
+  onSurprise: (actorId: string) => void;
   onSilence: (actorId: string, cells: { x: number; y: number }[]) => void;
   onSleep: (actorId: string) => void;
   onWake: (actorId: string, targetId: string) => void;
@@ -313,6 +314,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed || !hostileTargets(battle, actor.id, 30).length} onClick={() => handlers.onCharm(actor.id, hostileTargets(battle, actor.id, 30)[0]?.id ?? '')} aria-label="魅惑术">魅惑术（动作，DC 13 感知，30 尺内敌人）</button>
 {<button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed || !hostileTargets(battle, actor.id, 30).length} onClick={() => handlers.onFear(actor.id, hostileTargets(battle, actor.id, 30).slice(0, 3).map(item => item.id))} aria-label="恐惧术">恐惧术（动作，DC 13 感知，30 尺内 3 个敌人）</button>}
       {<button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed || !hostileTargets(battle, actor.id, 120).length} onClick={() => handlers.onDispel(actor.id, hostileTargets(battle, actor.id, 120)[0]?.id ?? '')} aria-label="驱散魔法">驱散魔法（动作，DC 13 施法属性检定，120 尺）</button>}
+      {state.status === 'active' && !state.surprised ? <button type="button" className="button-secondary" onClick={() => handlers.onSurprise(actor.id)} aria-label="标记突袭">标记突袭（第一回合无法行动）</button> : null}
+      {state.surprised ? <span className="cmb-hint">突袭：轮到它时措手不及，无法行动</span> : null}
       {state.charmed ? <span className="cmb-hint">魅惑术：剩余 {state.charmed} 轮（无法攻击施法者）</span> : null}
 {state.frightened ? <span className="cmb-hint">恐惧术：剩余 {state.frightened} 轮（无法靠近恐惧源，对其攻击劣势）</span> : null}
       {state.conditions.includes('中毒') ? <button type="button" className="button-secondary" disabled={state.status !== 'active' || state.actionUsed} onClick={() => handlers.onAntitoxin(actor.id)} aria-label="解毒剂">解毒剂（动作，解除中毒）</button> : null}
