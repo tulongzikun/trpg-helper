@@ -38,7 +38,7 @@ export type CombatItem = {
   identified?: boolean;
 };
 /** 借机攻击：reactorId 用反应攻击离开其触及范围的 targetId。 */
-export type OpportunityPrompt = { reactorId: string; targetId: string; kind?: 'opportunity' | 'ready' };
+export type OpportunityPrompt = { reactorId: string; targetId: string; kind?: 'opportunity' | 'ready'; /** 触发时的出发格（旧档案可能没有）。 */ from?: Position; /** 触发时的落点格（旧档案可能没有）。 */ to?: Position };
 /** 召唤物绑定：失去专注、施法者倒地或倒计时结束时消散。 */
 export type Summon = { ownerId: string; spell: string; rounds?: number };
 /** 准备动作：把动作换成「满足触发条件时用反应执行」。 */
@@ -416,6 +416,7 @@ function isCombatState(value: unknown): value is CombatState {
   if (!value.log.every(entry => isObject(entry) && typeof entry.id === 'string' && isInteger(entry.round, 0) && typeof entry.text === 'string' && (entry.detail === undefined || typeof entry.detail === 'string'))) return false;
   if (!Array.isArray(value.undo) || value.undo.length > 20) return false;
   if (value.pendingOpportunity !== undefined && (!Array.isArray(value.pendingOpportunity) || value.pendingOpportunity.length > 8 || !value.pendingOpportunity.every(isOpportunityPrompt))) return false;
+  if (value.pendingOpportunity !== undefined && !value.pendingOpportunity.every(item => (item.from === undefined || isPosition(item.from)) && (item.to === undefined || isPosition(item.to)))) return false;
   return value.undo.every(isBattleSnapshot);
 }
 function isOpportunityPrompt(value: unknown): value is OpportunityPrompt {

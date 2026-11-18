@@ -2216,7 +2216,7 @@ function threatPrompts(battle: Battle, mover: Actor, from: Position, to: Positio
       const after = cellDistance(other.position!, to) * grid.cellFt;
       return before <= reach && after > reach;
     })
-    .map(other => ({ reactorId: other.id, targetId: mover.id }));
+    .map(other => ({ reactorId: other.id, targetId: mover.id, from, to }));
 }
 
 /** 能否立刻做出反应：在场、未撤离、未投降，且没有失能类状态。 */
@@ -2242,7 +2242,7 @@ function enteringReachPrompts(battle: Battle, mover: Actor, from: Position, to: 
       const after = cellDistance(other.position!, to) * grid.cellFt;
       return before > reach && after <= reach;
     })
-    .map(other => ({ reactorId: other.id, targetId: mover.id }));
+    .map(other => ({ reactorId: other.id, targetId: mover.id, from, to }));
 }
 /** 准备好的「攻击」动作：敌对单位进入触及范围时自动排入待结算提示。 */
 function readyPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
@@ -2259,7 +2259,7 @@ function readyPrompts(battle: Battle, mover: Actor, from: Position, to: Position
       const after = cellDistance(other.position!, to) * grid.cellFt;
       return before > reach && after <= reach;
     })
-    .map(other => ({ reactorId: other.id, targetId: mover.id, kind: 'ready' as const }));
+    .map(other => ({ reactorId: other.id, targetId: mover.id, kind: 'ready' as const, from, to }));
 }
 /** 当前待结算的借机攻击。 */
 export function pendingOpportunities(battle: Battle): OpportunityPrompt[] {
@@ -2869,7 +2869,8 @@ export function promptDetail(battle: Battle, prompt: OpportunityPrompt): string 
   if (!reactor || !mover) return '';
   const reach = actorReach(reactor);
   const feet = actorDistance(battle, prompt.reactorId, prompt.targetId);
-  const gap = typeof feet === 'number' ? `，现在相距 ${feet} 尺` : '';
+  const path = prompt.from && prompt.to ? `，触发时从（${prompt.from.x}, ${prompt.from.y}）移动到（${prompt.to.x}, ${prompt.to.y}）` : '';
+  const gap = typeof feet === 'number' ? `${path}，现在相距 ${feet} 尺` : path;
   if (prompt.kind === 'ready') return `触发 ${actorLabel(battle, reactor)} 准备好的动作${gap}`;
   const inside = typeof feet === 'number' && feet <= reach;
   return inside
