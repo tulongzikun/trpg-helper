@@ -2188,6 +2188,21 @@ export function actorReach(actor: Actor): number {
   const distances = attackSources(actor).filter(source => source.range === 'melee').map(source => source.distanceFt);
   return distances.length ? Math.max(5, ...distances) : 5;
 }
+
+/** 该单位当前能触及的格子（按自身触及距离换算成格，并裁剪到棋盘范围内）。 */
+export function reachCells(battle: Battle, actorId: string): Position[] {
+  const grid = battle.grid;
+  const actor = battle.actors.find(item => item.id === actorId);
+  if (!grid || !actor?.position) return [];
+  const reach = actorReach(actor);
+  const cells: Position[] = [];
+  for (let y = 0; y < grid.height; y += 1) {
+    for (let x = 0; x < grid.width; x += 1) {
+      if (cellDistance(actor.position, { x, y }) * grid.cellFt <= reach) cells.push({ x, y });
+    }
+  }
+  return cells;
+}
 /** 移动离开哪些敌对单位的触及范围（用于借机攻击提示）。 */
 function threatPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
   const grid = battle.grid;

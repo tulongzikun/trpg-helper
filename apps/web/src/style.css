@@ -242,3 +242,7 @@
   padding: 0.1rem 0.45rem;
   font-size: 0.75rem;
 }
+
+.cmb-cell.reach {
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.55);
+}
