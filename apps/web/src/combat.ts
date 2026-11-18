@@ -2326,6 +2326,11 @@ export function attackHints(battle: Battle, attackerId: string, targetId: string
   const delta = (attacker.elevation ?? 0) - (target.elevation ?? 0);
   if (range === 'ranged' && delta >= 10) hints.push(`高地优势：高差 ${delta} 尺（攻击优势）`);
   if (range === 'ranged' && delta <= -10) hints.push(`仰射：高差 ${delta} 尺（攻击劣势）`);
+  // 状态带来的优劣势也一并说出来，省得提交后才发现。
+  const adjusted = combineAttackModes('normal', [attackerAdjustment(attacker, target), targetAdjustment(target, range)]);
+  for (const note of adjusted.notes) {
+    if (!hints.includes(note)) hints.push(note);
+  }
   return hints;
 }
 
