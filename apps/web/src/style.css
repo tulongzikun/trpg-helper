@@ -250,3 +250,27 @@
 .cmb-cell.prompt {
   box-shadow: inset 0 0 0 2px #f59e0b;
 }
+
+/* 法术图鉴与怪物图鉴共用版式 */
+.spell-missing{max-width:900px;margin:52px auto}
+.spell-card .card-footer span:first-child{flex:1;min-width:0;line-height:1.6}
+.spell-card .card-footer span:last-child{white-space:nowrap}
+.spell-detail-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;border-block:1px solid #ded8c6;margin:23px 0;padding:16px 0}
+.spell-detail-meta small,.spell-detail-meta strong{display:block}
+.spell-detail-meta small{font-size:10px;color:#8b968a;margin-bottom:8px}
+.spell-detail-meta strong{font-size:12px;color:#354e3d;overflow-wrap:anywhere}
+.spell-credit{font-size:11px;line-height:1.7;color:#8b968a}
+.spell-source-list{border-block:1px solid #dedfd6;margin-top:30px}
+.spell-source-list a{display:flex;justify-content:space-between;gap:15px;padding:14px 0;color:#4f7458;text-decoration:none;font-size:13px;border-bottom:1px solid #e8e9e2}
+.spell-source-list a:last-child{border-bottom:0}
+.spell-source-list a:hover{text-decoration:underline}
+@media(max-width:700px){.spell-missing{margin:32px 20px}.spell-detail-meta{gap:8px}.spell-detail-meta strong{font-size:11px}}
+
+/* Character catalog follows the same archive layout as the monster and spell collections. */
+.character-card-open{display:block;width:100%;padding:0;border:0;background:none;text-align:left;color:inherit}
+.character-catalog-actions{display:flex;flex-wrap:wrap;gap:6px;padding:0 19px 18px}
+.character-catalog-actions button,.character-results-heading .card-actions button{font-size:11px}
+.character-catalog-actions .button-secondary,.character-catalog-actions .button-primary{padding:7px 9px}
+.character-results-heading{gap:16px;flex-wrap:wrap}
+.character-catalog-card .card-footer{min-height:30px}
+@media(max-width:700px){.character-catalog-actions{padding:0 12px 14px}.character-results-heading{align-items:start}.character-results-heading .card-actions{width:100%}}

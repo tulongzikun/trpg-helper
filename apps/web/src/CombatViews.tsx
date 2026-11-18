@@ -621,11 +621,11 @@ function AttackForm({ battle, attacker, suggestion, onAttack, onAttackSequence, 
   const sources = attackSources(attacker);
   const first = sources[0];
   const targets = availableTargets(battle, attacker.id);
+  const [targetId, setTargetId] = useState(targets[0]?.id ?? '');
+  const [sourceId, setSourceId] = useState(first?.id ?? '');
   const selectedSource = sources.find(item => item.id === sourceId);
   const loading = selectedSource?.properties?.includes('装填') === true;
   const maxAttacks = loading ? 1 : attacksPerAction(attacker);
-  const [targetId, setTargetId] = useState(targets[0]?.id ?? '');
-  const [sourceId, setSourceId] = useState(first?.id ?? '');
   const [bonus, setBonus] = useState(String(first?.attackBonus ?? 0));
   const [damage, setDamage] = useState(first?.damageExpression ?? '1d8');
   const [type, setType] = useState<DamageType>(first?.damageType ?? '挥砍');
