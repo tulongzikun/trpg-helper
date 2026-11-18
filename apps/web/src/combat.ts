@@ -2208,6 +2208,8 @@ function threatPrompts(battle: Battle, mover: Actor, from: Position, to: Positio
 function canReactNow(actor: Actor): boolean {
   if ((actor.combat?.status ?? 'active') !== 'active') return false;
   if (actor.combat?.fled === true || actor.combat?.surrendered === true) return false;
+  // 看不见就没法抓住机会（目盲、或被重度遮蔽），根本不该排队。
+  if ((actor.combat?.conditions ?? []).includes('目盲') || (actor.combat?.conditions ?? []).includes('昏迷')) return false;
   return actionBlocker(actor) === null;
 }
 
