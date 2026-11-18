@@ -288,7 +288,7 @@ export function battleCsv(battle: Battle): string {
     if (!row) return '';
     return `${row.resolved}/${row.skipped}/${row.declined + row.undone}`;
   };
-  const header = ['单位', '阵营', '先攻', '状态', '攻击', '命中', '重击', '命中率', '造成伤害', '承受伤害', '治疗', '伤害构成', '防御', '状态效果', '反应提示'];
+  const header = ['单位', '阵营', '先攻', '状态', '攻击', '命中', '重击', '命中率', '造成伤害', '平均伤害', '承受伤害', '治疗', '伤害构成', '防御', '状态效果', '反应提示'];
   const rows = stats.rows.map(row => [
     row.name,
     row.side,
@@ -299,6 +299,7 @@ export function battleCsv(battle: Battle): string {
     row.crits,
     row.accuracy,
     row.damageDealt,
+    row.hits ? Math.round((row.damageDealt / row.hits) * 10) / 10 : 0,
     row.damageTaken,
     row.healing,
     typeSummary(row),
@@ -316,6 +317,7 @@ export function battleCsv(battle: Battle): string {
     stats.totals.crits,
     stats.totals.attacks === 0 ? 0 : Math.round((stats.totals.hits / stats.totals.attacks) * 100) / 100,
     stats.totals.damageDealt,
+    stats.totals.hits ? Math.round((stats.totals.damageDealt / stats.totals.hits) * 10) / 10 : 0,
     stats.totals.damageTaken,
     stats.totals.healing,
     typeSummary(stats.totals),

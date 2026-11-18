@@ -50,7 +50,7 @@ test('表头最后一列是反应提示', () => {
   const { battle } = setup();
   const header = rows(battleCsv(battle))[0];
   assert.equal(header.at(-1), '反应提示');
-  assert.equal(header.length, 15);
+  assert.equal(header.length, 16);
 });
 
 test('结算过的单位写结算数', () => {

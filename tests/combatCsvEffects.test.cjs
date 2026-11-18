@@ -25,7 +25,7 @@ test('CSV 表头倒数第二列是状态效果', () => {
   const { battle } = setup();
   const header = lines(battleCsv(battle))[0];
   assert.equal(header.at(-1), '反应提示');
-  assert.equal(header.length, 15);
+  assert.equal(header.length, 16);
 });
 
 test('有状态的单位在状态效果列里带轮数', () => {
@@ -49,5 +49,5 @@ test('合计行的状态效果列留空', () => {
   const totals = lines(battleCsv(battle)).at(-1);
   assert.equal(totals[0], '合计');
   assert.equal(totals.at(-1), '');
-  assert.equal(totals.length, 15);
+  assert.equal(totals.length, 16);
 });
