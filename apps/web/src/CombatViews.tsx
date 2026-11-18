@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
-import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints, reachCells, promptDetail, captiveTargets } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints, reachCells, promptDetail, promptCells, captiveTargets } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
@@ -511,6 +511,7 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   const entangleCells = new Set((battle.entangle ?? []).map(cell => `${cell.x},${cell.y}`));
   const coveredCells = new Set((battle.cover ?? []).map(cell => `${cell.x},${cell.y}`));
   const reachSet = new Set(selected ? reachCells(battle, selected).map(cell => `${cell.x},${cell.y}`) : []);
+  const promptCellsSet = new Set(promptCells(battle).map(cell => `${cell.x},${cell.y}`));
   const distances = current
     ? battle.actors.filter(actor => actor.position && actor.id !== current).map(actor => {
       const feet = actorDistance(battle, current, actor.id);
@@ -535,8 +536,9 @@ export function GridPanel({ battle, handlers }: { battle: Battle; handlers: Comb
         const sleepy = sleeperCells.has(`${x},${y}`);
         const sheltered = coveredCells.has(`${x},${y}`);
         const entwined = entangleCells.has(`${x},${y}`);
+        const triggered = promptCellsSet.has(`${x},${y}`);
         const reachable = reachSet.has(`${x},${y}`);
-        return <button key={`${x}-${y}`} type="button" className={`cmb-cell${occupant ? ` occupied ${occupant.side === '敌方' ? 'enemy' : occupant.side === '友方' ? 'ally' : 'neutral'}` : ''}${selected === occupant?.id ? ' selected' : ''}${difficult ? ' difficult' : ''}${wall ? ' wall' : ''}${hazard ? ' hazard' : ''}${greased ? ' grease' : ''}${webbed ? ' web' : ''}${foggy ? ' fog' : ''}${silenced ? ' silence' : ''}${darkened ? ' darkness' : ''}${sleepy ? ' sleepcloud' : ''}${sheltered ? ' cover' : ''}${entwined ? ' entangle' : ''}${reachable ? ' reach' : ''}${mode !== 'move' ? ' terrain-edit' : ''}`} title={`(${x}, ${y})${occupant ? ` ${occupant.name}` : ''}${difficult ? ' 困难地形' : ''}${wall ? ' 墙体' : ''}${hazard ? ' 危险地形' : ''}${greased ? ' 油污' : ''}${webbed ? ' 蛛网' : ''}${foggy ? ' 迷雾' : ''}${silenced ? ' 沉默' : ''}${darkened ? ' 魔法黑暗' : ''}${sleepy ? ' 睡眠云' : ''}${sheltered ? ' 掩体' : ''}${entwined ? ' 藤蔓' : ''}${reachable ? ' 触及范围' : ''}`} aria-label={`格子 ${x},${y}${occupant ? `，${occupant.name}` : ''}${difficult ? '，困难地形' : ''}${wall ? '，墙体' : ''}${hazard ? '，危险地形' : ''}${greased ? '，油污' : ''}${webbed ? '，蛛网' : ''}${foggy ? '，迷雾' : ''}${silenced ? '，沉默' : ''}${darkened ? '，魔法黑暗' : ''}${sheltered ? '，掩体' : ''}${entwined ? '，藤蔓' : ''}`} onClick={() => click(x, y)}>{wall ? '' : occupant ? occupant.name.slice(0, 1) : ''}</button>;
+        return <button key={`${x}-${y}`} type="button" className={`cmb-cell${occupant ? ` occupied ${occupant.side === '敌方' ? 'enemy' : occupant.side === '友方' ? 'ally' : 'neutral'}` : ''}${selected === occupant?.id ? ' selected' : ''}${difficult ? ' difficult' : ''}${wall ? ' wall' : ''}${hazard ? ' hazard' : ''}${greased ? ' grease' : ''}${webbed ? ' web' : ''}${foggy ? ' fog' : ''}${silenced ? ' silence' : ''}${darkened ? ' darkness' : ''}${sleepy ? ' sleepcloud' : ''}${sheltered ? ' cover' : ''}${entwined ? ' entangle' : ''}${reachable ? ' reach' : ''}${triggered ? ' prompt' : ''}${mode !== 'move' ? ' terrain-edit' : ''}`} title={`(${x}, ${y})${occupant ? ` ${occupant.name}` : ''}${difficult ? ' 困难地形' : ''}${wall ? ' 墙体' : ''}${hazard ? ' 危险地形' : ''}${greased ? ' 油污' : ''}${webbed ? ' 蛛网' : ''}${foggy ? ' 迷雾' : ''}${silenced ? ' 沉默' : ''}${darkened ? ' 魔法黑暗' : ''}${sleepy ? ' 睡眠云' : ''}${sheltered ? ' 掩体' : ''}${entwined ? ' 藤蔓' : ''}${reachable ? ' 触及范围' : ''}${triggered ? ' 借机提示落点' : ''}`} aria-label={`格子 ${x},${y}${occupant ? `，${occupant.name}` : ''}${difficult ? '，困难地形' : ''}${wall ? '，墙体' : ''}${hazard ? '，危险地形' : ''}${greased ? '，油污' : ''}${webbed ? '，蛛网' : ''}${foggy ? '，迷雾' : ''}${silenced ? '，沉默' : ''}${darkened ? '，魔法黑暗' : ''}${sheltered ? '，掩体' : ''}${entwined ? '，藤蔓' : ''}${triggered ? '，借机提示落点' : ''}`} onClick={() => click(x, y)}>{wall ? '' : occupant ? occupant.name.slice(0, 1) : ''}</button>;
       }))}
     </div>
     {distances.length ? <p className="cmb-hint">当前行动者距离：{distances.map(item => <span key={item.id} className="cmb-muted">{item.label}　</span>)}</p> : null}

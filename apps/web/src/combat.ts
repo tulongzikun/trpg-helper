@@ -2862,6 +2862,20 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   return next;
 }
 
+/** 待结算的反应提示里记录到的落点格（去重，旧提示没有坐标会被跳过）。 */
+export function promptCells(battle: Battle): Position[] {
+  const seen = new Set<string>();
+  const cells: Position[] = [];
+  for (const prompt of battle.combat?.pendingOpportunity ?? []) {
+    if (!prompt.to) continue;
+    const key = `${prompt.to.x},${prompt.to.y}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cells.push({ x: prompt.to.x, y: prompt.to.y });
+  }
+  return cells;
+}
+
 /** 一句话说明这条反应提示的由来：与谁有关、触及多少尺、现在相距多远。 */
 export function promptDetail(battle: Battle, prompt: OpportunityPrompt): string {
   const reactor = battle.actors.find(item => item.id === prompt.reactorId);
