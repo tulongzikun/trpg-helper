@@ -157,7 +157,7 @@ export type CombatHandlers = {
   onCancelReady: (actorId: string) => void;
   onOpportunity: (reactorId: string) => void;
   onResolveAll: () => void;
-  onClearPrompts: () => void;
+  onClearPrompts: (kind?: 'opportunity' | 'ready') => void;
   onDeclineOpportunity: (reactorId: string) => void;
   onReadyPrompt: (reactorId: string) => void;
   onActionSurge: (actorId: string) => void;
@@ -917,6 +917,8 @@ function OpportunityPanel({ battle, handlers }: { battle: Battle; handlers: Comb
     })()}
     <button type="button" className="button-secondary" onClick={() => handlers.onResolveAll()}>全部结算（{prompts.length} 个）</button>
     <button type="button" className="button-secondary" onClick={() => handlers.onClearPrompts()}>清空提示（不消耗反应）</button>
+    {prompts.some(prompt => prompt.kind !== 'ready') ? <button type="button" className="button-secondary" onClick={() => handlers.onClearPrompts('opportunity')}>只清借机攻击</button> : null}
+    {prompts.some(prompt => prompt.kind === 'ready') ? <button type="button" className="button-secondary" onClick={() => handlers.onClearPrompts('ready')}>只清准备动作</button> : null}
     <div className="cmb-ongoing-list">{prompts.map(prompt => {
       const reactor = battle.actors.find(actor => actor.id === prompt.reactorId);
       const target = battle.actors.find(actor => actor.id === prompt.targetId);

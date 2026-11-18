@@ -166,7 +166,7 @@ onSuppress:(actorId,targetId)=>tryBattle(()=>changeBattle(battleId,battle=>suppr
   onCancelReady:actorId=>tryBattle(()=>changeBattle(battleId,battle=>cancelReadyAction(battle,actorId))),
   onOpportunity:reactorId=>tryBattle(()=>changeBattle(battleId,battle=>opportunityAttack(battle,reactorId).battle)),
   onResolveAll:()=>tryBattle(()=>changeBattle(battleId,battle=>resolveAllPrompts(battle).battle)),
-      onClearPrompts:()=>tryBattle(()=>changeBattle(battleId,battle=>clearPrompts(battle))),
+      onClearPrompts:(kind)=>tryBattle(()=>changeBattle(battleId,battle=>clearPrompts(battle,{},kind))),
     onDeclineOpportunity:reactorId=>tryBattle(()=>changeBattle(battleId,battle=>declineOpportunity(battle,reactorId))),
   onReadyPrompt:reactorId=>tryBattle(()=>changeBattle(battleId,battle=>resolveReadyPrompt(battle,reactorId))),
   onActionSurge:actorId=>tryBattle(()=>changeBattle(battleId,battle=>useActionSurge(battle,actorId))),

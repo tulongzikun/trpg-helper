@@ -2878,14 +2878,18 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
 /** 队列最多保留的待结算提示数：超出后丢弃最早的，并在战报里写一行说明。 */
 export const PROMPT_QUEUE_LIMIT = 8;
 
-/** 清空待结算的反应提示（放弃所有排队中的借机攻击与准备动作，不消耗反应）。 */
-export function clearPrompts(battle: Battle, deps: CombatDeps = {}): Battle {
+/** 清空待结算的反应提示（放弃排队中的提示，不消耗反应）；给 kind 时只清那一类。 */
+export function clearPrompts(battle: Battle, deps: CombatDeps = {}, kind?: 'opportunity' | 'ready'): Battle {
   const next = recordUndo(structuredClone(battle));
   const combat = requireCombat(next);
-  const promptCount = (combat.pendingOpportunity ?? []).length;
-  if (!promptCount) return next;
-  delete combat.pendingOpportunity;
-  addLog(next, `清空了 ${promptCount} 条未结算的反应提示。`, deps);
+  const list = combat.pendingOpportunity ?? [];
+  const targets = kind ? list.filter(item => (kind === 'ready' ? item.kind === 'ready' : item.kind !== 'ready')) : list;
+  if (!targets.length) return next;
+  const rest = list.filter(item => !targets.includes(item));
+  if (rest.length) combat.pendingOpportunity = rest;
+  else delete combat.pendingOpportunity;
+  const noun = kind === 'ready' ? '准备动作提示' : kind === 'opportunity' ? '借机攻击提示' : '未结算的反应提示';
+  addLog(next, `清空了 ${targets.length} 条${noun}。`, deps);
   return next;
 }
 
