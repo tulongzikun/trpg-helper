@@ -109,9 +109,9 @@ export type CombatHandlers = {
   onGrapple: (targetId: string) => void;
   onShove: (targetId: string, effect: 'prone' | 'push') => void;
   onEscapeGrapple: (actorId: string) => void;
-  onAuto: (actorId: string) => void;
-  onAutoTurn: (actorId: string) => void;
-  onAutoSide: (side: Side) => void;
+  onAuto: (actorId: string, focusFire?: boolean) => void;
+  onAutoTurn: (actorId: string, focusFire?: boolean) => void;
+  onAutoSide: (side: Side, focusFire?: boolean) => void;
   onFall: (actorId: string, feet: number) => void;
   onCast: (options: SpellCastOptions) => void;
   onSetSlots: (actorId: string, slots: number[]) => void;
@@ -244,6 +244,7 @@ export function InitiativeRail({ battle, onInitiative, onReroll }: { battle: Bat
 }
 
 export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: CombatHandlers }) {
+  const [focusFire, setFocusFire] = useState(false);
   const [suggestion, setSuggestion] = useState<AttackSuggestion | null>(null);
   const actor = currentActor(battle);
   if (!actor || !actor.combat) return null;
@@ -289,7 +290,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
           </>
         );
       })()}
-      <button type="button" className="button-secondary" onClick={() => handlers.onAuto(actor.id)}>自动行动（攻击或靠近）</button>
+      <label className="cmb-check"><input type="checkbox" checked={focusFire} onChange={event => setFocusFire(event.target.checked)} />集火残血（自动行动优先打生命比例最低的敌人）</label>
+      <button type="button" className="button-secondary" onClick={() => handlers.onAuto(actor.id, focusFire)}>自动行动（攻击或靠近）</button>
       {hasRecklessAttack(actor) ? (
         <button type="button" className="button-secondary" disabled={state.reckless === true} onClick={() => handlers.onReckless(actor.id)}>{state.reckless ? '鲁莽攻击中' : '鲁莽攻击（本回合攻击优势，敌人也对你优势）'}</button>
       ) : null}
@@ -300,8 +302,8 @@ export function TurnPanel({ battle, handlers }: { battle: Battle; handlers: Comb
           <button type="button" className="button-secondary" disabled={state.bonusUsed === true} onClick={() => handlers.onCunning('hide')}>灵巧躲藏（附赠动作）</button>
         </>
       ) : null}
-      <button type="button" className="button-secondary" onClick={() => handlers.onAutoTurn(actor.id)}>自动回合（行动后结束）</button>
-      <button type="button" className="button-secondary" onClick={() => handlers.onAutoSide(actor.side)}>本阵营整轮自动</button>
+      <button type="button" className="button-secondary" onClick={() => handlers.onAutoTurn(actor.id, focusFire)}>自动回合（行动后结束）</button>
+      <button type="button" className="button-secondary" onClick={() => handlers.onAutoSide(actor.side, focusFire)}>本阵营整轮自动</button>
     </div>
     <SpellPanel key={`spell-${actor.id}`} battle={battle} actor={actor} onCast={handlers.onCast} onSetSlots={handlers.onSetSlots} />
     <FallPanel actor={actor} onFall={handlers.onFall} />
