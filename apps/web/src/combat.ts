@@ -2960,6 +2960,10 @@ export function resolveAllPrompts(battle: Battle, deps: CombatDeps = {}): { batt
       else delete combat.pendingOpportunity;
     }
   }
+  if (resolved.length || skipped.length) {
+    const skippedText = skipped.length ? `，跳过 ${skipped.length} 条（${skipped.join('；')}）` : '';
+    current = appendCombatLog(current, `一键结算：完成 ${resolved.length} 条反应${skippedText}。`, deps);
+  }
   return { battle: current, resolved, skipped };
 }
 
