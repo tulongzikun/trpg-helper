@@ -3,7 +3,7 @@ import { getBackground } from './backgrounds.ts';
 import { gloomStalkerState } from './rangerSubclasses.ts';
 import type { Terrain, Weather } from './battle.ts';
 import type { Ability } from './characters';
-import type { Actor, Aura, Battle, CombatLogEntry, CombatStats, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, Position, ReadyAction, Side, AttackPreset } from './battle';
+import type { Actor, Aura, Battle, CombatLogEntry, CombatStats, CombatStatus, CombatantState, DamageType, GridConfig, Hazard, OpportunityPrompt, PromptHistoryEntry, Position, ReadyAction, Side, AttackPreset } from './battle';
 import type { Card } from './catalog';
 import { damageTypes } from './battle.ts';
 import { applyFallDamage, jumpDistance } from './combatMovement.ts';
@@ -2911,6 +2911,27 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
 
 /** 队列最多保留的待结算提示数：超出后丢弃最早的，并在战报里写一行说明。 */
 export const PROMPT_QUEUE_LIMIT = 8;
+/** 反应提示历史的保留条数。 */
+export const PROMPT_HISTORY_LIMIT = 30;
+
+/** 最近处理过的反应提示（最新的在最后）。 */
+export function promptHistory(battle: Battle): PromptHistoryEntry[] {
+  return battle.combat?.promptHistory ?? [];
+}
+
+function recordPrompt(battle: Battle, prompt: OpportunityPrompt, outcome: 'resolved' | 'skipped' | 'declined' | 'undone', reason?: string): void {
+  const combat = battle.combat;
+  if (!combat) return;
+  const entry: PromptHistoryEntry = {
+    kind: prompt.kind === 'ready' ? 'ready' : 'opportunity',
+    reactorId: prompt.reactorId,
+    targetId: prompt.targetId,
+    outcome,
+    round: combat.round,
+  };
+  if (reason) entry.reason = reason;
+  combat.promptHistory = [...(combat.promptHistory ?? []), entry].slice(-PROMPT_HISTORY_LIMIT);
+}
 
 /** 撤回最后一条待结算的反应提示（不消耗反应），用于点错或触发条件写错的场合。 */
 export function undoLastPrompt(battle: Battle, deps: CombatDeps = {}): Battle {
@@ -2924,6 +2945,7 @@ export function undoLastPrompt(battle: Battle, deps: CombatDeps = {}): Battle {
   const reactor = next.actors.find(item => item.id === prompt.reactorId);
   const target = next.actors.find(item => item.id === prompt.targetId);
   const kind = prompt.kind === 'ready' ? '准备动作' : '借机攻击';
+  recordPrompt(next, prompt, 'undone');
   addLog(next, `撤回了 ${reactor ? actorLabel(next, reactor) : prompt.reactorId} 对 ${target ? actorLabel(next, target) : prompt.targetId} 的${kind}提示。`, deps);
   return next;
 }
@@ -3017,6 +3039,7 @@ export function opportunityAttack(battle: Battle, reactorId: string, overrides: 
   const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
   if (rest.length) combat.pendingOpportunity = rest;
   else delete combat.pendingOpportunity;
+  recordPrompt(next, prompt, 'resolved');
   const gap = triggerDistance(next, prompt);
   if (typeof gap === 'number') {
     appendCombatLog(next, `触发时 ${actorLabel(next, reactor)} 与 ${actorLabel(next, actorOf(next, prompt.targetId))} 相距 ${gap} 尺（借机出手按该距离判定）。`, deps);
@@ -3060,9 +3083,11 @@ export function resolveAllPrompts(battle: Battle, deps: CombatDeps = {}): { batt
       const targetLabel = current.actors.find(item => item.id === prompt.targetId);
       resolved.push(`${label}：${prompt.kind === 'ready' ? '准备动作' : '借机攻击'} → ${targetLabel ? actorLabel(current, targetLabel) : prompt.targetId}`);
     } catch (error) {
-      skipped.push(`${label}：${error instanceof Error ? error.message : String(error)}`);
+      const reason = error instanceof Error ? error.message : String(error);
+      skipped.push(`${label}：${reason}`);
       const combat = current.combat;
       if (!combat) break;
+      recordPrompt(current, prompt, 'skipped', reason);
       const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
       if (rest.length) combat.pendingOpportunity = rest;
       else delete combat.pendingOpportunity;
@@ -3090,6 +3115,7 @@ export function declineOpportunity(battle: Battle, reactorId: string, deps: Comb
   const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
   if (rest.length) combat.pendingOpportunity = rest;
   else delete combat.pendingOpportunity;
+  recordPrompt(next, prompt, 'declined');
   addLog(next, `${actorLabel(next, actorOf(next, reactorId))} 放弃${prompt.kind === 'ready' ? '准备好的动作' : '借机攻击'}。`, deps);
   return next;
 }
@@ -3104,6 +3130,7 @@ export function resolveReadyPrompt(battle: Battle, reactorId: string, deps: Comb
   const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
   if (rest.length) combat.pendingOpportunity = rest;
   else delete combat.pendingOpportunity;
+  recordPrompt(next, prompt, 'resolved');
   return triggerReadyAction(next, reactorId, deps, prompt);
 }
 

@@ -38,6 +38,16 @@ export type CombatItem = {
   identified?: boolean;
 };
 /** 借机攻击：reactorId 用反应攻击离开其触及范围的 targetId。 */
+/** 反应提示的处理记录（保留最近若干条，供面板与复盘查看）。 */
+export type PromptHistoryEntry = {
+  kind: 'opportunity' | 'ready';
+  reactorId: string;
+  targetId: string;
+  outcome: 'resolved' | 'skipped' | 'declined' | 'undone';
+  reason?: string;
+  round: number;
+};
+
 export type OpportunityPrompt = { reactorId: string; targetId: string; kind?: 'opportunity' | 'ready'; /** 触发时的出发格（旧档案可能没有）。 */ from?: Position; /** 触发时的落点格（旧档案可能没有）。 */ to?: Position };
 /** 召唤物绑定：失去专注、施法者倒地或倒计时结束时消散。 */
 export type Summon = { ownerId: string; spell: string; rounds?: number };
@@ -214,6 +224,7 @@ export type CombatState = {
   undo: Battle[];
   /** 移动离开触及范围后待结算的借机攻击。 */
   pendingOpportunity?: OpportunityPrompt[];
+  promptHistory?: PromptHistoryEntry[];
 };
 export type ActorTemplate = Partial<Block> & Pick<Block, 'armorClass'>;
 /** 方格战场：宽高以格为单位，cellFt 是每格代表的尺数。 */
@@ -417,7 +428,18 @@ function isCombatState(value: unknown): value is CombatState {
   if (!Array.isArray(value.undo) || value.undo.length > 20) return false;
   if (value.pendingOpportunity !== undefined && (!Array.isArray(value.pendingOpportunity) || value.pendingOpportunity.length > 8 || !value.pendingOpportunity.every(isOpportunityPrompt))) return false;
   if (value.pendingOpportunity !== undefined && !value.pendingOpportunity.every(item => (item.from === undefined || isPosition(item.from)) && (item.to === undefined || isPosition(item.to)))) return false;
+  if (value.promptHistory !== undefined && (!Array.isArray(value.promptHistory) || value.promptHistory.length > 50 || !value.promptHistory.every(isPromptHistory))) return false;
   return value.undo.every(isBattleSnapshot);
+}
+function isPromptHistory(value: unknown): value is PromptHistoryEntry {
+  if (!isObject(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return (entry.kind === 'opportunity' || entry.kind === 'ready')
+    && typeof entry.reactorId === 'string' && entry.reactorId.length > 0
+    && typeof entry.targetId === 'string' && entry.targetId.length > 0
+    && ['resolved', 'skipped', 'declined', 'undone'].includes(entry.outcome as string)
+    && isInteger(entry.round, 0, 100000)
+    && (entry.reason === undefined || typeof entry.reason === 'string');
 }
 function isOpportunityPrompt(value: unknown): value is OpportunityPrompt {
   if (!isObject(value)) return false;
