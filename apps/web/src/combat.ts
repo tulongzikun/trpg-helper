@@ -2862,6 +2862,21 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
   return next;
 }
 
+/** 一句话说明这条反应提示的由来：与谁有关、触及多少尺、现在相距多远。 */
+export function promptDetail(battle: Battle, prompt: OpportunityPrompt): string {
+  const reactor = battle.actors.find(item => item.id === prompt.reactorId);
+  const mover = battle.actors.find(item => item.id === prompt.targetId);
+  if (!reactor || !mover) return '';
+  const reach = actorReach(reactor);
+  const feet = actorDistance(battle, prompt.reactorId, prompt.targetId);
+  const gap = typeof feet === 'number' ? `，现在相距 ${feet} 尺` : '';
+  if (prompt.kind === 'ready') return `触发 ${actorLabel(battle, reactor)} 准备好的动作${gap}`;
+  const inside = typeof feet === 'number' && feet <= reach;
+  return inside
+    ? `进入 ${actorLabel(battle, reactor)} 的 ${reach} 尺触及${gap}`
+    : `离开 ${actorLabel(battle, reactor)} 的 ${reach} 尺触及${gap}`;
+}
+
 /** 结算一次借机攻击：消耗反应、按触发时的触及关系出刀，并移除提示。 */
 export function opportunityAttack(battle: Battle, reactorId: string, overrides: Partial<AttackOptions> = {}, deps: CombatDeps = {}): { battle: Battle; outcome: AttackOutcome } {
   const next = recordUndo(structuredClone(battle));

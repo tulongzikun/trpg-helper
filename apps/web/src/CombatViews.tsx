@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
-import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints, reachCells, captiveTargets } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints, reachCells, promptDetail, captiveTargets } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
@@ -908,7 +908,7 @@ function OpportunityPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       const reactor = battle.actors.find(actor => actor.id === prompt.reactorId);
       const target = battle.actors.find(actor => actor.id === prompt.targetId);
       const prepared = prompt.kind === 'ready';
-      return <span className="cmb-chip" key={`${prompt.reactorId}-${prompt.targetId}`}>{reactor ? actorLabel(battle, reactor) : '—'} → {target ? actorLabel(battle, target) : '—'}{prepared ? '（准备）' : ''}
+      return <span className="cmb-chip" key={`${prompt.reactorId}-${prompt.targetId}`}>{reactor ? actorLabel(battle, reactor) : '—'} → {target ? actorLabel(battle, target) : '—'}{prepared ? '（准备）' : ''}<small className="cmb-muted">{promptDetail(battle, prompt)}</small>
         <button type="button" className="cmb-chip-remove" onClick={() => (prepared ? handlers.onReadyPrompt(prompt.reactorId) : handlers.onOpportunity(prompt.reactorId))} aria-label={prepared ? '执行准备好的动作' : `${reactor ? reactor.name : ''} 借机攻击`}>{prepared ? '✓' : '⚔'}</button>
         <button type="button" className="cmb-chip-remove" onClick={() => handlers.onDeclineOpportunity(prompt.reactorId)} aria-label="放弃借机攻击">×</button>
       </span>;
