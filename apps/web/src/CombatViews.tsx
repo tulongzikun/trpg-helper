@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
-import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints, reachCells, promptDetail, promptCells, captiveTargets } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints, reachCells, promptDetail, promptCells, captiveTargets, previewPrompts } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
@@ -907,6 +907,12 @@ function OpportunityPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   return <div className="cmb-attack">
     <div className="cmb-attack-head"><h4>借机攻击与准备动作</h4><small>{prompts.length} 个待结算</small></div>
     <p className="cmb-hint">单位离开敌对单位的触及范围会触发借机攻击；结算时消耗反应，出刀按触发瞬间的触及关系计算。</p>
+    {(() => {
+      const blocked = previewPrompts(battle).filter(row => !row.ok);
+      if (!blocked.length) return null;
+      const detail = blocked.map(row => `${row.reactor}（${row.reason}）`).join('、');
+      return <p className="cmb-hint">全部结算会跳过 {blocked.length} 条：{detail}</p>;
+    })()}
     <button type="button" className="button-secondary" onClick={() => handlers.onResolveAll()}>全部结算（{prompts.length} 个）</button>
     <div className="cmb-ongoing-list">{prompts.map(prompt => {
       const reactor = battle.actors.find(actor => actor.id === prompt.reactorId);

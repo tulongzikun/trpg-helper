@@ -2943,6 +2943,21 @@ export function opportunityAttack(battle: Battle, reactorId: string, overrides: 
   return { battle: next, outcome };
 }
 
+/** 结算前的预览：每条待确认提示能不能结算、不能的话原因是什么。 */
+export function previewPrompts(battle: Battle): { reactorId: string; reactor: string; kind: '借机攻击' | '准备动作'; ok: boolean; reason?: string }[] {
+  return (battle.combat?.pendingOpportunity ?? []).map(prompt => {
+    const reactor = battle.actors.find(item => item.id === prompt.reactorId);
+    const kind = prompt.kind === 'ready' ? '准备动作' as const : '借机攻击' as const;
+    if (!reactor) return { reactorId: prompt.reactorId, reactor: prompt.reactorId, kind, ok: false, reason: '该单位已不在战场上。' };
+    const label = actorLabel(battle, reactor);
+    if (reactor.combat?.status !== 'active') return { reactorId: reactor.id, reactor: label, kind, ok: false, reason: '该单位现在无法行动。' };
+    if (!canReactNow(reactor)) return { reactorId: reactor.id, reactor: label, kind, ok: false, reason: '该单位现在无法行动。' };
+    if (reactor.combat?.reactionUsed === true) return { reactorId: reactor.id, reactor: label, kind, ok: false, reason: '该单位本回合已经使用过反应。' };
+    if (prompt.kind === 'ready' && !reactor.combat?.ready) return { reactorId: reactor.id, reactor: label, kind, ok: false, reason: '该单位没有准备好的动作。' };
+    return { reactorId: reactor.id, reactor: label, kind, ok: true };
+  });
+}
+
 /** 一次性结算所有待确认的反应提示：能结算的就结算，结不了的记录原因后跳过。 */
 export function resolveAllPrompts(battle: Battle, deps: CombatDeps = {}): { battle: Battle; resolved: string[]; skipped: string[] } {
   let current = battle;
