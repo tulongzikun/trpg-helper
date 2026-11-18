@@ -2328,6 +2328,11 @@ export function attackHints(battle: Battle, attackerId: string, targetId: string
   const delta = (attacker.elevation ?? 0) - (target.elevation ?? 0);
   if (range === 'ranged' && delta >= 10) hints.push(`高地优势：高差 ${delta} 尺（攻击优势）`);
   if (range === 'ranged' && delta <= -10) hints.push(`仰射：高差 ${delta} 尺（攻击劣势）`);
+  const measured = actorDistance(battle, attackerId, targetId);
+  if (range === 'melee' && typeof measured === 'number') {
+    const reach = Math.max(5, actorReach(attacker));
+    if (measured > reach) hints.push(`距离 ${measured} 尺：超出近战触及范围（${reach} 尺）`);
+  }
   // 状态带来的优劣势也一并说出来，省得提交后才发现。
   const adjusted = combineAttackModes('normal', [attackerAdjustment(attacker, target), targetAdjustment(target, range)]);
   for (const note of adjusted.notes) {

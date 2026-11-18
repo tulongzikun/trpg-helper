@@ -38,6 +38,8 @@ test('空旷战场没有任何提示', () => {
   const { battle, attacker, target } = setup();
   const empty = structuredClone(battle);
   empty.actors.find(actor => actor.id !== target.id && actor.side === '敌方').position = { x: 0, y: 5 };
+  // 目标改为贴身格：距离 5 尺不越界，才谈得上「没有提示」
+  empty.actors.find(actor => actor.id === target.id).position = { x: 0, y: 1 };
   assert.deepEqual(attackHints(empty, attacker.id, target.id, 'ranged'), []);
   assert.deepEqual(attackHints(empty, attacker.id, target.id, 'melee'), []);
 });
@@ -91,6 +93,17 @@ test('魔法黑暗与云雾只有在单方面遮蔽时才提示', () => {
   const foggy = structuredClone(battle);
   foggy.fog = [{ x: 3, y: 0 }];
   assert.ok(has(attackHints(foggy, attacker.id, target.id, 'ranged'), '云雾遮蔽'));
+});
+
+test('近战超出触及范围时给出提示', () => {
+  const { battle, attacker, target } = setup();
+  const hints = attackHints(battle, attacker.id, target.id, 'melee');
+  assert.ok(has(hints, '超出近战触及范围（5 尺）'));
+  assert.ok(has(hints, '距离 15 尺'));
+
+  const close = structuredClone(battle);
+  close.actors.find(actor => actor.id === target.id).position = { x: 0, y: 1 };
+  assert.equal(attackHints(close, attacker.id, target.id, 'melee').some(hint => hint.includes('超出近战触及范围')), false);
 });
 
 test('天气只影响远程提示', () => {
