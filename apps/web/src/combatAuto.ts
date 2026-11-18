@@ -14,6 +14,9 @@ export type AutoTurn = AutoAction & { steps: string[]; stopped?: AutoTurnStop };
 /** 自动回合为什么停下来。 */
 export type AutoTurnStop = { reason: 'finished' | 'done' | 'handoff' | 'limit'; text: string };
 
+/** 自动行动的取舍偏好：focusFire 时优先攻击已经受伤的敌人。 */
+export type AutoActOptions = { focusFire?: boolean };
+
 /** 无法接近目标时：还有动作就先闪避，否则原样待命。 */
 function defensiveFallback(battle: Battle, actorId: string, deps: CombatDeps, text: string): AutoAction {
   const self = battle.actors.find(item => item.id === actorId);
@@ -130,7 +133,7 @@ function retreat(battle: Battle, actorId: string, deps: CombatDeps): AutoAction 
   return { battle: next, kind: 'retreat', text: '自动行动：生命值过低，使用撤离拉开距离，但已无路可退。' };
 }
 
-function decideAutoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): AutoAction {
+function decideAutoAct(battle: Battle, actorId: string, deps: CombatDeps = {}, options: AutoActOptions = {}): AutoAction {
   if (currentActorId(battle) !== actorId) throw new Error('只有当前回合的单位可以自动行动。');
   const self = battle.actors.find(item => item.id === actorId);
   if (!self || self.combat?.status !== 'active') {
@@ -142,8 +145,20 @@ function decideAutoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): 
   const care = selfCare(battle, actorId, deps);
   if (care) return care;
   const suggestions = suggestAttacks(battle, actorId, 6);
+  // 集火：同样在射程内时，优先打生命比例最低的敌人。
+  const ranked = options.focusFire
+    ? [...suggestions].sort((a, b) => {
+      const ratio = (id: string) => {
+        const target = battle.actors.find(item => item.id === id);
+        if (!target) return 1;
+        return target.maxHp > 0 ? target.currentHp / target.maxHp : 1;
+      };
+      if (a.inRange !== b.inRange) return a.inRange ? -1 : 1;
+      return ratio(a.targetId) - ratio(b.targetId);
+    })
+    : suggestions;
   if (!suggestions.length) return { battle, kind: 'wait', text: '自动行动：没有可攻击的敌人，原地待命。' };
-  const ready = suggestions.find(item => item.inRange);
+  const ready = ranked.find(item => item.inRange);
   if (ready) {
     const result = attack(battle, {
       attackerId: actorId,
@@ -164,7 +179,7 @@ function decideAutoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): 
         : `自动行动：攻击 ${ready.targetName}（${ready.source.label}）。`,
     };
   }
-  const best = suggestions[0];
+  const best = ranked[0];
   const actor = battle.actors.find(item => item.id === actorId);
   const target = battle.actors.find(item => item.id === best.targetId);
   if (!battle.grid || !actor?.position || !target?.position) {
@@ -196,13 +211,13 @@ function decideAutoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): 
 }
 
 /** 自动行动：决策完成后把理由写进战报，方便回看 AI 为什么这样做。 */
-export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}): AutoAction {
-  const action = decideAutoAct(battle, actorId, deps);
+export function autoAct(battle: Battle, actorId: string, deps: CombatDeps = {}, options: AutoActOptions = {}): AutoAction {
+  const action = decideAutoAct(battle, actorId, deps, options);
   if (action.battle === battle) return action;
   return { ...action, battle: appendCombatLog(action.battle, action.text, deps) };
 }
 
-export type AutoTurnOptions = { endTurn?: boolean; maxSteps?: number };
+export type AutoTurnOptions = { endTurn?: boolean; maxSteps?: number; focusFire?: boolean };
 
 /** 自动完成一整轮：先靠近再攻击，必要时结束回合。 */
 export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {}, options: AutoTurnOptions = {}): AutoTurn {
@@ -225,7 +240,7 @@ export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {},
       stopped = { reason: 'handoff', text: '回合已经交给别的单位，自动回合结束。' };
       break;
     }
-    const step = autoAct(current, actorId, deps);
+    const step = autoAct(current, actorId, deps, { focusFire: options.focusFire });
     steps.push(step.text);
     current = step.battle;
     kind = step.kind;
@@ -245,7 +260,7 @@ export function autoTurn(battle: Battle, actorId: string, deps: CombatDeps = {},
   return { battle: logged, kind, text: steps.join(' '), steps, ...(stopped ? { stopped } : {}) };
 }
 
-export type AutoSideOptions = { maxTurns?: number };
+export type AutoSideOptions = { maxTurns?: number; focusFire?: boolean };
 
 /** 自动推行为什么停下来：界面与战报据此提示，不必再猜。 */
 export type AutoSideStop = { reason: 'finished' | 'missing' | 'side' | 'incapacitated' | 'limit'; text: string };
@@ -281,7 +296,7 @@ export function autoSide(battle: Battle, side: Side, deps: CombatDeps = {}, opti
       stopped = { reason: 'incapacitated', text: `${actor.name} 已无法行动，停止自动推进。` };
       break;
     }
-    const result = autoTurn(current, actorId, deps);
+    const result = autoTurn(current, actorId, deps, { focusFire: options.focusFire });
     turns.push(`${actor.name}：${result.text}`);
     current = result.battle;
     if (currentActorId(current) === actorId) break;
