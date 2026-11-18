@@ -130,6 +130,18 @@ export function promptActorLines(battle: Battle): string[] {
   });
 }
 
+/** 面板与战报共用的一套提示摘要：总计、跳过原因、按反应方。 */
+export function promptSummaryLines(battle: Battle): string[] {
+  const lines: string[] = [];
+  const rows = promptHistory(battle);
+  if (!rows.length) return lines;
+  lines.push(promptStatsText(battle));
+  const skipText = promptSkipText(battle);
+  if (skipText) lines.push(skipText);
+  for (const row of promptActorLines(battle)) lines.push(row);
+  return lines;
+}
+
 /** 逐条列出处理过的反应提示（新的在前），供战报的复盘小节使用。 */
 export function promptHistoryLines(battle: Battle): string[] {
   return [...promptHistory(battle)].reverse().map(row => {

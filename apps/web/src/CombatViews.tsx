@@ -4,6 +4,7 @@ import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
 import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints, reachCells, promptDetail, promptCells, captiveTargets, previewPrompts, readyTriggersOnEnter, PROMPT_QUEUE_LIMIT } from './combat';
 import { undoLastPrompt, promptHistory } from './combat';
+import { promptSummaryLines } from './combatReport';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
@@ -931,6 +932,7 @@ function OpportunityPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       };
       const outcomeLabel = { resolved: '已结算', skipped: '被跳过', declined: '已放弃', undone: '已撤回' } as const;
       return <div className="cmb-ongoing-list">
+        {promptSummaryLines(battle).map(line => <small className="cmb-muted" key={line}>{line}</small>)}
         <small className="cmb-muted">最近处理的提示（新→旧）：</small>
         {rows.map((row, index) => <small className="cmb-muted" key={`${row.reactorId}-${row.targetId}-${row.round}-${index}`}>
           第 {row.round} 轮 · {label(row.reactorId)} {row.kind === 'ready' ? '准备动作' : '借机攻击'} → {label(row.targetId)}：{outcomeLabel[row.outcome]}{row.reason ? `（${row.reason}）` : ''}
