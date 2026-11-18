@@ -2872,8 +2872,18 @@ export function promptDetail(battle: Battle, prompt: OpportunityPrompt): string 
   const path = prompt.from && prompt.to ? `，触发时从（${prompt.from.x}, ${prompt.from.y}）移动到（${prompt.to.x}, ${prompt.to.y}）` : '';
   const gap = typeof feet === 'number' ? `${path}，现在相距 ${feet} 尺` : path;
   if (prompt.kind === 'ready') return `触发 ${actorLabel(battle, reactor)} 准备好的动作${gap}`;
-  const inside = typeof feet === 'number' && feet <= reach;
-  return inside
+  // 有触发坐标时按「移动前后是否在触及内」判定，比拿当前间距推断更准。
+  const cellFt = battle.grid?.cellFt ?? 5;
+  const before = prompt.from && reactor.position
+    ? cellDistance(reactor.position, prompt.from) * cellFt
+    : undefined;
+  const after = prompt.to && reactor.position
+    ? cellDistance(reactor.position, prompt.to) * cellFt
+    : undefined;
+  const entering = typeof before === 'number' && typeof after === 'number'
+    ? before > reach && after <= reach
+    : typeof feet === 'number' && feet <= reach;
+  return entering
     ? `进入 ${actorLabel(battle, reactor)} 的 ${reach} 尺触及${gap}`
     : `离开 ${actorLabel(battle, reactor)} 的 ${reach} 尺触及${gap}`;
 }
