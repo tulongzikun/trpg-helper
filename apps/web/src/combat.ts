@@ -2876,6 +2876,13 @@ export function promptCells(battle: Battle): Position[] {
   return cells;
 }
 
+/** 提示触发瞬间，反应方与被反应方之间的距离（尺）；旧提示没有坐标时返回 undefined。 */
+export function triggerDistance(battle: Battle, prompt: OpportunityPrompt): number | undefined {
+  const reactor = battle.actors.find(item => item.id === prompt.reactorId);
+  if (!reactor?.position || !prompt.from) return undefined;
+  return cellDistance(reactor.position, prompt.from) * (battle.grid?.cellFt ?? 5);
+}
+
 /** 一句话说明这条反应提示的由来：与谁有关、触及多少尺、现在相距多远。 */
 export function promptDetail(battle: Battle, prompt: OpportunityPrompt): string {
   const reactor = battle.actors.find(item => item.id === prompt.reactorId);
@@ -2929,6 +2936,10 @@ export function opportunityAttack(battle: Battle, reactorId: string, overrides: 
   const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
   if (rest.length) combat.pendingOpportunity = rest;
   else delete combat.pendingOpportunity;
+  const gap = triggerDistance(next, prompt);
+  if (typeof gap === 'number') {
+    appendCombatLog(next, `触发时 ${actorLabel(next, reactor)} 与 ${actorLabel(next, actorOf(next, prompt.targetId))} 相距 ${gap} 尺（借机出手按该距离判定）。`, deps);
+  }
   return { battle: next, outcome };
 }
 
