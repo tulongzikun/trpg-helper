@@ -3,7 +3,7 @@ import { encounterXp, defeatedActors, encounterReward } from './encounterReward.
 import { battleStatistics, statsText, typeText } from './combatStats.ts';
 import { battleOutcome, outcomeLabel } from './combatOutcome.ts';
 import { settlementText } from './combatSettlement.ts';
-import { actorLabel, promptHistory, promptStatistics } from './combat.ts';
+import { actorLabel, promptHistory, promptSkipReasons, promptStatistics } from './combat.ts';
 
 const statusLabels: Record<string, string> = { active: '在场', down: '倒地待救', dead: '阵亡' };
 
@@ -111,6 +111,13 @@ export function promptStatsText(battle: Battle): string {
   return parts.join('；');
 }
 
+/** 跳过原因的归类说明，没有跳过时返回空串。 */
+export function promptSkipText(battle: Battle): string {
+  const rows = promptSkipReasons(battle);
+  if (!rows.length) return '';
+  return `跳过原因：${rows.map(row => `${row.reason} ${row.count} 条`).join('、')}`;
+}
+
 /** 逐条列出处理过的反应提示（新的在前），供战报的复盘小节使用。 */
 export function promptHistoryLines(battle: Battle): string[] {
   return [...promptHistory(battle)].reverse().map(row => {
@@ -210,6 +217,8 @@ export function battleReport(battle: Battle): string {
     lines.push('## 反应提示');
     lines.push('');
     lines.push(`- ${promptStatsText(battle)}`);
+    const skipText = promptSkipText(battle);
+    if (skipText) lines.push(`- ${skipText}`);
     lines.push('');
     for (const row of promptRows) lines.push(`- ${row}`);
     lines.push('');

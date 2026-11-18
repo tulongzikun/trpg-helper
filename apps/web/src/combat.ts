@@ -2925,6 +2925,20 @@ export type PromptStatistics = {
   ready: number;
 };
 
+/** 反应提示被跳过的原因归类（次数多的在前），用来发现「总是卡在同一条规则上」。 */
+export function promptSkipReasons(battle: Battle): { reason: string; count: number }[] {
+  const rows = (battle.combat?.promptHistory ?? []).filter(row => row.outcome === 'skipped' && row.reason);
+  const tally = new Map<string, number>();
+  for (const row of rows) {
+    const reason = (row.reason ?? '').trim();
+    if (!reason) continue;
+    tally.set(reason, (tally.get(reason) ?? 0) + 1);
+  }
+  return [...tally.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason, 'zh-Hans-CN'));
+}
+
 /** 反应提示的处理统计：按结果与类型各算一遍，界面与战报共用。 */
 export function promptStatistics(battle: Battle): PromptStatistics {
   const rows = battle.combat?.promptHistory ?? [];
