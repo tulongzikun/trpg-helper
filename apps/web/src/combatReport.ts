@@ -3,7 +3,7 @@ import { encounterXp, defeatedActors, encounterReward } from './encounterReward.
 import { battleStatistics, statsText, typeText } from './combatStats.ts';
 import { battleOutcome, outcomeLabel } from './combatOutcome.ts';
 import { settlementText } from './combatSettlement.ts';
-import { actorLabel, promptHistory, promptSkipReasons, promptStatistics } from './combat.ts';
+import { actorLabel, promptActorStats, promptHistory, promptSkipReasons, promptStatistics } from './combat.ts';
 
 const statusLabels: Record<string, string> = { active: '在场', down: '倒地待救', dead: '阵亡' };
 
@@ -118,6 +118,18 @@ export function promptSkipText(battle: Battle): string {
   return `跳过原因：${rows.map(row => `${row.reason} ${row.count} 条`).join('、')}`;
 }
 
+/** 按反应方列出的提示处理明细，形如「守卫：结算 2、跳过 1」。 */
+export function promptActorLines(battle: Battle): string[] {
+  return promptActorStats(battle).map(row => {
+    const parts: string[] = [];
+    if (row.resolved) parts.push(`结算 ${row.resolved}`);
+    if (row.skipped) parts.push(`跳过 ${row.skipped}`);
+    if (row.declined) parts.push(`放弃 ${row.declined}`);
+    if (row.undone) parts.push(`撤回 ${row.undone}`);
+    return `${row.name}：${parts.join('、') || '—'}`;
+  });
+}
+
 /** 逐条列出处理过的反应提示（新的在前），供战报的复盘小节使用。 */
 export function promptHistoryLines(battle: Battle): string[] {
   return [...promptHistory(battle)].reverse().map(row => {
@@ -219,6 +231,9 @@ export function battleReport(battle: Battle): string {
     lines.push(`- ${promptStatsText(battle)}`);
     const skipText = promptSkipText(battle);
     if (skipText) lines.push(`- ${skipText}`);
+    lines.push('');
+    lines.push('');
+    for (const row of promptActorLines(battle)) lines.push(`- ${row}`);
     lines.push('');
     for (const row of promptRows) lines.push(`- ${row}`);
     lines.push('');

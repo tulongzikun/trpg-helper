@@ -2925,6 +2925,39 @@ export type PromptStatistics = {
   ready: number;
 };
 
+export type PromptActorRow = {
+  actorId: string;
+  name: string;
+  resolved: number;
+  skipped: number;
+  declined: number;
+  undone: number;
+  total: number;
+};
+
+/** 按反应方统计提示处理情况：谁稳定兑现、谁总被跳过，一眼可辨。 */
+export function promptActorStats(battle: Battle): PromptActorRow[] {
+  const rows = battle.combat?.promptHistory ?? [];
+  const tally = new Map<string, PromptActorRow>();
+  for (const row of rows) {
+    const actor = battle.actors.find(item => item.id === row.reactorId);
+    const name = actor ? actorLabel(battle, actor) : row.reactorId;
+    const current = tally.get(row.reactorId) ?? {
+      actorId: row.reactorId,
+      name,
+      resolved: 0,
+      skipped: 0,
+      declined: 0,
+      undone: 0,
+      total: 0,
+    };
+    current[row.outcome] += 1;
+    current.total += 1;
+    tally.set(row.reactorId, current);
+  }
+  return [...tally.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'zh-Hans-CN'));
+}
+
 /** 反应提示被跳过的原因归类（次数多的在前），用来发现「总是卡在同一条规则上」。 */
 export function promptSkipReasons(battle: Battle): { reason: string; count: number }[] {
   const rows = (battle.combat?.promptHistory ?? []).filter(row => row.outcome === 'skipped' && row.reason);
