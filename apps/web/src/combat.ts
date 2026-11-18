@@ -2932,6 +2932,37 @@ export function opportunityAttack(battle: Battle, reactorId: string, overrides: 
   return { battle: next, outcome };
 }
 
+/** 一次性结算所有待确认的反应提示：能结算的就结算，结不了的记录原因后跳过。 */
+export function resolveAllPrompts(battle: Battle, deps: CombatDeps = {}): { battle: Battle; resolved: string[]; skipped: string[] } {
+  let current = battle;
+  const resolved: string[] = [];
+  const skipped: string[] = [];
+  // 每轮都重新读取队列：结算会把对应提示移除，别人的提示也会被跳过逻辑命中。
+  for (let guard = 0; guard < 12; guard += 1) {
+    const pending = pendingOpportunities(current);
+    if (!pending.length) break;
+    const prompt = pending[0];
+    const reactor = current.actors.find(item => item.id === prompt.reactorId);
+    const label = reactor ? actorLabel(current, reactor) : prompt.reactorId;
+    try {
+      const before = current;
+      current = prompt.kind === 'ready'
+        ? triggerReadyAction(current, prompt.reactorId, deps)
+        : opportunityAttack(current, prompt.reactorId, {}, deps).battle;
+      if (current === before) break;
+      resolved.push(`${label}：${prompt.kind === 'ready' ? '准备动作' : '借机攻击'}`);
+    } catch (error) {
+      skipped.push(`${label}：${error instanceof Error ? error.message : String(error)}`);
+      const combat = current.combat;
+      if (!combat) break;
+      const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
+      if (rest.length) combat.pendingOpportunity = rest;
+      else delete combat.pendingOpportunity;
+    }
+  }
+  return { battle: current, resolved, skipped };
+}
+
 /** 放弃一次借机攻击。 */
 export function declineOpportunity(battle: Battle, reactorId: string, deps: CombatDeps = {}): Battle {
   const next = recordUndo(structuredClone(battle));

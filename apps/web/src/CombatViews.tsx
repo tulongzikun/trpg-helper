@@ -156,6 +156,7 @@ export type CombatHandlers = {
   onTriggerReady: (actorId: string) => void;
   onCancelReady: (actorId: string) => void;
   onOpportunity: (reactorId: string) => void;
+  onResolveAll: () => void;
   onDeclineOpportunity: (reactorId: string) => void;
   onReadyPrompt: (reactorId: string) => void;
   onActionSurge: (actorId: string) => void;
@@ -906,6 +907,7 @@ function OpportunityPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   return <div className="cmb-attack">
     <div className="cmb-attack-head"><h4>借机攻击与准备动作</h4><small>{prompts.length} 个待结算</small></div>
     <p className="cmb-hint">单位离开敌对单位的触及范围会触发借机攻击；结算时消耗反应，出刀按触发瞬间的触及关系计算。</p>
+    <button type="button" className="button-secondary" onClick={() => handlers.onResolveAll()}>全部结算（{prompts.length} 个）</button>
     <div className="cmb-ongoing-list">{prompts.map(prompt => {
       const reactor = battle.actors.find(actor => actor.id === prompt.reactorId);
       const target = battle.actors.find(actor => actor.id === prompt.targetId);
