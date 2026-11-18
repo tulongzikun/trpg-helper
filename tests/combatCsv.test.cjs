@@ -42,7 +42,7 @@ test('表头带 BOM 与十一列，行尾为 CRLF', () => {
   assert.ok(csv.startsWith('\uFEFF'));
   assert.ok(csv.endsWith('\r\n'));
   const rows = lines(csv);
-  assert.equal(rows[0], '单位,阵营,状态,攻击,命中,重击,命中率,造成伤害,承受伤害,治疗,伤害构成,防御,状态效果');
+  assert.equal(rows[0], '单位,阵营,先攻,状态,攻击,命中,重击,命中率,造成伤害,承受伤害,治疗,伤害构成,防御,状态效果');
   assert.equal(rows.length, battle.actors.length + 2);
   assert.ok(rows[rows.length - 1].startsWith('合计,'));
 });
@@ -56,12 +56,12 @@ test('攻击与治疗数据按单位落到对应列', () => {
   const heroRow = rows.find(row => row.startsWith('塞拉,'));
   assert.ok(heroRow);
   const cells = heroRow.split(',');
-  assert.equal(cells[3], '1');
   assert.equal(cells[4], '1');
-  assert.equal(cells[6], '1');
-  assert.equal(cells[7], String(hit.outcome.damage));
-  assert.equal(cells[9], '3');
-  assert.equal(cells[10], '穿刺 6');
+  assert.equal(cells[5], '1');
+  assert.equal(cells[7], '1');
+  assert.equal(cells[8], String(hit.outcome.damage));
+  assert.equal(cells[10], '3');
+  assert.equal(cells[11], '穿刺 6');
 });
 
 test('含逗号的名称会被双引号包裹', () => {
@@ -89,7 +89,7 @@ test('没有攻击记录时也输出完整表格', () => {
   const { battle } = setup();
   const rows = lines(battleCsv(battle));
   assert.equal(rows.length, battle.actors.length + 2);
-  assert.equal(rows[rows.length - 1], '合计,,,0,0,0,0,0,0,0,,,');
+  assert.equal(rows[rows.length - 1], '合计,,,,0,0,0,0,0,0,0,,,');
 });
 
 test('文件名为 <战斗名>-统计.csv 并替换非法字符', () => {

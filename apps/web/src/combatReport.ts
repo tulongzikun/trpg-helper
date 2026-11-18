@@ -206,10 +206,12 @@ export function battleCsv(battle: Battle): string {
   const labelOf = new Map(battle.actors.map(actor => [actor.id, statusOf(actor)]));
   const defenseById = new Map(battle.actors.map(actor => [actor.id, defenseOf(actor)]));
   const effectsById = new Map(battle.actors.map(actor => [actor.id, effectsOf(actor).join('；')]));
-  const header = ['单位', '阵营', '状态', '攻击', '命中', '重击', '命中率', '造成伤害', '承受伤害', '治疗', '伤害构成', '防御', '状态效果'];
+  const initiativeById = new Map(battle.actors.map(actor => [actor.id, actor.combat?.initiative ?? '']));
+  const header = ['单位', '阵营', '先攻', '状态', '攻击', '命中', '重击', '命中率', '造成伤害', '承受伤害', '治疗', '伤害构成', '防御', '状态效果'];
   const rows = stats.rows.map(row => [
     row.name,
     row.side,
+    initiativeById.get(row.id) ?? '',
     labelOf.get(row.id) ?? statusLabels[row.status] ?? row.status,
     row.attacks,
     row.hits,
@@ -224,6 +226,7 @@ export function battleCsv(battle: Battle): string {
   ]);
   const totals = [
     '合计',
+    '',
     '',
     '',
     stats.totals.attacks,
