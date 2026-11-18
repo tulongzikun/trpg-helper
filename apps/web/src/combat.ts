@@ -2252,6 +2252,26 @@ export function readyTriggersOnEnter(actor: Actor): boolean {
   if (/攻击|施法/.test(ready.action)) return true;
   return /进入/.test(ready.trigger);
 }
+/** 准备动作的触发条件里写了「离开」时，目标离开触及范围会排队提示。 */
+export function readyTriggersOnLeave(actor: Actor): boolean {
+  return /离开/.test(actor.combat?.ready?.trigger ?? '');
+}
+function leavingReadyPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
+  const grid = battle.grid;
+  if (!grid || mover.side === '中立' || mover.combat?.disengaged) return [];
+  return battle.actors
+    .filter(other => other.id !== mover.id && other.side !== '中立' && other.side !== mover.side && other.position && other.combat?.status === 'active')
+    .filter(canReactNow)
+    .filter(other => other.combat?.ready && other.combat.reactionUsed !== true)
+    .filter(readyTriggersOnLeave)
+    .filter(other => {
+      const reach = actorReach(other);
+      const before = cellDistance(other.position!, from) * grid.cellFt;
+      const after = cellDistance(other.position!, to) * grid.cellFt;
+      return before <= reach && after > reach;
+    })
+    .map(other => ({ reactorId: other.id, targetId: mover.id, kind: 'ready' as const, from, to }));
+}
 function readyPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
   const grid = battle.grid;
   if (!grid || mover.side === '中立' || mover.combat?.disengaged) return [];
@@ -2836,7 +2856,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
     const combat = requireCombat(next);
     const list = [...(combat.pendingOpportunity ?? [])];
     for (const prompt of entered) {
-      if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId)) continue;
+      if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId && (item.kind ?? 'opportunity') === (prompt.kind ?? 'opportunity'))) continue;
       list.push(prompt);
       const reactor = actorOf(next, prompt.reactorId);
       addLog(next, `${actorLabel(next, actor)} 进入 ${actorLabel(next, reactor)} 的触及范围（${actorReach(reactor)} 尺），${actorLabel(next, reactor)} 可以借机攻击。`, deps);
@@ -2850,7 +2870,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
     const combat = requireCombat(next);
     const list = [...(combat.pendingOpportunity ?? [])];
     for (const prompt of prepared) {
-      if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId)) continue;
+      if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId && (item.kind ?? 'opportunity') === (prompt.kind ?? 'opportunity'))) continue;
       list.push(prompt);
       const reactor = actorOf(next, prompt.reactorId);
       addLog(next, `${actorLabel(next, actor)} 触发了 ${actorLabel(next, reactor)} 准备好的「${reactor.combat?.ready?.action ?? ''}」。`, deps);
@@ -2863,10 +2883,24 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
     const combat = requireCombat(next);
     const list = [...(combat.pendingOpportunity ?? [])];
     for (const prompt of triggered) {
-      if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId)) continue;
+      if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId && (item.kind ?? 'opportunity') === (prompt.kind ?? 'opportunity'))) continue;
       list.push(prompt);
       const reactor = actorOf(next, prompt.reactorId);
       addLog(next, `${actorLabel(next, actor)} 离开 ${actorLabel(next, reactor)} 的触及范围（${actorReach(reactor)} 尺），${actorLabel(next, reactor)} 可以借机攻击。`, deps);
+    }
+    const capped = list.slice(-PROMPT_QUEUE_LIMIT);
+    if (capped.length < list.length) addLog(next, `未结算的反应提示超过 ${PROMPT_QUEUE_LIMIT} 条，最早的 ${list.length - capped.length} 条被丢弃。`, deps);
+    combat.pendingOpportunity = capped;
+  }
+  const departed = leavingReadyPrompts(next, actor, from, { x, y });
+  if (departed.length) {
+    const combat = requireCombat(next);
+    const list = [...(combat.pendingOpportunity ?? [])];
+    for (const prompt of departed) {
+      if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId && (item.kind ?? 'opportunity') === (prompt.kind ?? 'opportunity'))) continue;
+      list.push(prompt);
+      const reactor = actorOf(next, prompt.reactorId);
+      addLog(next, `${actorLabel(next, actor)} 离开 ${actorLabel(next, reactor)} 的触及范围，触发其准备好的「${reactor.combat?.ready?.action ?? ''}」。`, deps);
     }
     const capped = list.slice(-PROMPT_QUEUE_LIMIT);
     if (capped.length < list.length) addLog(next, `未结算的反应提示超过 ${PROMPT_QUEUE_LIMIT} 条，最早的 ${list.length - capped.length} 条被丢弃。`, deps);
