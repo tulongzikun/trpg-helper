@@ -2841,7 +2841,9 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
       const reactor = actorOf(next, prompt.reactorId);
       addLog(next, `${actorLabel(next, actor)} 进入 ${actorLabel(next, reactor)} 的触及范围（${actorReach(reactor)} 尺），${actorLabel(next, reactor)} 可以借机攻击。`, deps);
     }
-    combat.pendingOpportunity = list.slice(-8);
+    const capped = list.slice(-PROMPT_QUEUE_LIMIT);
+    if (capped.length < list.length) addLog(next, `未结算的反应提示超过 ${PROMPT_QUEUE_LIMIT} 条，最早的 ${list.length - capped.length} 条被丢弃。`, deps);
+    combat.pendingOpportunity = capped;
   }
   const prepared = readyPrompts(next, actor, from, { x, y });
   if (prepared.length) {
@@ -2853,7 +2855,9 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
       const reactor = actorOf(next, prompt.reactorId);
       addLog(next, `${actorLabel(next, actor)} 触发了 ${actorLabel(next, reactor)} 准备好的「${reactor.combat?.ready?.action ?? ''}」。`, deps);
     }
-    combat.pendingOpportunity = list.slice(-8);
+    const capped = list.slice(-PROMPT_QUEUE_LIMIT);
+    if (capped.length < list.length) addLog(next, `未结算的反应提示超过 ${PROMPT_QUEUE_LIMIT} 条，最早的 ${list.length - capped.length} 条被丢弃。`, deps);
+    combat.pendingOpportunity = capped;
   }
   if (triggered.length) {
     const combat = requireCombat(next);
@@ -2864,8 +2868,24 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
       const reactor = actorOf(next, prompt.reactorId);
       addLog(next, `${actorLabel(next, actor)} 离开 ${actorLabel(next, reactor)} 的触及范围（${actorReach(reactor)} 尺），${actorLabel(next, reactor)} 可以借机攻击。`, deps);
     }
-    combat.pendingOpportunity = list.slice(-8);
+    const capped = list.slice(-PROMPT_QUEUE_LIMIT);
+    if (capped.length < list.length) addLog(next, `未结算的反应提示超过 ${PROMPT_QUEUE_LIMIT} 条，最早的 ${list.length - capped.length} 条被丢弃。`, deps);
+    combat.pendingOpportunity = capped;
   }
+  return next;
+}
+
+/** 队列最多保留的待结算提示数：超出后丢弃最早的，并在战报里写一行说明。 */
+export const PROMPT_QUEUE_LIMIT = 8;
+
+/** 清空待结算的反应提示（放弃所有排队中的借机攻击与准备动作，不消耗反应）。 */
+export function clearPrompts(battle: Battle, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const combat = requireCombat(next);
+  const promptCount = (combat.pendingOpportunity ?? []).length;
+  if (!promptCount) return next;
+  delete combat.pendingOpportunity;
+  addLog(next, `清空了 ${promptCount} 条未结算的反应提示。`, deps);
   return next;
 }
 

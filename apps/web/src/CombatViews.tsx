@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, Terrain } from './battle';
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
-import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints, reachCells, promptDetail, promptCells, captiveTargets, previewPrompts, readyTriggersOnEnter } from './combat';
+import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints, reachCells, promptDetail, promptCells, captiveTargets, previewPrompts, readyTriggersOnEnter, PROMPT_QUEUE_LIMIT } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
@@ -157,6 +157,7 @@ export type CombatHandlers = {
   onCancelReady: (actorId: string) => void;
   onOpportunity: (reactorId: string) => void;
   onResolveAll: () => void;
+  onClearPrompts: () => void;
   onDeclineOpportunity: (reactorId: string) => void;
   onReadyPrompt: (reactorId: string) => void;
   onActionSurge: (actorId: string) => void;
@@ -906,7 +907,7 @@ function OpportunityPanel({ battle, handlers }: { battle: Battle; handlers: Comb
   const prompts = pendingOpportunities(battle);
   if (!prompts.length) return null;
   return <div className="cmb-attack">
-    <div className="cmb-attack-head"><h4>借机攻击与准备动作</h4><small>{prompts.length} 个待结算</small></div>
+    <div className="cmb-attack-head"><h4>借机攻击与准备动作</h4><small>{prompts.length} 个待结算（最多保留 {PROMPT_QUEUE_LIMIT} 条）</small></div>
     <p className="cmb-hint">单位离开敌对单位的触及范围会触发借机攻击；结算时消耗反应，出刀按触发瞬间的触及关系计算。</p>
     {(() => {
       const blocked = previewPrompts(battle).filter(row => !row.ok);
@@ -915,6 +916,7 @@ function OpportunityPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       return <p className="cmb-hint">全部结算会跳过 {blocked.length} 条：{detail}</p>;
     })()}
     <button type="button" className="button-secondary" onClick={() => handlers.onResolveAll()}>全部结算（{prompts.length} 个）</button>
+    <button type="button" className="button-secondary" onClick={() => handlers.onClearPrompts()}>清空提示（不消耗反应）</button>
     <div className="cmb-ongoing-list">{prompts.map(prompt => {
       const reactor = battle.actors.find(actor => actor.id === prompt.reactorId);
       const target = battle.actors.find(actor => actor.id === prompt.targetId);
