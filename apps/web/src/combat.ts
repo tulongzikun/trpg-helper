@@ -2973,7 +2973,7 @@ export function resolveAllPrompts(battle: Battle, deps: CombatDeps = {}): { batt
     try {
       const before = current;
       current = prompt.kind === 'ready'
-        ? triggerReadyAction(current, prompt.reactorId, deps)
+        ? triggerReadyAction(current, prompt.reactorId, deps, prompt)
         : opportunityAttack(current, prompt.reactorId, {}, deps).battle;
       if (current === before) break;
       resolved.push(`${label}：${prompt.kind === 'ready' ? '准备动作' : '借机攻击'}`);
@@ -3016,7 +3016,7 @@ export function resolveReadyPrompt(battle: Battle, reactorId: string, deps: Comb
   const rest = (combat.pendingOpportunity ?? []).filter(item => item !== prompt);
   if (rest.length) combat.pendingOpportunity = rest;
   else delete combat.pendingOpportunity;
-  return triggerReadyAction(next, reactorId, deps);
+  return triggerReadyAction(next, reactorId, deps, prompt);
 }
 
 /** 撤离：消耗动作，本回合移动不引发借机攻击。 */
@@ -3666,7 +3666,7 @@ export function readyAction(battle: Battle, actorId: string, input: ReadyAction,
   return next;
 }
 /** 触发准备好的动作：消耗反应并清空准备。 */
-export function triggerReadyAction(battle: Battle, actorId: string, deps: CombatDeps = {}): Battle {
+export function triggerReadyAction(battle: Battle, actorId: string, deps: CombatDeps = {}, prompt?: OpportunityPrompt): Battle {
   const next = recordUndo(structuredClone(battle));
   requireCombat(next);
   const actor = actorOf(next, actorId);
@@ -3680,6 +3680,10 @@ export function triggerReadyAction(battle: Battle, actorId: string, deps: Combat
   delete state.ready;
   state.reactionUsed = true;
   addLog(next, `${actorLabel(next, actor)} 用反应执行准备好的「${ready.action}」。`, deps);
+  const gap = prompt ? triggerDistance(next, prompt) : undefined;
+  if (prompt && typeof gap === 'number') {
+    appendCombatLog(next, `触发时 ${actorLabel(next, actor)} 与 ${actorLabel(next, actorOf(next, prompt.targetId))} 相距 ${gap} 尺（准备动作按触发瞬间的距离结算）。`, deps);
+  }
   return next;
 }
 /** 放弃准备好的动作（动作不返还）。 */
