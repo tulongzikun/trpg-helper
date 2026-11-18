@@ -3003,7 +3003,8 @@ export function resolveAllPrompts(battle: Battle, deps: CombatDeps = {}): { batt
         ? triggerReadyAction(current, prompt.reactorId, deps, prompt)
         : opportunityAttack(current, prompt.reactorId, {}, deps).battle;
       if (current === before) break;
-      resolved.push(`${label}：${prompt.kind === 'ready' ? '准备动作' : '借机攻击'}`);
+      const targetLabel = current.actors.find(item => item.id === prompt.targetId);
+      resolved.push(`${label}：${prompt.kind === 'ready' ? '准备动作' : '借机攻击'} → ${targetLabel ? actorLabel(current, targetLabel) : prompt.targetId}`);
     } catch (error) {
       skipped.push(`${label}：${error instanceof Error ? error.message : String(error)}`);
       const combat = current.combat;
@@ -3014,8 +3015,14 @@ export function resolveAllPrompts(battle: Battle, deps: CombatDeps = {}): { batt
     }
   }
   if (resolved.length || skipped.length) {
+    const readyCount = resolved.filter(item => item.includes('准备动作')).length;
+    const opportunityCount = resolved.length - readyCount;
+    const doneText = resolved.length
+      ? `完成 ${resolved.length} 条反应（借机攻击 ${opportunityCount}、准备动作 ${readyCount}）`
+      : '没有完成任何反应';
     const skippedText = skipped.length ? `，跳过 ${skipped.length} 条（${skipped.join('；')}）` : '';
-    current = appendCombatLog(current, `一键结算：完成 ${resolved.length} 条反应${skippedText}。`, deps);
+    current = appendCombatLog(current, `一键结算：${doneText}${skippedText}。`, deps);
+    if (resolved.length) current = appendCombatLog(current, `已结算：${resolved.join('；')}。`, deps);
   }
   return { battle: current, resolved, skipped };
 }

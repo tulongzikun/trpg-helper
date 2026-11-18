@@ -51,7 +51,8 @@ test('结算成功时战报记录完成条数', () => {
   const { battle, foeId } = setup();
   const moved = moveActorToCell(battle, foeId, 5, 1);
   const result = resolveAllPrompts(moved, { random: sequence(0.9, 0.5, 0.9, 0.5) });
-  assert.match(logText(result.battle), /一键结算：完成 2 条反应。/);
+  assert.match(logText(result.battle), /一键结算：完成 2 条反应（借机攻击 2、准备动作 0）。/);
+  assert.match(logText(result.battle), /已结算：守卫：借机攻击 → /);
 });
 
 test('有跳过时战报写出原因', () => {
@@ -61,7 +62,7 @@ test('有跳过时战报写出原因', () => {
   const moved = moveActorToCell(spent, foeId, 5, 1);
   const result = resolveAllPrompts(moved, { random: sequence(0.9, 0.5) });
   const text = logText(result.battle);
-  assert.match(text, /完成 1 条反应，跳过 1 条/);
+  assert.match(text, /完成 1 条反应（借机攻击 1、准备动作 0），跳过 1 条/);
   assert.match(text, /反应/);
 });
 
