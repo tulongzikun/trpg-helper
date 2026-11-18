@@ -2245,6 +2245,10 @@ function enteringReachPrompts(battle: Battle, mover: Actor, from: Position, to: 
     .map(other => ({ reactorId: other.id, targetId: mover.id, from, to }));
 }
 /** 准备好的「攻击」动作：敌对单位进入触及范围时自动排入待结算提示。 */
+/** 准备动作只有在描述里含「攻击」时，才会在敌人进入触及时自动提示（其余类型需要操作者手动结算）。 */
+export function readyTriggersOnEnter(actor: Actor): boolean {
+  return /攻击/.test(actor.combat?.ready?.action ?? '');
+}
 function readyPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
   const grid = battle.grid;
   if (!grid || mover.side === '中立' || mover.combat?.disengaged) return [];
@@ -2252,7 +2256,7 @@ function readyPrompts(battle: Battle, mover: Actor, from: Position, to: Position
     .filter(other => other.id !== mover.id && other.side !== '中立' && other.side !== mover.side && other.position && other.combat?.status === 'active')
     .filter(canReactNow)
     .filter(other => other.combat?.ready && other.combat.reactionUsed !== true)
-    .filter(other => /攻击/.test(other.combat?.ready?.action ?? ''))
+    .filter(readyTriggersOnEnter)
     .filter(other => {
       const reach = actorReach(other);
       const before = cellDistance(other.position!, from) * grid.cellFt;
