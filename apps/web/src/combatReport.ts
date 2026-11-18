@@ -2,6 +2,7 @@ import type { Actor, Battle } from './battle';
 import { encounterXp, defeatedActors, encounterReward } from './encounterReward.ts';
 import { battleStatistics, statsText, typeText } from './combatStats.ts';
 import { battleOutcome, outcomeLabel } from './combatOutcome.ts';
+import { settlementText } from './combatSettlement.ts';
 
 const statusLabels: Record<string, string> = { active: '在场', down: '倒地待救', dead: '阵亡' };
 
@@ -164,6 +165,11 @@ export function battleReport(battle: Battle): string {
   }
   const log = battle.combat?.log ?? [];
   lines.push('');
+  lines.push('## 结算');
+  lines.push('');
+  lines.push(settlementText(battle).trimEnd());
+  lines.push('');
+
   lines.push('## 战报');
   lines.push('');
   if (!log.length) lines.push('（暂无记录）');
