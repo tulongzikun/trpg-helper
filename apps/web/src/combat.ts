@@ -2915,6 +2915,31 @@ export const PROMPT_QUEUE_LIMIT = 8;
 export const PROMPT_HISTORY_LIMIT = 30;
 
 /** 最近处理过的反应提示（最新的在最后）。 */
+export type PromptStatistics = {
+  total: number;
+  resolved: number;
+  skipped: number;
+  declined: number;
+  undone: number;
+  opportunity: number;
+  ready: number;
+};
+
+/** 反应提示的处理统计：按结果与类型各算一遍，界面与战报共用。 */
+export function promptStatistics(battle: Battle): PromptStatistics {
+  const rows = battle.combat?.promptHistory ?? [];
+  const count = (predicate: (row: PromptHistoryEntry) => boolean) => rows.filter(predicate).length;
+  return {
+    total: rows.length,
+    resolved: count(row => row.outcome === 'resolved'),
+    skipped: count(row => row.outcome === 'skipped'),
+    declined: count(row => row.outcome === 'declined'),
+    undone: count(row => row.outcome === 'undone'),
+    opportunity: count(row => row.kind === 'opportunity'),
+    ready: count(row => row.kind === 'ready'),
+  };
+}
+
 export function promptHistory(battle: Battle): PromptHistoryEntry[] {
   return battle.combat?.promptHistory ?? [];
 }

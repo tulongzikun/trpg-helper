@@ -3,6 +3,7 @@ import { encounterXp, defeatedActors, encounterReward } from './encounterReward.
 import { battleStatistics, statsText, typeText } from './combatStats.ts';
 import { battleOutcome, outcomeLabel } from './combatOutcome.ts';
 import { settlementText } from './combatSettlement.ts';
+import { actorLabel, promptHistory, promptStatistics } from './combat.ts';
 
 const statusLabels: Record<string, string> = { active: '在场', down: '倒地待救', dead: '阵亡' };
 
@@ -89,6 +90,40 @@ export function initiativeOrder(battle: Battle): { name: string; initiative: num
 }
 
 /** 把一场战斗渲染成可直接贴进跑团记录的 Markdown。 */
+const promptOutcomeLabels: Record<string, string> = {
+  resolved: '已结算',
+  skipped: '被跳过',
+  declined: '已放弃',
+  undone: '已撤回',
+};
+
+/** 一句话概括反应提示的处理情况。 */
+export function promptStatsText(battle: Battle): string {
+  const stats = promptStatistics(battle);
+  if (!stats.total) return '还没有处理过反应提示。';
+  const parts = [`共 ${stats.total} 条（借机攻击 ${stats.opportunity}、准备动作 ${stats.ready}）`];
+  const outcomes: string[] = [];
+  if (stats.resolved) outcomes.push(`已结算 ${stats.resolved}`);
+  if (stats.skipped) outcomes.push(`被跳过 ${stats.skipped}`);
+  if (stats.declined) outcomes.push(`已放弃 ${stats.declined}`);
+  if (stats.undone) outcomes.push(`已撤回 ${stats.undone}`);
+  if (outcomes.length) parts.push(outcomes.join('、'));
+  return parts.join('；');
+}
+
+/** 逐条列出处理过的反应提示（新的在前），供战报的复盘小节使用。 */
+export function promptHistoryLines(battle: Battle): string[] {
+  return [...promptHistory(battle)].reverse().map(row => {
+    const reactor = battle.actors.find(item => item.id === row.reactorId);
+    const target = battle.actors.find(item => item.id === row.targetId);
+    const name = (actor: typeof reactor, id: string) => (actor ? actorLabel(battle, actor) : id);
+    const kind = row.kind === 'ready' ? '准备动作' : '借机攻击';
+    const outcome = promptOutcomeLabels[row.outcome] ?? row.outcome;
+    const reason = row.reason ? `（${row.reason}）` : '';
+    return `第 ${row.round} 轮 · ${name(reactor, row.reactorId)} ${kind} → ${name(target, row.targetId)}：${outcome}${reason}`;
+  });
+}
+
 export function battleReport(battle: Battle): string {
   const reward = encounterReward(battle);
   const round = battle.combat ? `第 ${battle.combat.round} 轮` : '尚未开战';
@@ -169,6 +204,16 @@ export function battleReport(battle: Battle): string {
   lines.push('');
   lines.push(settlementText(battle).trimEnd());
   lines.push('');
+
+  const promptRows = promptHistoryLines(battle);
+  if (promptRows.length) {
+    lines.push('## 反应提示');
+    lines.push('');
+    lines.push(`- ${promptStatsText(battle)}`);
+    lines.push('');
+    for (const row of promptRows) lines.push(`- ${row}`);
+    lines.push('');
+  }
 
   lines.push('## 战报');
   lines.push('');
