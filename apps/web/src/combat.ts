@@ -2843,6 +2843,8 @@ export function opportunityAttack(battle: Battle, reactorId: string, overrides: 
   if (!prompt) throw new Error('该单位没有待结算的借机攻击。');
   if (inDarkness(next, reactorId) !== inDarkness(next, prompt.targetId)) throw new Error('在魔法黑暗中看不清目标，无法进行借机攻击。');
   const reactor = actorOf(next, reactorId);
+  // 看不见目标就无法趁机出手（2024 规则：借机攻击要求能看见该生物）。
+  if ((reactor.combat?.conditions ?? []).includes('目盲')) throw new Error('看不见目标，无法进行借机攻击。');
   const source = attackSources(reactor)[0];
   const merged: AttackOptions = {
     attackerId: reactorId,
