@@ -42,7 +42,7 @@ test('表头带 BOM 与十一列，行尾为 CRLF', () => {
   assert.ok(csv.startsWith('\uFEFF'));
   assert.ok(csv.endsWith('\r\n'));
   const rows = lines(csv);
-  assert.equal(rows[0], '单位,阵营,先攻,状态,攻击,命中,重击,命中率,造成伤害,承受伤害,治疗,伤害构成,防御,状态效果');
+  assert.equal(rows[0], '单位,阵营,先攻,状态,攻击,命中,重击,命中率,造成伤害,承受伤害,治疗,伤害构成,防御,状态效果,反应提示');
   assert.equal(rows.length, battle.actors.length + 2);
   assert.ok(rows[rows.length - 1].startsWith('合计,'));
 });
@@ -89,7 +89,7 @@ test('没有攻击记录时也输出完整表格', () => {
   const { battle } = setup();
   const rows = lines(battleCsv(battle));
   assert.equal(rows.length, battle.actors.length + 2);
-  assert.equal(rows[rows.length - 1], '合计,,,,0,0,0,0,0,0,0,,,');
+  assert.equal(rows[rows.length - 1], '合计,,,,0,0,0,0,0,0,0,,,'.replace(/,$/, ',,'));
 });
 
 test('文件名为 <战斗名>-统计.csv 并替换非法字符', () => {

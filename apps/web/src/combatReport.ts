@@ -282,7 +282,13 @@ export function battleCsv(battle: Battle): string {
   const defenseById = new Map(battle.actors.map(actor => [actor.id, defenseOf(actor)]));
   const effectsById = new Map(battle.actors.map(actor => [actor.id, effectsOf(actor).join('；')]));
   const initiativeById = new Map(battle.actors.map(actor => [actor.id, actor.combat?.initiative ?? '']));
-  const header = ['单位', '阵营', '先攻', '状态', '攻击', '命中', '重击', '命中率', '造成伤害', '承受伤害', '治疗', '伤害构成', '防御', '状态效果'];
+  const promptById = new Map(promptActorStats(battle).map(row => [row.actorId, row]));
+  const promptCellOf = (id: string) => {
+    const row = promptById.get(id);
+    if (!row) return '';
+    return `${row.resolved}/${row.skipped}/${row.declined + row.undone}`;
+  };
+  const header = ['单位', '阵营', '先攻', '状态', '攻击', '命中', '重击', '命中率', '造成伤害', '承受伤害', '治疗', '伤害构成', '防御', '状态效果', '反应提示'];
   const rows = stats.rows.map(row => [
     row.name,
     row.side,
@@ -298,6 +304,7 @@ export function battleCsv(battle: Battle): string {
     typeSummary(row),
     defenseById.get(row.id) ?? '',
     effectsById.get(row.id) ?? '',
+    promptCellOf(row.id),
   ]);
   const totals = [
     '合计',
@@ -312,6 +319,7 @@ export function battleCsv(battle: Battle): string {
     stats.totals.damageTaken,
     stats.totals.healing,
     typeSummary(stats.totals),
+    '',
     '',
     '',
   ];

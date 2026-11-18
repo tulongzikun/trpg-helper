@@ -21,11 +21,11 @@ function lines(csv) {
   return csv.replace(/^\uFEFF/, '').split('\r\n').filter(Boolean).map(line => line.split(','));
 }
 
-test('CSV 表头最后一列是状态效果', () => {
+test('CSV 表头倒数第二列是状态效果', () => {
   const { battle } = setup();
   const header = lines(battleCsv(battle))[0];
-  assert.equal(header.at(-1), '状态效果');
-  assert.equal(header.length, 14);
+  assert.equal(header.at(-1), '反应提示');
+  assert.equal(header.length, 15);
 });
 
 test('有状态的单位在状态效果列里带轮数', () => {
@@ -35,13 +35,13 @@ test('有状态的单位在状态效果列里带轮数', () => {
   foe.combat.blessed = 10;
   foe.combat.entangled = true;
   const row = lines(battleCsv(cloned)).find(cells => cells[0] === foe.name);
-  assert.equal(row.at(-1), '被藤蔓缠住；祝福（10 轮）');
+  assert.equal(row.at(-2), '被藤蔓缠住；祝福（10 轮）');
 });
 
 test('没有状态的单位该列留空', () => {
   const { battle } = setup();
   const row = lines(battleCsv(battle)).find(cells => cells[0] === battle.actors[0].name);
-  assert.equal(row.at(-1), '');
+  assert.equal(row.at(-2), '');
 });
 
 test('合计行的状态效果列留空', () => {
@@ -49,5 +49,5 @@ test('合计行的状态效果列留空', () => {
   const totals = lines(battleCsv(battle)).at(-1);
   assert.equal(totals[0], '合计');
   assert.equal(totals.at(-1), '');
-  assert.equal(totals.length, 14);
+  assert.equal(totals.length, 15);
 });
