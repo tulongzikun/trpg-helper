@@ -3,6 +3,7 @@ import type { Actor, Battle, DamageType, GridConfig, Obscured, Position, Side, T
 import { damageTypes } from './battle';
 import type { AttackCost, AttackMode, AttackOptions, AreaSaveOptions, AuraInput, CheckOptions, SaveOptions, OngoingInput, AttackPresetInput } from './combat';
 import { actorDistance, actorInitiativeBonus, actorLabel, actorSpeed, aurasOf, availableTargets, combatantSummary, conditions, currentActor, currentActorId, friendlyFireTargets, hostileTargets, pendingOpportunities, summonsOf, healTargets, scrollDc, scrollSpellOf, hasLineOfSight, aidTargets, barkskinTargets, blindTargets, deafenTargets, attackHints, reachCells, promptDetail, promptCells, captiveTargets, previewPrompts, readyTriggersOnEnter, PROMPT_QUEUE_LIMIT } from './combat';
+import { undoLastPrompt } from './combat';
 import { attackSources, originLabels } from './attackSources';
 import { expectedDamage, hitChanceLabel } from './combatProbability';
 import type { AttackSuggestion } from './combatAi';
@@ -158,6 +159,7 @@ export type CombatHandlers = {
   onOpportunity: (reactorId: string) => void;
   onResolveAll: () => void;
   onClearPrompts: (kind?: 'opportunity' | 'ready') => void;
+  onUndoPrompt: () => void;
   onDeclineOpportunity: (reactorId: string) => void;
   onReadyPrompt: (reactorId: string) => void;
   onActionSurge: (actorId: string) => void;
@@ -916,6 +918,7 @@ function OpportunityPanel({ battle, handlers }: { battle: Battle; handlers: Comb
       return <p className="cmb-hint">全部结算会跳过 {blocked.length} 条：{detail}</p>;
     })()}
     <button type="button" className="button-secondary" onClick={() => handlers.onResolveAll()}>全部结算（{prompts.length} 个）</button>
+    <button type="button" className="button-secondary" onClick={() => handlers.onUndoPrompt()} disabled={!prompts.length}>撤回上一条</button>
     <button type="button" className="button-secondary" onClick={() => handlers.onClearPrompts()}>清空提示（不消耗反应）</button>
     {prompts.some(prompt => prompt.kind !== 'ready') ? <button type="button" className="button-secondary" onClick={() => handlers.onClearPrompts('opportunity')}>只清借机攻击</button> : null}
     {prompts.some(prompt => prompt.kind === 'ready') ? <button type="button" className="button-secondary" onClick={() => handlers.onClearPrompts('ready')}>只清准备动作</button> : null}

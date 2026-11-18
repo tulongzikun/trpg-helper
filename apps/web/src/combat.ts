@@ -2912,6 +2912,22 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
 /** 队列最多保留的待结算提示数：超出后丢弃最早的，并在战报里写一行说明。 */
 export const PROMPT_QUEUE_LIMIT = 8;
 
+/** 撤回最后一条待结算的反应提示（不消耗反应），用于点错或触发条件写错的场合。 */
+export function undoLastPrompt(battle: Battle, deps: CombatDeps = {}): Battle {
+  const next = recordUndo(structuredClone(battle));
+  const combat = requireCombat(next);
+  const list = [...(combat.pendingOpportunity ?? [])];
+  const prompt = list.pop();
+  if (!prompt) throw new Error('没有待结算的反应提示可以撤回。');
+  if (list.length) combat.pendingOpportunity = list;
+  else delete combat.pendingOpportunity;
+  const reactor = next.actors.find(item => item.id === prompt.reactorId);
+  const target = next.actors.find(item => item.id === prompt.targetId);
+  const kind = prompt.kind === 'ready' ? '准备动作' : '借机攻击';
+  addLog(next, `撤回了 ${reactor ? actorLabel(next, reactor) : prompt.reactorId} 对 ${target ? actorLabel(next, target) : prompt.targetId} 的${kind}提示。`, deps);
+  return next;
+}
+
 /** 清空待结算的反应提示（放弃排队中的提示，不消耗反应）；给 kind 时只清那一类。 */
 export function clearPrompts(battle: Battle, deps: CombatDeps = {}, kind?: 'opportunity' | 'ready'): Battle {
   const next = recordUndo(structuredClone(battle));
