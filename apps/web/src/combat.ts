@@ -2245,9 +2245,12 @@ function enteringReachPrompts(battle: Battle, mover: Actor, from: Position, to: 
     .map(other => ({ reactorId: other.id, targetId: mover.id, from, to }));
 }
 /** 准备好的「攻击」动作：敌对单位进入触及范围时自动排入待结算提示。 */
-/** 准备动作只有在描述里含「攻击」时，才会在敌人进入触及时自动提示（其余类型需要操作者手动结算）。 */
+/** 准备动作在以下任一情况会自动提示：动作描述含「攻击」或「施法」，或触发条件里点了「进入」。 */
 export function readyTriggersOnEnter(actor: Actor): boolean {
-  return /攻击/.test(actor.combat?.ready?.action ?? '');
+  const ready = actor.combat?.ready;
+  if (!ready) return false;
+  if (/攻击|施法/.test(ready.action)) return true;
+  return /进入/.test(ready.trigger);
 }
 function readyPrompts(battle: Battle, mover: Actor, from: Position, to: Position): OpportunityPrompt[] {
   const grid = battle.grid;

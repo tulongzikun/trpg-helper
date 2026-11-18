@@ -579,7 +579,7 @@ function ReadyPanel({ battle, actor, handlers }: { battle: Battle; actor: Actor;
   if (!state) return null;
   if (state.ready) {
     return <div className="cmb-ongoing-list">
-      {readyTriggersOnEnter(actor) ? null : <p className="cmb-hint">这段准备动作不含「攻击」，敌人进入触及时不会自动提示，需要在这里手动点「触发」。</p>}
+      {readyTriggersOnEnter(actor) ? null : <p className="cmb-hint">这段准备动作既不含「攻击／施法」，触发条件里也没写「进入」，所以敌人进入触及不会自动提示，需要在这里手动点「触发」。</p>}
       <span className="cmb-chip">准备中：{state.ready.action}（触发：{state.ready.trigger}）
         <button type="button" className="cmb-chip-remove" aria-label="放弃准备动作" onClick={() => handlers.onCancelReady(actor.id)}>×</button>
       </span>

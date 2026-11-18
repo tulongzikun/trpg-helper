@@ -29,7 +29,7 @@ const hero = {
   },
 };
 
-function setUp(action) {
+function setUp(action, trigger = '敌人进入触及') {
   let store = addMonsters(emptyStore(), card, { newBattleName: '触发判定', side: '敌方', count: 1 }, ids(), () => '2026-01-01T00:00:00Z').store;
   const battleId = store.battles[0].id;
   store = addCharacter(store, hero, { battleId, side: '友方' }, ids()).store;
@@ -39,7 +39,7 @@ function setUp(action) {
   battle = structuredClone(startCombat(battle, { [guard.id]: 20, [foe.id]: 10 }));
   battle.actors.find(actor => actor.id === guard.id).position = { x: 2, y: 2 };
   battle.actors.find(actor => actor.id === foe.id).position = { x: 6, y: 2 };
-  battle = readyAction(battle, guard.id, { action, trigger: '敌人进入触及' });
+  battle = readyAction(battle, guard.id, { action, trigger });
   return { battle, guardId: guard.id, foeId: foe.id };
 }
 
@@ -52,8 +52,20 @@ test('攻击类准备动作会在敌人进入时自动提示', () => {
   assert.equal(prompts.length, 1);
 });
 
-test('非攻击类准备动作不会自动提示', () => {
-  const { battle, guardId, foeId } = setUp('关上身后的大门');
+test('施法类准备动作同样会排队提示', () => {
+  const { battle, guardId } = setUp('施放火球术');
+  const guard = battle.actors.find(actor => actor.id === guardId);
+  assert.equal(readyTriggersOnEnter(guard), true);
+});
+
+test('触发条件里写了「进入」的非攻击动作也会排队', () => {
+  const { battle, guardId } = setUp('关上身后的大门', '有人进入房间');
+  const guard = battle.actors.find(actor => actor.id === guardId);
+  assert.equal(readyTriggersOnEnter(guard), true);
+});
+
+test('既不含攻击也不含进入的准备动作不会自动提示', () => {
+  const { battle, guardId, foeId } = setUp('关上身后的大门', '有人靠近');
   const guard = battle.actors.find(actor => actor.id === guardId);
   assert.equal(readyTriggersOnEnter(guard), false);
   const moved = moveActorToCell(endTurn(battle), foeId, 3, 2);
