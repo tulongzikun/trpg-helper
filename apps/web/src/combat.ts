@@ -2817,7 +2817,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
       if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId)) continue;
       list.push(prompt);
       const reactor = actorOf(next, prompt.reactorId);
-      addLog(next, `${actorLabel(next, actor)} 进入 ${actorLabel(next, reactor)} 的触及范围，${actorLabel(next, reactor)} 可以借机攻击。`, deps);
+      addLog(next, `${actorLabel(next, actor)} 进入 ${actorLabel(next, reactor)} 的触及范围（${actorReach(reactor)} 尺），${actorLabel(next, reactor)} 可以借机攻击。`, deps);
     }
     combat.pendingOpportunity = list.slice(-8);
   }
@@ -2840,7 +2840,7 @@ export function moveActorToCell(battle: Battle, actorId: string, x: number, y: n
       if (list.some(item => item.reactorId === prompt.reactorId && item.targetId === prompt.targetId)) continue;
       list.push(prompt);
       const reactor = actorOf(next, prompt.reactorId);
-      addLog(next, `${actorLabel(next, actor)} 离开 ${actorLabel(next, reactor)} 的触及范围，${actorLabel(next, reactor)} 可以借机攻击。`, deps);
+      addLog(next, `${actorLabel(next, actor)} 离开 ${actorLabel(next, reactor)} 的触及范围（${actorReach(reactor)} 尺），${actorLabel(next, reactor)} 可以借机攻击。`, deps);
     }
     combat.pendingOpportunity = list.slice(-8);
   }
